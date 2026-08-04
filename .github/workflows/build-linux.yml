@@ -1,0 +1,79 @@
+# Igual que build-windows.yml, pero para Linux: compila y empaqueta un
+# AppImage con linuxdeploy + linuxdeploy-plugin-qt (las mismas herramientas
+# que usamos a mano ayer). Al compilar en un Ubuntu limpio de GitHub, en
+# vez de en tu Arch/Hyprland local, evitamos de raíz el problema de
+# ventana-que-no-aparecía que investigamos ayer — era un asunto de esa
+# sesión concreta del compositor, no del AppImage en sí.
+
+name: Build Linux (AppImage)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    # A diferencia de "windows-latest", este es Ubuntu — más parecido al
+    # tipo de sistema que probablemente usen tus amigos en Linux (o no,
+    # el AppImage no depende de qué distro sea, esa es la idea).
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      # Misma acción que en Windows, mismo Qt — solo cambia "host" a linux.
+      - name: Instalar Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          host: 'linux'
+          target: 'desktop'
+
+      - name: Configurar CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Compilar
+        run: cmake --build build -j$(nproc)
+
+      # linuxdeploy no viene instalado en el runner (a diferencia de Inno
+      # Setup en Windows) — se descarga como los AppImage que son, se
+      # marcan ejecutables, y ya.
+      - name: Descargar linuxdeploy y su plugin de Qt
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      # Construir el AppDir a mano, igual que hicimos ayer en la terminal:
+      # el binario en usr/bin/, el .desktop y el icono en las rutas que
+      # espera el estándar freedesktop.org.
+      - name: Montar el AppDir
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          cp build/PokerClientQt AppDir/usr/bin/
+          cp pokerremake.desktop AppDir/usr/share/applications/
+          cp assets/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/pokerremake.png
+
+      # QML_SOURCES_PATHS le dice al plugin de Qt dónde mirar los .qml
+      # fuente para averiguar qué módulos de Qt Quick hacen falta bundlear
+      # (Controls, etc.) — lo mismo que hicimos ayer a mano.
+      - name: Generar el AppImage
+        env:
+          QML_SOURCES_PATHS: src/client-qt/qml
+        run: |
+          export PATH="$PWD:$PATH"
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/PokerClientQt \
+            --desktop-file AppDir/usr/share/applications/pokerremake.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/pokerremake.png \
+            --plugin qt \
+            --output appimage
+
+      - name: Subir el AppImage como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokerRemake-Linux-AppImage
+          path: PokerRemake-x86_64.AppImage

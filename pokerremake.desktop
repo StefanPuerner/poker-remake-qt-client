@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PokerRemake
+Comment=Cliente de Texas Hold'em en red
+Exec=PokerClientQt
+Icon=pokerremake
+Categories=Game;
+Terminal=false

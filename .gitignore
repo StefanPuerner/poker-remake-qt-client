@@ -5,6 +5,8 @@ build*/
 *.out
 a.out
 dist/
+AppDir/
+*.AppImage
 
 # CMake
 CMakeCache.txt
