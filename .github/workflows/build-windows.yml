@@ -1,6 +1,5 @@
-# Workflow de GitHub Actions — versión mínima, solo para confirmar que el
-# proyecto compila en Windows desde cero, sin empaquetar nada todavía
-# (eso viene en un paso posterior, una vez esto funcione).
+# Workflow de GitHub Actions: compila PokerClientQt en Windows y lo empaqueta
+# en un instalador .exe (windeployqt + Inno Setup).
 #
 # "Workflow" = una receta de pasos que corre GitHub en una máquina virtual
 # suya, no en la tuya. Este fichero es esa receta.
@@ -52,3 +51,30 @@ jobs:
       # Paso 4: compilar de verdad.
       - name: Compilar
         run: cmake --build build --config RelWithDebInfo
+
+      # Paso 5: windeployqt — la herramienta oficial de Qt para "empaquetado
+      # in situ": analiza el .exe, ve qué DLLs de Qt usa de verdad, y las
+      # copia AL LADO del propio .exe (en la misma carpeta), junto con las
+      # subcarpetas de plugins (platforms/, qml/...) que Qt necesita en
+      # tiempo de ejecución. La acción de instalar Qt del paso 2 ya deja
+      # windeployqt.exe en el PATH, así que se puede llamar directo.
+      - name: Empaquetar dependencias de Qt (windeployqt)
+        run: windeployqt --qmldir src\client-qt\qml build\RelWithDebInfo\PokerClientQt.exe
+
+      # Paso 6: Inno Setup — convierte la carpeta ya empaquetada del paso
+      # anterior en un instalador .exe de un solo fichero (con asistente,
+      # icono, entrada de "Agregar o quitar programas", desinstalador).
+      # ISCC.exe (el compilador de scripts .iss) viene preinstalado en
+      # windows-latest, no hace falta instalarlo aparte.
+      - name: Generar instalador (Inno Setup)
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+
+      # Paso 7: dejar el instalador como resultado descargable de esta
+      # ejecución del workflow (pestaña "Actions" → esta ejecución →
+      # "Artifacts", abajo del todo). Todavía no se sube automáticamente
+      # a un Release — eso es el siguiente paso, una vez esto funcione.
+      - name: Subir el instalador como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokerRemake-Setup-Windows
+          path: dist\PokerRemake-Setup.exe

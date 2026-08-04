@@ -4,6 +4,7 @@ build*/
 *.a
 *.out
 a.out
+dist/
 
 # CMake
 CMakeCache.txt
