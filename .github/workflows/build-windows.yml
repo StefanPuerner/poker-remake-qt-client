@@ -10,12 +10,17 @@ name: Build Windows
 on:
   workflow_dispatch:
     # Permite lanzarlo a mano desde la pestaña "Actions" de GitHub,
-    # sin necesidad de hacer push — ideal mientras lo estamos probando.
+    # sin necesidad de etiqueta — útil para probar cambios al workflow.
   push:
-    branches: [ master ]
-    # Cada vez que subas algo a master, se dispara solo. Cuando ya
-    # confiemos en el workflow, esto se puede cambiar a solo etiquetas
-    # (tags: ['v*']) para no compilar en cada commit suelto.
+    tags: [ 'v*' ]
+    # Ya no en cada push a master (eso era solo para depurarlo) — ahora
+    # solo cuando subas una etiqueta de versión, ej: git push origin v0.1.1
+
+# Necesario para que la acción de más abajo pueda crear/editar el Release
+# de GitHub — por defecto, el token automático del workflow es de solo
+# lectura.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -78,3 +83,17 @@ jobs:
         with:
           name: PokerRemake-Setup-Windows
           path: dist\PokerRemake-Setup.exe
+
+      # Paso 8: adjuntar el instalador al Release de GitHub correspondiente
+      # a la etiqueta que disparó este workflow. Si el Release no existe
+      # todavía, esta acción lo crea sola; si ya existe (por ejemplo,
+      # porque el workflow de Linux llegó primero y ya lo creó), simplemente
+      # añade este fichero como asset adicional — no hay conflicto entre
+      # los dos workflows corriendo en paralelo sobre la misma etiqueta.
+      # "if" evita este paso cuando se lanza a mano (workflow_dispatch),
+      # ya que ahí no hay una etiqueta real de la que colgar un Release.
+      - name: Adjuntar al Release de GitHub
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/PokerRemake-Setup.exe
