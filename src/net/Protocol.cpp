@@ -1,7 +1,17 @@
 #include "../../include/net/Protocol.hpp"
 
+// arpa/inet.h y unistd.h son cabeceras POSIX — no existen en Windows.
+// Las funciones que las necesitan (más abajo, writeAll/readAll/sendMsg/
+// recvMsg) trabajan sobre un descriptor de fichero "crudo" al estilo
+// Linux — son las que usa el servidor y el cliente ncurses por socket
+// directo. El cliente Qt habla por QTcpSocket (con su propio qToBigEndian
+// para el orden de bytes) y no llama a ninguna de estas cuatro, así que en
+// Windows simplemente se excluyen de la compilación: no hacen falta y no
+// tienen un equivalente POSIX directo en ese sistema.
+#ifndef _WIN32
 #include <arpa/inet.h>  // htonl(), ntohl() — conversión Big Endian
 #include <unistd.h>     // read(), write()
+#endif
 
 #include <cctype>
 #include <cerrno>
@@ -74,8 +84,9 @@ MsgType strToMsgType(const std::string& s) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Primitivas de I/O — la base de todo
+//  Primitivas de I/O — la base de todo (solo POSIX, ver comentario arriba)
 // ─────────────────────────────────────────────────────────────────────────────
+#ifndef _WIN32
 
 void writeAll(int fd, const void* buf, std::size_t n) {
   const char* ptr = static_cast<const char*>(buf);
@@ -167,6 +178,8 @@ Message recvMsg(int fd) {
   std::string tipoStr = jsonGetStr(payload, "type");
   return Message{strToMsgType(tipoStr), std::move(payload)};
 }
+
+#endif  // _WIN32 — fin de las primitivas POSIX
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Escapado de strings JSON
