@@ -37,6 +37,14 @@ qt_add_qml_module(PokerClientQt
 
 target_include_directories(PokerClientQt PRIVATE include)
 target_link_libraries(PokerClientQt PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
-target_compile_options(PokerClientQt PRIVATE -Wall -Wextra -Wpedantic)
+
+# -Wall/-Wextra/-Wpedantic son flags de GCC/Clang — MSVC (el compilador que
+# usa Windows) no los reconoce y falla directamente al verlos. Su
+# equivalente de "avisos exigentes" es /W4.
+if(MSVC)
+    target_compile_options(PokerClientQt PRIVATE /W4)
+else()
+    target_compile_options(PokerClientQt PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 message(STATUS "Configuración de PokerRemakeQtClient completada con éxito.")
