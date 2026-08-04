@@ -1,0 +1,54 @@
+# Workflow de GitHub Actions — versión mínima, solo para confirmar que el
+# proyecto compila en Windows desde cero, sin empaquetar nada todavía
+# (eso viene en un paso posterior, una vez esto funcione).
+#
+# "Workflow" = una receta de pasos que corre GitHub en una máquina virtual
+# suya, no en la tuya. Este fichero es esa receta.
+
+name: Build Windows
+
+# Cuándo se dispara este workflow:
+on:
+  workflow_dispatch:
+    # Permite lanzarlo a mano desde la pestaña "Actions" de GitHub,
+    # sin necesidad de hacer push — ideal mientras lo estamos probando.
+  push:
+    branches: [ master ]
+    # Cada vez que subas algo a master, se dispara solo. Cuando ya
+    # confiemos en el workflow, esto se puede cambiar a solo etiquetas
+    # (tags: ['v*']) para no compilar en cada commit suelto.
+
+jobs:
+  build:
+    # "windows-latest" = una máquina virtual Windows que GitHub aprovisiona
+    # bajo demanda, con Visual Studio ya instalado. Se destruye al terminar.
+    runs-on: windows-latest
+
+    steps:
+      # Paso 1: traer el código del repo a esa máquina virtual (equivalente
+      # a un "git clone" tuyo, pero lo hace GitHub automáticamente).
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      # Paso 2: instalar Qt6. Instalar Qt a mano requiere un instalador
+      # gráfico interactivo — imposible de automatizar sin esto. Esta
+      # acción (mantenida por la comunidad, muy usada) descarga los
+      # componentes de Qt directamente, sin instalador gráfico.
+      - name: Instalar Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+
+      # Paso 3: configurar el proyecto con CMake — igual que
+      # "cmake -B build" en Linux, pero MSVC es un generador de "varios
+      # modos" (a diferencia de Makefiles), así que el tipo de build se
+      # elige al compilar (paso 4), no aquí.
+      - name: Configurar CMake
+        run: cmake -B build
+
+      # Paso 4: compilar de verdad.
+      - name: Compilar
+        run: cmake --build build --config RelWithDebInfo
