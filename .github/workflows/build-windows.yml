@@ -66,26 +66,34 @@ jobs:
       - name: Empaquetar dependencias de Qt (windeployqt)
         run: windeployqt --qmldir src\client-qt\qml build\RelWithDebInfo\PokerClientQt.exe
 
-      # Paso 6: Inno Setup — convierte la carpeta ya empaquetada del paso
-      # anterior en un instalador .exe de un solo fichero (con asistente,
-      # icono, entrada de "Agregar o quitar programas", desinstalador).
-      # ISCC.exe (el compilador de scripts .iss) viene preinstalado en
-      # windows-latest, no hace falta instalarlo aparte.
-      - name: Generar instalador (Inno Setup)
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+      # Paso 6: comprimir la carpeta ya empaquetada en un .zip portable, en
+      # vez de envolverla en un instalador de Inno Setup.
+      #
+      # Motivo (no es una preferencia de estilo, es un problema real):
+      # Windows Defender detectó y borró el instalador de la versión
+      # anterior como si fuera malware — falso positivo, pero muy conocido:
+      # el "stub" (envoltorio) que genera Inno Setup es uno de los más
+      # señalados por los motores heurísticos, precisamente porque mucho
+      # malware real también lo usa para empaquetarse. Un .exe suelto
+      # (sin ese envoltorio) no tiene esa forma reconocible, así que baja
+      # mucho el riesgo de un falso positivo — aunque no lo garantiza del
+      # todo, los heurísticos de Defender no son 100% predecibles.
+      # El script de Inno Setup (installer.iss) se queda en el repo sin
+      # usar por ahora — cuando tengamos firma de código de verdad,
+      # retomamos el instalador con asistente/desinstalador.
+      - name: Comprimir en .zip portable
+        run: Compress-Archive -Path build\RelWithDebInfo\* -DestinationPath PokerRemake-Windows-x86_64.zip
 
-      # Paso 7: dejar el instalador como resultado descargable de esta
-      # ejecución del workflow (pestaña "Actions" → esta ejecución →
-      # "Artifacts", abajo del todo). Todavía no se sube automáticamente
-      # a un Release — eso es el siguiente paso, una vez esto funcione.
-      - name: Subir el instalador como artefacto
+      # Paso 7: dejarlo como resultado descargable de esta ejecución del
+      # workflow (pestaña "Actions" → esta ejecución → "Artifacts").
+      - name: Subir el .zip como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: PokerRemake-Setup-Windows
-          path: dist\PokerRemake-Setup.exe
+          name: PokerRemake-Windows
+          path: PokerRemake-Windows-x86_64.zip
 
-      # Paso 8: adjuntar el instalador al Release de GitHub correspondiente
-      # a la etiqueta que disparó este workflow. Si el Release no existe
+      # Paso 8: adjuntar el .zip al Release de GitHub correspondiente a la
+      # etiqueta que disparó este workflow. Si el Release no existe
       # todavía, esta acción lo crea sola; si ya existe (por ejemplo,
       # porque el workflow de Linux llegó primero y ya lo creó), simplemente
       # añade este fichero como asset adicional — no hay conflicto entre
@@ -96,4 +104,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/PokerRemake-Setup.exe
+          files: PokerRemake-Windows-x86_64.zip
