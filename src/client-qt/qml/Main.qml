@@ -14,70 +14,43 @@ import QtQuick.Window
 
 ApplicationWindow {
     id: ventana
-    Material.accent: colorAccent
+    Material.accent: Tema.colorAccent
 
-    // ── Tema de color ──────────────────────────────────────────────────────
-    // Centralizado aquí en vez de repetir códigos de color sueltos por todo
-    // el fichero. "temas" es la lista de paletas disponibles; "temaActual"
-    // (índice) decide cuál está activa — todo el resto del archivo sigue
-    // usando "ventana.colorX" tal cual, sin enterarse de que ahora hay más
-    // de un tema: cambiar temaActual repinta toda la interfaz sola, porque
-    // cada colorX de abajo es un binding que lee de la paleta activa.
-    //
-    // colorPeligro se queda FUERA de la paleta a propósito: es un color con
-    // significado (retirarse/abandonar/peligro), no una cuestión estética —
-    // que signifique lo mismo pase lo que pase con el tema importa más que
-    // que combine perfecto con cada paño.
-    readonly property var temas: [
-        {
-            nombre: "Verde clásico",
-            fondo: "#0B1A14", tapete: "#1B4332", panel: "#0F2419", borde: "#2A5A44",
-            accent: "#C08F3E", textoTenue: "#9AA79D", textoMuyTenue: "#6B8577", nombreAjeno: "#7FBFA8"
-        },
-        {
-            nombre: "Azul medianoche",
-            fondo: "#0A141F", tapete: "#173250", panel: "#0D1B29", borde: "#2A4A63",
-            accent: "#B8C4CE", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
-        },
-        {
-            nombre: "Burdeos",
-            fondo: "#1A0B0E", tapete: "#4D1B26", panel: "#240F14", borde: "#632A38",
-            accent: "#D4A24E", textoTenue: "#B89AA0", textoMuyTenue: "#8C6B70", nombreAjeno: "#BF7F8F"
-        },
-        {
-            nombre: "Grafito",
-            fondo: "#101214", tapete: "#2B2E33", panel: "#17191C", borde: "#44484E",
-            accent: "#C77B4E", textoTenue: "#A3A8AE", textoMuyTenue: "#6E7378", nombreAjeno: "#8FA3AE"
-        }
-    ]
-    property int temaActual: 0
+    // ── Tema de color y escala ────────────────────────────────────────────
+    // La paleta, los colorX y "escala" viven en el singleton Tema.qml (así
+    // cualquier fichero puede usar "Tema.colorX"/"Tema.escala" sin tener
+    // que pasarlos a mano por cada componente) — aquí solo se mantienen
+    // sincronizados con lo que depende del tamaño real de ESTA ventana en
+    // concreto, que el singleton no puede saber por sí solo.
+    Binding { target: Tema; property: "escala"; value: Math.min(ventana.width / 1040, ventana.height / 780) * Tema.zoomManual }
 
-    readonly property color colorFondo: temas[temaActual].fondo // fondo general de la ventana, el más oscuro de los tres
-    readonly property color colorTapete: temas[temaActual].tapete // paño de la mesa, el más claro/saturado
-    readonly property color colorPanel: temas[temaActual].panel // paneles (chat/historial, avatares, cartas comunitarias de fondo)
-    readonly property color colorBorde: temas[temaActual].borde // línea sutil entre paños/paneles
-    readonly property color colorAccent: temas[temaActual].accent // color "temático" de la paleta activa
-    readonly property color colorPeligro: "#C0524A" // rojo — retirarse/abandonar/all-in/tiempo agotándose (constante, ver arriba)
-    readonly property color colorTextoTenue: temas[temaActual].textoTenue // texto secundario sobre fondo oscuro
-    readonly property color colorTextoMuyTenue: temas[temaActual].textoMuyTenue // texto terciario (horas, etiquetas pequeñas)
-    readonly property color colorNombreAjeno: temas[temaActual].nombreAjeno // nombre de OTRO jugador en el historial (el propio va en colorAccent)
+    // Zoom manual — la detección automática de DPI entre entornos de
+    // escritorio de Linux no dio resultado (mismo portátil, mismo
+    // Hyprland vs GNOME, tamaños distintos sin explicación fiable), así
+    // que en vez de perseguir eso, control directo del usuario. "Ctrl+="
+    // además de "Ctrl++" porque en la mayoría de teclados "+" pide Shift
+    // y el atajo "sin Shift" (donde vive el "=") es el que de verdad se
+    // pulsa sin pensar.
+    Shortcut {
+        sequences: ["Ctrl++", "Ctrl+="]
+        onActivated: Tema.subirZoom()
+    }
+    Shortcut {
+        sequence: "Ctrl+-"
+        onActivated: Tema.bajarZoom()
+    }
+    Shortcut {
+        sequence: "Ctrl+0"
+        onActivated: Tema.reiniciarZoom()
+    }
 
     // color.toString() en QML devuelve "#AARRGGBB" (con canal alfa) o
     // "#RRGGBB" según la versión — ninguno de los dos es fiable a pelo
     // dentro de un <font color=...>: el de 8 dígitos lo ignora en
     // silencio. Los últimos 6 caracteres son siempre "RRGGBB" en los dos
     // casos, así que esto da un hex limpio pase lo que pase.
-    function colorHex(c) {
-        return "#" + c.toString().slice(-6);
-    }
-
-    // El historial usa Text.RichText para colorear el punto y el nombre
-    // del jugador dentro de la misma línea — escapar por si un nombre de
-    // jugador (no viene sanitizado contra HTML, solo contra el protocolo)
-    // contuviera "<", ">" o "&".
-    function escapeHtml(s) {
-        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
+    // (Implementación real en Tema.colorHex() — accesible tal cual desde
+    // aquí porque Tema es un singleton, no hace falta redeclararla.)
 
     // ── Fuente empaquetada (fuera de QML puro) ────────────────────────────
     // Los nombres de fuente de sistema del boceto ("Iowan Old Style",
@@ -93,1172 +66,10 @@ ApplicationWindow {
         source: "qrc:/qt/qml/PokerQuick/assets/fonts/EBGaramond.ttf"
     }
     // Un id (como "cargadorFuenteElegante") no se puede leer desde fuera como
-    // si fuera una property del objeto que lo contiene — por eso se expone
-    // aquí como property de verdad, para que "Carta" (un componente aparte)
-    // pueda usarla cualificada como "ventana.fuenteElegante".
-    property string fuenteElegante: cargadorFuenteElegante.name
-
-    component Asiento: Column {
-        property string saldo
-        property string nombre
-        // "activo": este asiento tiene el turno ahora mismo (lo sabe
-        // cualquiera, viene de GAME_STATE). "fraccionTiempo": 1.0 = tiempo
-        // completo, 0.0 = agotado — el servidor difunde el mismo timeout_ms
-        // en cada turno (onTurnoIniciado), así que se anima igual para
-        // cualquier asiento activo, no solo el del propio jugador.
-        property bool activo: false
-        property real fraccionTiempo: 1.0
-        // Inferido del lado del cliente (ver "retirados" en la ventana) —
-        // el asiento entero se atenúa, sigue en la mesa pero el ojo ya no
-        // se detiene ahí.
-        property bool retirado: false
-        opacity: retirado ? 0.45 : 1.0
-        onActivoChanged: anillo.requestPaint()
-        onFraccionTiempoChanged: if (activo)
-            anillo.requestPaint()
-        spacing: 8
-
-        Item {
-            // Column no centra los hijos de distinto ancho — cada uno se
-            // queda pegado a la izquierda por defecto. Centramos a mano con
-            // "x", que Column no toca (solo gestiona la posición vertical).
-            x: (parent.width - width) / 2
-            width: 56 * ventana.escala + 10
-            height: 56 * ventana.escala + 10
-
-            // Halo del asiento activo: dos anillos concéntricos con
-            // opacidad decreciente en vez de blur de verdad (ver "Sistema
-            // visual", sección 15) — con hasta 9 asientos en mesa, un glow
-            // real en cada uno sí se notaría en hardware modesto.
-            Rectangle {
-                visible: activo
-                anchors.centerIn: parent
-                width: parent.width + 16
-                height: parent.height + 16
-                radius: width / 2
-                color: "transparent"
-                border.width: 7
-                border.color: Qt.rgba(ventana.colorAccent.r, ventana.colorAccent.g, ventana.colorAccent.b, 0.12)
-            }
-            Rectangle {
-                visible: activo
-                anchors.centerIn: parent
-                width: parent.width + 5
-                height: parent.height + 5
-                radius: width / 2
-                color: "transparent"
-                border.width: 3
-                border.color: Qt.rgba(ventana.colorAccent.r, ventana.colorAccent.g, ventana.colorAccent.b, 0.3)
-            }
-
-            // Anillo del temporizador: QML no tiene el "conic-gradient" de
-            // CSS (un color que rellena según un porcentaje angular), así
-            // que se dibuja a mano con Canvas — un arco que empieza arriba
-            // (-90°) y recorre "fraccionTiempo" de la vuelta completa en
-            // sentido horario. Solo visible en el asiento con turno; pasa a
-            // rojo cuando queda poco tiempo.
-            Canvas {
-                id: anillo
-                anchors.fill: parent
-                visible: activo
-                onPaint: {
-                    var ctx = getContext("2d");
-                    ctx.reset();
-                    var cx = width / 2;
-                    var cy = height / 2;
-                    var r = width / 2 - 2;
-                    ctx.strokeStyle = fraccionTiempo < 0.2 ? ventana.colorPeligro : ventana.colorAccent;
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + fraccionTiempo * 2 * Math.PI);
-                    ctx.stroke();
-                }
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 56 * ventana.escala
-                height: 56 * ventana.escala
-                radius: width / 2
-                border.width: 2
-                // Dorado solo cuando de verdad es tu turno — antes era
-                // dorado siempre, así que "activo" no se distinguía de un
-                // asiento cualquiera más que por el aro del tiempo.
-                border.color: activo ? ventana.colorAccent : ventana.colorBorde
-                Behavior on border.color {
-                    ColorAnimation { duration: 150 }
-                }
-                // Degradado en vez de color plano — mismo derivado de
-                // colorPanel que la barra superior y los botones, así el
-                // asiento se distingue del tapete detrás sin inventar un
-                // color nuevo por tema.
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.6) }
-                    GradientStop { position: 1.0; color: ventana.colorPanel }
-                }
-                Text {
-                    anchors.centerIn: parent
-                    text: nombre.charAt(0)
-                    color: ventana.colorAccent
-                    font.family: ventana.fuenteElegante
-                }
-            }
-        }
-        Rectangle {
-            x: (parent.width - width) / 2
-            color: "black"
-            opacity: 0.70
-            border.width: 2
-            width: infoAsiento.width * 1.2
-            height: infoAsiento.height * 1.
-            radius: width / 10
-            Column {
-                id: infoAsiento
-                anchors.centerIn: parent
-                Text {
-                    text: nombre
-                    color: "white"
-                    font.family: ventana.fuenteElegante
-                }
-                Text {
-                    text: saldo
-                    color: ventana.colorAccent
-                    font.bold: true
-                    font.family: ventana.fuenteElegante
-                }
-            }
-        }
-    }
-
-    // ── Asiento en miniatura, para la lista de conectados del lobby — no
-    // es "Asiento" reducido, es más simple a propósito (sin placa, sin
-    // saldo, sin anillo de turno): en el lobby no se juega todavía.
-    component AsientoMini: Column {
-        property string nombre
-        spacing: 8
-        Rectangle {
-            x: (parent.width - width) / 2
-            width: 48 * ventana.escala
-            height: 48 * ventana.escala
-            radius: width / 2
-            color: ventana.colorPanel
-            border.width: 2
-            border.color: ventana.colorBorde
-            Text {
-                anchors.centerIn: parent
-                text: nombre.charAt(0)
-                color: ventana.colorAccent
-                font.family: ventana.fuenteElegante
-            }
-        }
-        Text {
-            x: (parent.width - width) / 2
-            text: nombre
-            color: ventana.colorTextoTenue
-            font.pixelSize: 11
-        }
-    }
-
-    // ── Mesa: reparte los asientos en un óvalo, cartas comunitarias + bote
-    // en el centro. La parte de trigonometría (Math.cos/Math.sin para
-    // repartir N asientos en un óvalo) no es "QML puro" en el sentido de que
-    // no es un patrón exclusivo de QML — es JavaScript normal dentro de un
-    // property binding, pero como es la primera vez que aparece en el
-    // proyecto lo dejo yo, comentado paso a paso.
-    component Mesa: Item {
-        id: mesa
-        // jugadores: se le pasa el ListModel jugadoresPartida tal cual
-        // (con roles nombre/saldo). cartasMesa: array de códigos ("QH", "2C"...).
-        property var jugadores
-        property var cartasMesa: []
-        property int bote: 0
-        // Para resaltar el asiento activo , solo en el caso del propio
-        // jugador (del resto no conocemos su tiempo real), animar la cuenta
-        // atrás en su anillo.
-        property string turnoNombre: ""
-        property string miNombreJugador: ""
-        property real fraccionTiempo: 1.0
-        property var retirados: []
-
-        // Índice del propio jugador dentro de "jugadores" — se usa para
-        // rotar todos los asientos de forma que el propio siempre caiga
-        // abajo (index 0 en la fórmula del ángulo), sin importar en qué
-        // posición del modelo venga desde el servidor. Se recalcula solo
-        // cuando cambia "count" (el modelo se reconstruye entero en cada
-        // GAME_STATE, clear()+append(), así que basta con eso).
-        property int miIndice: {
-            for (var i = 0; i < jugadores.count; i++) {
-                if (jugadores.get(i).nombre === miNombreJugador) return i;
-            }
-            return 0;
-        }
-
-        // Doble borde: un segundo anillo, más grande y sin relleno, alrededor
-        // del tapete — mismo truco que el aro dorado de las cartas propias
-        // (un Rectangle no recorta ni molesta a los que están fuera de él).
-        Rectangle {
-            anchors.centerIn: parent
-            width: parent.width + 14
-            height: parent.height + 14
-            radius: height / 2
-            color: "transparent"
-            border.color: ventana.colorBorde
-            border.width: 1
-        }
-
-        // El tapete: forma de "pastilla" (extremos redondos, centro
-        // plano) — igual que en el boceto, no una elipse continua.
-        // "radius: height/2" con un ancho mayor que el alto da justo eso.
-        Rectangle {
-            anchors.fill: parent
-            radius: height / 2
-            border.color: ventana.colorBorde
-            border.width: 3
-            // Degradado en vez de color plano — más claro arriba, como si
-            // cayera luz cenital sobre el tapete (ver "Sistema visual",
-            // sección 14). Una radial de verdad pediría QtQuick.Shapes o
-            // Qt5Compat.GraphicalEffects — este lineal ya da la sensación
-            // de profundidad sin añadir ningún import nuevo.
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.lighter(ventana.colorTapete, 1.22) }
-                GradientStop { position: 1.0; color: ventana.colorTapete }
-            }
-        }
-
-        // Centro de la mesa: cartas comunitarias arriba, bote debajo.
-        Column {
-            anchors.centerIn: parent
-            spacing: 10
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 6
-                // Siempre 5 posiciones desde el preflop, no solo cuando ya
-                // hay cartas reveladas — las que faltan se ven boca abajo
-                // (Carta con codigo vacío) en vez de dejar el hueco vacío.
-                Repeater {
-                    model: 5
-                    delegate: Carta {
-                        required property int index
-                        codigo: index < mesa.cartasMesa.length ? mesa.cartasMesa[index] : ""
-                    }
-                }
-            }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Bote: " + mesa.bote
-                color: ventana.colorAccent
-                font.bold: true
-                font.family: ventana.fuenteElegante
-            }
-        }
-
-        // Asientos: uno por jugador, repartidos a partes iguales alrededor
-        // de una elipse (no números fijos como en el boceto, porque el
-        // número de jugadores puede cambiar). Cada delegate es un Item
-        // "posicionador" que calcula su propio x/y con trigonometría y
-        // mete un Asiento normal dentro — así Asiento no necesita saber
-        // nada de mesas ni de ángulos, sigue siendo reutilizable.
-        Repeater {
-            model: mesa.jugadores
-            delegate: Item {
-                id: posicionador
-                required property string nombre
-                required property string saldo
-                required property int index
-
-                // Ángulo de este asiento en radianes. 2*PI repartido entre
-                // el número total de jugadores da un hueco igual a cada
-                // uno; Math.PI/2 de partida para que el asiento de índice
-                // relativo 0 caiga abajo del todo, no a la derecha.
-                //
-                // "índice relativo" (no el índice crudo del modelo): se
-                // resta mesa.miIndice para que el propio jugador siempre
-                // caiga en la posición 0 (abajo), sea cual sea su índice
-                // real en la lista que manda el servidor — el resto de
-                // asientos rota junto con él, conservando su orden relativo.
-                property int indiceRelativo: (index - mesa.miIndice + mesa.jugadores.count) % mesa.jugadores.count
-                property real angulo: Math.PI / 2 + (2 * Math.PI * indiceRelativo) / mesa.jugadores.count
-
-                // Centro de la mesa + radio*coseno/seno del ángulo = punto
-                // sobre la elipse. Restar width/height/2 porque x/y en QML
-                // posicionan la esquina superior-izquierda, no el centro.
-                x: mesa.width / 2 + (mesa.width / 2 - 40) * Math.cos(angulo) - width / 2
-                y: mesa.height / 2 + (mesa.height / 2 - 40) * Math.sin(angulo) - height / 2
-                width: asientoReal.width
-                height: asientoReal.height
-
-                Asiento {
-                    id: asientoReal
-                    nombre: posicionador.nombre
-                    saldo: posicionador.saldo
-                    activo: posicionador.nombre === mesa.turnoNombre
-                    // Antes solo se animaba el aro en el propio asiento
-                    // (era la única aproximación posible sin timeout_ms real
-                    // para los demás). Ahora el servidor difunde el mismo
-                    // dato en cada turno (onTurnoIniciado), así que cualquier
-                    // asiento activo anima su cuenta atrás real.
-                    fraccionTiempo: posicionador.nombre === mesa.turnoNombre ? mesa.fraccionTiempo : 1.0
-                    retirado: mesa.retirados.indexOf(posicionador.nombre) !== -1
-                }
-            }
-        }
-    }
-
-    component Carta: Rectangle {
-        // "bocaAbajo" o codigo vacío: dorso de carta (comunitaria todavía
-        // no revelada). Con codigo real, siempre se ve la cara — así que
-        // basta con no pasar "codigo" (o pasar "") para pedir un dorso.
-        readonly property bool bocaAbajo: codigo.length === 0
-        property string codigo
-        property string rango: codigo.slice(0, codigo.length - 1)
-        // El servidor manda la letra cruda del palo (H/D/C/S); "palo" es el
-        // símbolo que se muestra, derivado de esa letra.
-        property string letraPalo: codigo.slice(-1)
-        readonly property string palo: letraPalo === "H" ? "♥" : letraPalo === "D" ? "♦" : letraPalo === "C" ? "♣" : letraPalo === "S" ? "♠" : "?"
-        property bool propia: false
-        readonly property bool esRojo: letraPalo === "H" || letraPalo === "D"
-        // Proporcional al propio tamaño de la carta, no un número fijo — así
-        // si el ancho cambia (otra pantalla, otro contexto), el texto escala con él.
-        readonly property int tamanoFuente: Math.round(width * 0.20)
-        // Margen entre el índice de esquina y el borde de la carta, también
-        // proporcional — para que no quede pegado si el tamaño cambia.
-        readonly property int margen: Math.round(width * 0.12)
-        // Separación entre el borde real de la carta y el aro dorado — QML no
-        // tiene el "outline-offset" de CSS (un borde que flota fuera del
-        // elemento, con hueco), así que se imita con un Rectangle aparte, sin
-        // relleno, más grande que la carta y centrado sobre ella.
-        readonly property int separacionAro: Math.round(width * 0.08)
-        color: bocaAbajo ? ventana.colorTapete : "#efe6d3"
-        radius: 6
-        border.width: bocaAbajo ? 2 : 0
-        border.color: ventana.colorAccent
-        width: (propia ? 80 : 60) * ventana.escala // medidas quasi aleatorias, habra que ver lo que sea ideal
-        height: (propia ? 112 : 80) * ventana.escala
-
-        Rectangle {
-            visible: propia && !bocaAbajo
-            anchors.centerIn: parent
-            width: parent.width + separacionAro
-            height: parent.height + separacionAro
-            radius: parent.radius + separacionAro / 2
-            color: "transparent"
-            border.width: 2
-            border.color: ventana.colorAccent
-        }
-
-        // Dorso: marco interior a juego con el borde exterior + emblema
-        // centrado, en vez de un patrón importado (barato de mantener,
-        // reescala con la carta sin necesitar ninguna imagen).
-        Rectangle {
-            visible: bocaAbajo
-            anchors.fill: parent
-            anchors.margins: Math.round(parent.width * 0.14)
-            radius: 4
-            color: "transparent"
-            border.width: 1
-            border.color: ventana.colorAccent
-            opacity: 0.7
-        }
-        Text {
-            visible: bocaAbajo
-            anchors.centerIn: parent
-            text: "♣"
-            color: ventana.colorAccent
-            font.pixelSize: Math.round(parent.width * 0.4)
-            font.family: ventana.fuenteElegante
-            opacity: 0.8
-        }
-
-        Column {
-            visible: !bocaAbajo
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.margins: margen
-            Text {
-                text: rango
-                color: esRojo ? "#c96a5c" : "#182019"
-                font.pixelSize: tamanoFuente
-                font.family: ventana.fuenteElegante
-                font.bold: true
-            }
-            Text {
-                text: palo
-                color: esRojo ? "#c96a5c" : "#182019"
-                font.pixelSize: tamanoFuente
-                font.family: ventana.fuenteElegante
-                font.bold: true
-            }
-        }
-        Column {
-            visible: !bocaAbajo
-            anchors.bottom: parent.bottom
-            anchors.right: parent.right
-            anchors.margins: margen
-            Text {
-                text: rango
-                color: esRojo ? "#c96a5c" : "#182019"
-                font.pixelSize: tamanoFuente
-                font.family: ventana.fuenteElegante
-                font.bold: true
-            }
-            Text {
-                text: palo
-                color: esRojo ? "#c96a5c" : "#182019"
-                font.pixelSize: tamanoFuente
-                font.family: ventana.fuenteElegante
-                font.bold: true
-            }
-        }
-    }
-
-    // Botón "de contorno": fondo transparente, borde de un color temático —
-    // como en el boceto, en vez del botón gris sólido de Material por
-    // defecto. Qt Quick Controls deja sustituir "background" y
-    // "contentItem" de cualquier control; aquí se rehacen los dos con un
-    // Rectangle y un Text a medida.
-    component BotonContorno: Button {
-        id: botonContorno
-        property color colorBorde: ventana.colorAccent
-        // 6 = esquinas redondeadas normales; 999 (o cualquier valor mayor
-        // que medio alto) da forma de píldora, como el botón de "Entrar a
-        // la mesa" en Inicio.
-        property real radioBorde: 6
-        // "hovered" ya existe en cualquier Button de Qt Quick Controls —
-        // solo hay que activar "hoverEnabled" para que se actualice de
-        // verdad al pasar el ratón por encima (por defecto no siempre está
-        // activo). "Behavior on color" anima la transición en vez de un
-        // cambio brusco.
-        hoverEnabled: true
-        background: Rectangle {
-            color: botonContorno.hovered ? botonContorno.colorBorde : "transparent"
-            radius: botonContorno.radioBorde
-            border.width: 1
-            border.color: botonContorno.colorBorde
-            Behavior on color {
-                ColorAnimation {
-                    duration: 120
-                }
-            }
-        }
-        contentItem: Text {
-            text: botonContorno.text
-            color: botonContorno.hovered ? ventana.colorPanel : botonContorno.colorBorde
-            font.family: ventana.fuenteElegante
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    // El contrario de BotonContorno: relleno por defecto, se vacía al
-    // pasar el ratón por encima — para la acción principal de cada
-    // pantalla, así destaca sobre las secundarias (que usan BotonContorno).
-    component BotonRelleno: Button {
-        id: botonRelleno
-        property color colorBorde: ventana.colorAccent
-        property real radioBorde: 6
-        hoverEnabled: true
-        background: Rectangle {
-            color: botonRelleno.hovered ? "transparent" : botonRelleno.colorBorde
-            radius: botonRelleno.radioBorde
-            border.width: 1
-            border.color: botonRelleno.colorBorde
-            Behavior on color {
-                ColorAnimation {
-                    duration: 120
-                }
-            }
-
-            // Brillo metálico: capa de degradado de 3 paradas por encima
-            // del relleno plano de arriba, que se desvanece junto con él
-            // al pasar el ratón — ver "Sistema visual", sección 14/16.
-            // Deriva siempre de "colorBorde" (Qt.lighter/darker), así que
-            // funciona igual en los cuatro temas sin valores por tema.
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                opacity: botonRelleno.hovered ? 0 : 1
-                Behavior on opacity {
-                    NumberAnimation { duration: 120 }
-                }
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(botonRelleno.colorBorde, 1.35) }
-                    GradientStop { position: 0.5; color: botonRelleno.colorBorde }
-                    GradientStop { position: 1.0; color: Qt.darker(botonRelleno.colorBorde, 1.2) }
-                }
-            }
-        }
-        contentItem: Text {
-            text: botonRelleno.text
-            color: botonRelleno.hovered ? botonRelleno.colorBorde : ventana.colorPanel
-            font.family: ventana.fuenteElegante
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    // Interruptor on/off a medida (checkboxes de Qt Quick Controls traen su
-    // propio look gris que desentona con el resto de controles hechos a
-    // mano en este archivo) — usado en "Crear sala" para pública/privada,
-    // min-raise y permitir recompra.
-    component Interruptor: Rectangle {
-        id: interruptor
-        property bool activo: false
-        signal alternado()
-        width: 36
-        height: 20
-        radius: height / 2
-        color: ventana.colorFondo
-        border.width: 1
-        border.color: interruptor.activo ? ventana.colorAccent : ventana.colorBorde
-        Behavior on border.color {
-            ColorAnimation {
-                duration: 120
-            }
-        }
-        Rectangle {
-            width: 14
-            height: 14
-            radius: 7
-            anchors.verticalCenter: parent.verticalCenter
-            x: interruptor.activo ? parent.width - width - 3 : 3
-            color: interruptor.activo ? ventana.colorAccent : ventana.colorTextoTenue
-            Behavior on x {
-                NumberAnimation {
-                    duration: 120
-                }
-            }
-        }
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                interruptor.activo = !interruptor.activo;
-                interruptor.alternado();
-            }
-        }
-    }
-
-    // Selector de una opción entre varias, en forma de píldoras en fila —
-    // mismo lenguaje visual que las pestañas "Historial/Chat" del panel
-    // lateral. Se usa para dificultad de bots y tipo de límite en "Crear
-    // sala": son 2-3 opciones excluyentes, más claro que un ComboBox y no
-    // necesita re-tematizar el desplegable por defecto de Qt Quick Controls.
-    component SelectorPildoras: Row {
-        id: selector
-        property var opciones: []
-        property int seleccionado: 0
-        spacing: 6
-        Repeater {
-            model: selector.opciones
-            delegate: Rectangle {
-                id: pildora
-                required property string modelData
-                required property int index
-                width: textoPildora.implicitWidth + 20
-                height: 30
-                radius: height / 2
-                color: index === selector.seleccionado ? ventana.colorAccent : "transparent"
-                border.width: 1
-                border.color: ventana.colorBorde
-                Text {
-                    id: textoPildora
-                    anchors.centerIn: parent
-                    text: pildora.modelData
-                    font.pixelSize: 12
-                    color: pildora.index === selector.seleccionado ? ventana.colorPanel : ventana.colorTextoTenue
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: selector.seleccionado = pildora.index
-                }
-            }
-        }
-    }
-
-    // Los tres botones del voto de fin de mano — se usa DOS veces (la fila
-    // de acciones normal, y dentro del overlay de showdown) para que se
-    // pueda votar sin dejar de ver las cartas reveladas; de ahí que esté
-    // sacado a un componente en vez de repetido a mano.
-    component PanelVoto: Row {
-        spacing: 8
-        BotonRelleno {
-            text: "Continuar a la siguiente mano"
-            onClicked: {
-                redcliente.votar();
-                votoAbierto = false;
-                mensajeVoto = "";
-            }
-        }
-        BotonContorno {
-            text: "Abandonar partida"
-            colorBorde: ventana.colorPeligro
-            onClicked: {
-                redcliente.abandonar();
-                votoAbierto = false;
-            }
-        }
-        BotonContorno {
-            visible: soyHost
-            text: "Guardar y salir"
-            onClicked: {
-                redcliente.guardarYSalir();
-                votoAbierto = false;
-            }
-        }
-    }
-
-    // Barra superior compartida por todas las pantallas salvo Inicio (ahí
-    // no hay nada de sala/conexión que mostrar todavía) — mismo lenguaje
-    // visual en todo el programa: logo a la izquierda, algo de contexto en
-    // el centro (opcional, cada pantalla decide qué), y a la derecha el
-    // estado de conexión + saldo (solo en Partida) + el botón de ajustes.
-    component BarraSuperior: Item {
-        id: barra
-        property string textoCentro: ""
-        property bool mostrarSaldo: false
-        height: 50 * ventana.escala
-        // Flota en vez de ir pegada al borde — margen a los tres lados
-        // puesto aquí (no en cada sitio donde se usa) para que las cinco
-        // pantallas queden iguales sin repetirlo cinco veces.
-        anchors.margins: 16 * ventana.escala
-
-        // Sombra barata: un rectángulo semitransparente desplazado, sin
-        // blur de verdad — ver el catálogo "Sistema visual", sección 15.
-        // Al ser un único elemento por pantalla (no 17 cartas a la vez),
-        // el coste es irrelevante; aun así se usa la receta barata por
-        // coherencia con el resto del programa.
-        Rectangle {
-            anchors.left: fondoBarra.left
-            anchors.right: fondoBarra.right
-            anchors.top: fondoBarra.top
-            anchors.topMargin: 4
-            height: fondoBarra.height
-            radius: fondoBarra.radius
-            color: "black"
-            opacity: 0.28
-        }
-
-        Rectangle {
-            id: fondoBarra
-            anchors.fill: parent
-            radius: 14
-            // Antes un contorno de 1px del mismo color en los cuatro
-            // lados — se veía plano, "de maqueta". En vez de eso: borde
-            // casi invisible (solo define el canto contra el fondo) y un
-            // filo claro SOLO arriba, como si la luz rozara el borde
-            // superior de una superficie ligeramente elevada — el resto
-            // del volumen ya lo dan el degradado y la sombra de debajo.
-            border.width: 1
-            border.color: Qt.rgba(0, 0, 0, 0.3)
-            // Degradado sutil en vez de color plano — deriva de
-            // colorPanel con Qt.lighter() para que funcione igual en los
-            // cuatro temas sin tener que definir un valor por tema.
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.55) }
-                GradientStop { position: 1.0; color: ventana.colorPanel }
-            }
-
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                height: 1
-                color: Qt.rgba(1, 1, 1, 0.12)
-            }
-
-            Row {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 16
-                spacing: 8
-                Text {
-                    text: "♣"
-                    color: ventana.colorAccent
-                    font.pixelSize: 20
-                }
-                Text {
-                    text: "PokerRemake"
-                    color: "white"
-                    font.bold: true
-                    font.pixelSize: 16
-                    font.family: ventana.fuenteElegante
-                    // Row no centra verticalmente hijos de distinto tamaño (el
-                    // trébol es más grande) — se baja a mano.
-                    y: 4
-                }
-            }
-
-            Text {
-                visible: barra.textoCentro !== ""
-                anchors.centerIn: parent
-                color: ventana.colorTextoTenue
-                text: barra.textoCentro
-            }
-
-            Row {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.rightMargin: 16
-                spacing: 16
-
-                Text {
-                    visible: barra.mostrarSaldo
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: miSaldoActual + " fichas"
-                    color: ventana.colorAccent
-                    font.bold: true
-                }
-
-                // Estado de conexión: Lobby/Partida/Fin solo se llega a ellas
-                // tras una conexión persistente ya establecida (onConectado/
-                // onPartidaIniciada/onFinDePartida) — Salas/CrearSala usan
-                // sockets efímeros por petición (refrescarSalas), así que ahí
-                // no hay "conectado" de verdad todavía, solo el destino.
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 7
-                        height: 7
-                        radius: 3.5
-                        color: reconectandoAhora ? ventana.colorPeligro
-                               : (pantalla === "Lobby" || pantalla === "Partida" || pantalla === "Fin") ? "#7FAE7A"
-                               : ventana.colorTextoMuyTenue
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: (reconectandoAhora ? "Reconectando… · " : "") + servidorHost + ":" + servidorPuerto
-                        color: ventana.colorTextoMuyTenue
-                        font.pixelSize: 11
-                    }
-                }
-
-                Rectangle {
-                    id: botonAjustesBarra
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 30 * ventana.escala
-                    height: 30 * ventana.escala
-                    radius: width / 2
-                    border.width: 1
-                    border.color: botonAjustesBarraArea.containsMouse ? ventana.colorAccent : ventana.colorBorde
-                    // Metálico al pasar el ratón — mismo degradado de 3
-                    // paradas que el resto de botones "de acento" (ver
-                    // BotonRelleno), en vez de un color plano de hover. Una
-                    // sola parada no puede ser "condicional" en QML (no se
-                    // puede asignar un Gradient entero con "? :"), así que
-                    // cada GradientStop se vuelve transparente cuando no
-                    // hay hover — el efecto es el mismo que no pintar nada.
-                    gradient: Gradient {
-                        GradientStop {
-                            position: 0.0
-                            color: botonAjustesBarraArea.containsMouse ? Qt.lighter(ventana.colorAccent, 1.3) : "transparent"
-                        }
-                        GradientStop {
-                            position: 0.5
-                            color: botonAjustesBarraArea.containsMouse ? ventana.colorAccent : "transparent"
-                        }
-                        GradientStop {
-                            position: 1.0
-                            color: botonAjustesBarraArea.containsMouse ? Qt.darker(ventana.colorAccent, 1.25) : "transparent"
-                        }
-                    }
-                    // Tres puntos de verdad (Rectangle redondos) en vez del
-                    // carácter "⋮" — el glifo depende de la fuente y ni
-                    // queda perfectamente centrado ni perfectamente redondo.
-                    Column {
-                        anchors.centerIn: parent
-                        spacing: 3 * ventana.escala
-                        Repeater {
-                            model: 3
-                            delegate: Rectangle {
-                                width: 4 * ventana.escala
-                                height: 4 * ventana.escala
-                                radius: width / 2
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                color: botonAjustesBarraArea.containsMouse ? ventana.colorPanel : ventana.colorTextoTenue
-                            }
-                        }
-                    }
-                    MouseArea {
-                        id: botonAjustesBarraArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: ajustesAbiertos = !ajustesAbiertos
-                    }
-                }
-            }
-        }
-    }
-
-    // Chat con burbujas: las tuyas a la derecha (con un tinte dorado), las
-    // de los demás a la izquierda — como cualquier chat de mensajería.
-    component ChatBox: Rectangle {
-        id: cajaChat
-        property var modelo
-        property string miNombre
-        visible: ventana.chatActive
-        width: 340 * ventana.escala
-        height: 460 * ventana.escala
-        radius: 8
-        border.width: 1
-        border.color: Qt.rgba(0, 0, 0, 0.3)
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.4) }
-            GradientStop { position: 1.0; color: ventana.colorPanel }
-        }
-
-        ListView {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: filaEntrada.top
-            anchors.margins: 10
-            anchors.bottomMargin: 8
-            // "BottomToTop" parecía la opción obvia para un chat, pero con
-            // append() (mensaje nuevo = índice más alto) hace justo lo
-            // contrario de lo que parece: apila los índices crecientes
-            // hacia ARRIBA, así que el mensaje más nuevo acababa en lo alto
-            // de la lista. El orden normal (de arriba abajo) + moverse al
-            // final es lo que de verdad da "los nuevos entran por abajo".
-            spacing: 8
-            clip: true
-            model: cajaChat.modelo
-            // Sin esto, un mensaje nuevo se añade al modelo pero la vista se
-            // queda mirando donde estaba — hay que decirle explícitamente
-            // que se mueva al final cada vez que cambia el número de
-            // elementos. "Qt.callLater" en vez de llamarlo directo: en el
-            // mismo instante en que cambia "count" el elemento nuevo
-            // todavía no ha terminado de crearse/medirse, así que
-            // posicionar ya mismo deja fuera justo el último — hay que
-            // esperar un "tick" a que termine el ciclo actual.
-            onCountChanged: Qt.callLater(positionViewAtEnd)
-            delegate: Item {
-                required property string autor
-                required property string mensaje
-                property bool esPropio: autor === cajaChat.miNombre
-                width: ListView.view.width
-                height: columnaBurbuja.height
-
-                Column {
-                    id: columnaBurbuja
-                    // Burbuja propia pegada a la derecha, ajena a la
-                    // izquierda — un Item normal sí admite esto (no es hijo
-                    // directo de un Row/Column con reglas de posicionador).
-                    x: esPropio ? parent.width - width : 0
-                    width: Math.min(textoBurbuja.implicitWidth + 24, parent.width * 0.8)
-                    spacing: 2
-
-                    Text {
-                        text: esPropio ? "Tú" : autor
-                        color: ventana.colorTextoMuyTenue
-                        font.pixelSize: 10
-                    }
-                    Rectangle {
-                        width: parent.width
-                        height: textoBurbuja.implicitHeight + 16
-                        radius: 12
-                        color: esPropio ? Qt.rgba(0.75, 0.56, 0.24, 0.18) : ventana.colorTapete
-                        border.width: esPropio ? 1 : 0
-                        border.color: ventana.colorAccent
-                        Text {
-                            id: textoBurbuja
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            text: mensaje
-                            color: "white"
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                }
-            }
-        }
-
-        Row {
-            id: filaEntrada
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 10
-            spacing: 8
-
-            TextField {
-                id: textoChat
-                width: parent.width - botonEnviar.width - parent.spacing
-                height: 44
-                color: "white"
-                // El estilo Material anima el placeholder hacia una
-                // "etiqueta flotante" arriba del campo al enfocar/escribir
-                // — con nuestro borde dibujado a mano se solapa en vez de
-                // apartarse. Más simple que perseguir esa animación:
-                // ocultar el placeholder en cuanto hay foco o texto.
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
-                placeholderTextColor: ventana.colorTextoTenue
-                background: Rectangle {
-                    color: ventana.colorFondo
-                    radius: 8
-                    border.width: 1
-                    border.color: textoChat.activeFocus ? ventana.colorAccent : ventana.colorBorde
-                }
-            }
-            BotonRelleno {
-                id: botonEnviar
-                height: 44
-                text: "Enviar"
-                onClicked: {
-                    redcliente.enviarChat(textoChat.text);
-                    cajaChat.modelo.append({
-                        autor: cajaChat.miNombre,
-                        mensaje: textoChat.text,
-                        hora: Qt.formatTime(new Date(), "hh:mm")
-                    });  // eco local
-                    textoChat.text = "";
-                }
-            }
-        }
-    }
-
-    // ── Panel lateral de la partida: historial + chat en una sola caja,
-    // con pestanas integradas arriba (en vez del botón suelto + dos cajas
-    // separadas que había antes) — como en el boceto.
-    component PanelLateral: Rectangle {
-        id: panelLateral
-        property var modeloHistorial
-        property var modeloChat
-        property string miNombre
-        property bool mostrandoChat: false
-        radius: 6
-        border.width: 1
-        border.color: Qt.rgba(0, 0, 0, 0.3)
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.4) }
-            GradientStop { position: 1.0; color: ventana.colorPanel }
-        }
-
-        // Color del punto de cada entrada del historial, según la
-        // categoría que manda NetworkClient::eventoJuego() (ver su
-        // comentario para la lista completa) — así se distinguen de un
-        // vistazo los folds, subidas, showdown, avisos del sistema, etc.
-        // Devuelve hex limpio (ventana.colorHex) porque esto se usa dentro
-        // de un <font color=...>, no como property color directa.
-        function colorTipoHistorial(tipo) {
-            switch (tipo) {
-                case "fold": return ventana.colorHex(ventana.colorPeligro);
-                case "agresion": return ventana.colorHex(ventana.colorAccent);
-                case "showdown": return ventana.colorHex(ventana.colorAccent);
-                case "error": return ventana.colorHex(ventana.colorPeligro);
-                case "separador": return ventana.colorHex(ventana.colorTextoMuyTenue);
-                case "sistema": return ventana.colorHex(ventana.colorTextoTenue);
-                default: return ventana.colorHex(ventana.colorTextoTenue); // "accion" (check/call) y cualquier otro
-            }
-        }
-
-        // Color del nombre de jugador dentro de una línea: dorado si eres
-        // tú, otro tono si es cualquier otro — así los nombres se
-        // distinguen del resto del texto de un vistazo.
-        function colorNombreHistorial(jugador) {
-            return ventana.colorHex(jugador === miNombre ? ventana.colorAccent : ventana.colorNombreAjeno);
-        }
-
-        Row {
-            id: pestanas
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.margins: 10
-            spacing: 8
-
-            Rectangle {
-                width: textoTabHistorial.implicitWidth + 24
-                height: 30
-                radius: height / 2
-                color: !panelLateral.mostrandoChat ? ventana.colorAccent : "transparent"
-                Text {
-                    id: textoTabHistorial
-                    anchors.centerIn: parent
-                    text: "Historial"
-                    color: !panelLateral.mostrandoChat ? ventana.colorPanel : ventana.colorTextoTenue
-                    font.bold: !panelLateral.mostrandoChat
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: panelLateral.mostrandoChat = false
-                }
-            }
-            Rectangle {
-                width: textoTabChat.implicitWidth + 24
-                height: 30
-                radius: height / 2
-                color: panelLateral.mostrandoChat ? ventana.colorAccent : "transparent"
-                Text {
-                    id: textoTabChat
-                    anchors.centerIn: parent
-                    text: "Chat"
-                    color: panelLateral.mostrandoChat ? ventana.colorPanel : ventana.colorTextoTenue
-                    font.bold: panelLateral.mostrandoChat
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: panelLateral.mostrandoChat = true
-                }
-            }
-        }
-
-        ListView {
-            visible: !panelLateral.mostrandoChat
-            anchors.top: pestanas.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 10
-            anchors.topMargin: 12
-            clip: true
-            model: panelLateral.modeloHistorial
-            onCountChanged: Qt.callLater(positionViewAtEnd)
-            delegate: Item {
-                required property string linea
-                required property string hora
-                required property string tipo
-                required property string jugador
-                width: ListView.view.width
-                height: Math.max(textoLinea.height, 16)
-                Text {
-                    id: textoLinea
-                    anchors.left: parent.left
-                    anchors.right: textoHoraHistorial.left
-                    anchors.rightMargin: 8
-                    // El punto lleva color por categoría (colorTipoHistorial)
-                    // y, si la línea tiene un protagonista, su nombre
-                    // también lleva color aparte (colorNombreHistorial:
-                    // dorado si eres tú, otro tono si es cualquier otro) —
-                    // así los nombres destacan del resto del texto, que
-                    // sigue en blanco normal.
-                    textFormat: Text.RichText
-                    text: "<font color=\"" + panelLateral.colorTipoHistorial(tipo) + "\">●</font> " +
-                          (jugador.length > 0
-                               ? "<font color=\"" + panelLateral.colorNombreHistorial(jugador) +
-                                     "\"><b>" + ventana.escapeHtml(jugador) + "</b></font>"
-                               : "") +
-                          ventana.escapeHtml(linea)
-                    color: "white"
-                    wrapMode: Text.WordWrap
-                }
-                Text {
-                    id: textoHoraHistorial
-                    anchors.right: parent.right
-                    anchors.verticalCenter: textoLinea.verticalCenter
-                    text: hora
-                    color: ventana.colorTextoMuyTenue
-                    font.pixelSize: 10
-                }
-            }
-        }
-
-        Column {
-            visible: panelLateral.mostrandoChat
-            anchors.top: pestanas.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 10
-            anchors.topMargin: 12
-            spacing: 8
-
-            ListView {
-                id: listaChat
-                width: parent.width
-                height: parent.height - filaEntradaChat.height - parent.spacing
-                // Ver el comentario largo en el ListView de ChatBox: con
-                // append(), "BottomToTop" mete los mensajes nuevos arriba,
-                // no abajo — el orden normal + ir al final es lo correcto.
-                clip: true
-                model: panelLateral.modeloChat
-                onCountChanged: Qt.callLater(positionViewAtEnd)
-                // Mismo estilo de burbujas que ChatBox (chat de la sala):
-                // las propias a la derecha con tinte dorado, las ajenas a
-                // la izquierda en verde tapete — antes esto era una lista
-                // plana "autor: mensaje" sin distinguir quién escribió qué.
-                delegate: Item {
-                    required property string autor
-                    required property string mensaje
-                    required property string hora
-                    property bool esPropio: autor === panelLateral.miNombre
-                    width: ListView.view.width
-                    height: columnaBurbujaPartida.height
-
-                    Column {
-                        id: columnaBurbujaPartida
-                        x: esPropio ? parent.width - width : 0
-                        width: Math.min(textoBurbujaPartida.implicitWidth + 24, parent.width * 0.8)
-                        spacing: 2
-
-                        Text {
-                            text: (esPropio ? "Tú" : autor) + " · " + hora
-                            color: ventana.colorTextoMuyTenue
-                            font.pixelSize: 10
-                        }
-                        Rectangle {
-                            width: parent.width
-                            height: textoBurbujaPartida.implicitHeight + 16
-                            radius: 12
-                            color: esPropio ? Qt.rgba(0.75, 0.56, 0.24, 0.18) : ventana.colorTapete
-                            border.width: esPropio ? 1 : 0
-                            border.color: ventana.colorAccent
-                            Text {
-                                id: textoBurbujaPartida
-                                anchors.fill: parent
-                                anchors.margins: 8
-                                text: mensaje
-                                color: "white"
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-                }
-            }
-
-            Row {
-                id: filaEntradaChat
-                width: parent.width
-                spacing: 8
-                TextField {
-                    id: campoChatPanel
-                    width: parent.width - botonEnviarPanel.width - parent.spacing
-                    height: 44
-                    color: "white"
-                    // Ver el comentario largo en "textoChat" (ChatBox):
-                    // el placeholder de Material flota hacia arriba al
-                    // enfocar y se solapa con nuestro borde dibujado a
-                    // mano — más simple ocultarlo directamente.
-                    placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
-                    placeholderTextColor: ventana.colorTextoTenue
-                    // Antes sin "background": salía con el estilo por
-                    // defecto de Qt Quick Controls (gris claro), fuera de
-                    // sitio en este tema oscuro — mismo fondo que ChatBox.
-                    background: Rectangle {
-                        color: ventana.colorFondo
-                        radius: 8
-                        border.width: 1
-                        border.color: campoChatPanel.activeFocus ? ventana.colorAccent : ventana.colorBorde
-                    }
-                }
-                BotonRelleno {
-                    id: botonEnviarPanel
-                    height: 44
-                    text: "Enviar"
-                    onClicked: {
-                        redcliente.enviarChat(campoChatPanel.text);
-                        panelLateral.modeloChat.append({
-                            autor: panelLateral.miNombre,
-                            mensaje: campoChatPanel.text,
-                            hora: Qt.formatTime(new Date(), "hh:mm")
-                        });  // eco local
-                        campoChatPanel.text = "";
-                    }
-                }
-            }
-        }
-    }
+    // si fuera una property del objeto que lo contiene — por eso se
+    // reenvía aquí a Tema.fuenteElegante (singleton), que es lo que
+    // "Carta" y el resto de componentes leen de verdad.
+    Binding { target: Tema; property: "fuenteElegante"; value: cargadorFuenteElegante.name }
 
     property string pantalla: "Inicio"
     property bool ajustesAbiertos: false
@@ -1318,6 +129,11 @@ ApplicationWindow {
     // esGanador, premio}.
     property bool showdownAbierto: false
     property var revealsShowdown: []
+    // Uno por bote resuelto en la mano actual — normalmente uno solo (el
+    // bote principal), más de uno si hubo varios all-in de distinto
+    // tamaño (side pots). Cada entrada: numBote, cantidad, competidores
+    // (nombres), y ganador/premioGanador/comboGanador una vez resuelto.
+    property var resumenBotes: []
     property bool votoExtensionAbierto: false
     property bool chatActive: false
     property string ganadorFinal: ""
@@ -1395,7 +211,7 @@ ApplicationWindow {
     // el que hay que multiplicar cada tamaño para que todo crezca o encoja
     // junto según el tamaño real de la ventana, en vez de quedarse en
     // píxeles fijos que no se adaptan a la pantalla. Se usa como
-    // "ventana.escala" desde los componentes aparte (Carta, Asiento...),
+    // "Tema.escala" desde los componentes aparte (Carta, Asiento...),
     // igual que "ventana.chatActive".
     readonly property real escala: Math.min(width / 1040, height / 780)
     // Por debajo de este factor, el contenido ya no cabe de forma legible
@@ -1407,27 +223,27 @@ ApplicationWindow {
 
     Rectangle {
         anchors.fill: parent
-        color: ventana.colorFondo
+        color: Tema.colorFondo
 
         // ── Pantalla 1: conectar ──────────────────────────
         Column {
             visible: pantalla === "Inicio"
             anchors.centerIn: parent
-            spacing: 22
+            spacing: 22 * Tema.escala
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
+                spacing: 10 * Tema.escala
                 Text {
                     text: "♣"
-                    color: ventana.colorAccent
-                    font.pixelSize: 30
+                    color: Tema.colorAccent
+                    font.pixelSize: 30 * Tema.escala
                 }
                 Text {
                     text: "PokerRemake"
                     color: "white"
-                    font.family: ventana.fuenteElegante
-                    font.pixelSize: 32
+                    font.family: Tema.fuenteElegante
+                    font.pixelSize: 32 * Tema.escala
                     // Mismo ajuste que en la barra superior: el trébol y el
                     // texto no comparten línea base por defecto en un Row.
                     y: 4
@@ -1436,8 +252,8 @@ ApplicationWindow {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "MESA PRIVADA · TEXAS HOLD'EM"
-                color: ventana.colorTextoTenue
-                font.pixelSize: 11
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
                 font.letterSpacing: 2
             }
             // Campo "subrayado", sin caja — se sustituye el fondo entero de
@@ -1447,21 +263,22 @@ ApplicationWindow {
             TextField {
                 id: nombreUsuario
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 260 * ventana.escala
+                width: 260 * Tema.escala
                 horizontalAlignment: Text.AlignHCenter
                 color: "white"
+                font.pixelSize: 16 * Tema.escala
                 // Ver el comentario largo en "textoChat" (ChatBox): el
                 // placeholder de Material flota hacia arriba al enfocar y
                 // se solapa con el texto ya escrito — más simple ocultarlo.
                 placeholderText: (activeFocus || text.length > 0) ? "" : "Tu nombre"
-                placeholderTextColor: ventana.colorTextoMuyTenue
+                placeholderTextColor: Tema.colorTextoMuyTenue
                 background: Rectangle {
                     color: "transparent"
                     Rectangle {
                         anchors.bottom: parent.bottom
                         width: parent.width
                         height: 1
-                        color: nombreUsuario.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                        color: nombreUsuario.activeFocus ? Tema.colorAccent : Tema.colorBorde
                     }
                 }
             }
@@ -1482,15 +299,15 @@ ApplicationWindow {
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Salir"
-                colorBorde: ventana.colorPeligro
+                colorBorde: Tema.colorPeligro
                 radioBorde: 999
                 onClicked: Qt.quit()
             }
             Text {
                 id: estadoTexto
                 anchors.horizontalCenter: parent.horizontalCenter
-                color: ventana.colorPeligro
-                font.pixelSize: 11
+                color: Tema.colorPeligro
+                font.pixelSize: 11 * Tema.escala
                 text: mensajeErrorConexion
             }
         }
@@ -1502,42 +319,49 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             textoCentro: "Salas disponibles"
+            pantalla: pantalla
+            miSaldoActual: miSaldoActual
+            reconectandoAhora: reconectandoAhora
+            servidorHost: servidorHost
+            servidorPuerto: servidorPuerto
+            onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
         }
         Column {
             visible: pantalla === "Salas"
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 25 * ventana.escala
-            spacing: 16
+            anchors.verticalCenterOffset: 25 * Tema.escala
+            spacing: 16 * Tema.escala
             // Antes 420 — con archivo + fecha + 3 botones en cada fila de
             // guardadas, se quedaba corta y el texto se solapaba con los
             // botones. Más ancha, y con tope según el ancho de ventana
             // (mismo patrón que CrearSala) para pantallas pequeñas.
-            width: Math.min(680 * ventana.escala, ventana.width - 60 * ventana.escala)
+            width: Math.min(680 * Tema.escala, ventana.width - 60 * Tema.escala)
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: viendoGuardadas ? "Partidas guardadas" : "Salas disponibles"
                 color: "white"
-                font.family: ventana.fuenteElegante
-                font.pixelSize: 22
+                font.family: Tema.fuenteElegante
+                font.pixelSize: 22 * Tema.escala
             }
 
             // Mismo patrón de pestañas que Historial/Chat en PanelLateral.
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
+                spacing: 8 * Tema.escala
                 Rectangle {
-                    width: textoTabSalasPub.implicitWidth + 24
-                    height: 30
+                    width: textoTabSalasPub.implicitWidth + 24 * Tema.escala
+                    height: 30 * Tema.escala
                     radius: height / 2
-                    color: !viendoGuardadas ? ventana.colorAccent : "transparent"
+                    color: !viendoGuardadas ? Tema.colorAccent : "transparent"
                     Text {
                         id: textoTabSalasPub
                         anchors.centerIn: parent
                         text: "Salas públicas"
-                        color: !viendoGuardadas ? ventana.colorPanel : ventana.colorTextoTenue
+                        color: !viendoGuardadas ? Tema.colorPanel : Tema.colorTextoTenue
                         font.bold: !viendoGuardadas
+                        font.pixelSize: 13 * Tema.escala
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1545,16 +369,17 @@ ApplicationWindow {
                     }
                 }
                 Rectangle {
-                    width: textoTabGuardadas.implicitWidth + 24
-                    height: 30
+                    width: textoTabGuardadas.implicitWidth + 24 * Tema.escala
+                    height: 30 * Tema.escala
                     radius: height / 2
-                    color: viendoGuardadas ? ventana.colorAccent : "transparent"
+                    color: viendoGuardadas ? Tema.colorAccent : "transparent"
                     Text {
                         id: textoTabGuardadas
                         anchors.centerIn: parent
                         text: "Partidas guardadas"
-                        color: viendoGuardadas ? ventana.colorPanel : ventana.colorTextoTenue
+                        color: viendoGuardadas ? Tema.colorPanel : Tema.colorTextoTenue
                         font.bold: viendoGuardadas
+                        font.pixelSize: 13 * Tema.escala
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1568,13 +393,13 @@ ApplicationWindow {
 
             Rectangle {
                 width: parent.width
-                height: 340 * ventana.escala
+                height: 340 * Tema.escala
                 border.width: 1
                 border.color: Qt.rgba(0, 0, 0, 0.3)
-                radius: 8
+                radius: 8 * Tema.escala
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.4) }
-                    GradientStop { position: 1.0; color: ventana.colorPanel }
+                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                    GradientStop { position: 1.0; color: Tema.colorPanel }
                 }
 
                 Text {
@@ -1582,27 +407,29 @@ ApplicationWindow {
                     width: parent.width - 40
                     visible: !viendoGuardadas && listaSalas.count === 0
                     text: "No hay salas públicas disponibles ahora mismo."
-                    color: ventana.colorTextoTenue
+                    color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
+                    font.pixelSize: 13 * Tema.escala
                 }
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 40
                     visible: viendoGuardadas && listaGuardadas.count === 0
                     text: "No hay partidas guardadas en el servidor."
-                    color: ventana.colorTextoTenue
+                    color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
+                    font.pixelSize: 13 * Tema.escala
                 }
 
                 ListView {
                     id: listaSalas
                     visible: !viendoGuardadas
                     anchors.fill: parent
-                    anchors.margins: 10
+                    anchors.margins: 10 * Tema.escala
                     clip: true
-                    spacing: 8
+                    spacing: 8 * Tema.escala
                     model: salasDisponibles
                     delegate: Rectangle {
                         id: filaSala
@@ -1611,37 +438,38 @@ ApplicationWindow {
                         required property int conectados
                         required property int esperados
                         width: ListView.view.width
-                        height: 44
-                        radius: 6
-                        color: ventana.colorFondo
+                        height: 44 * Tema.escala
+                        radius: 6 * Tema.escala
+                        color: Tema.colorFondo
                         border.width: 1
-                        border.color: ventana.colorBorde
+                        border.color: Tema.colorBorde
 
                         Column {
                             anchors.left: parent.left
                             anchors.right: botonUnirse.left
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.rightMargin: 10 * Tema.escala
                             Text {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaSala.nombre !== "" ? filaSala.nombre : filaSala.id
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                             }
                             Text {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaSala.conectados + " / " + filaSala.esperados + " jugadores"
-                                color: ventana.colorTextoTenue
-                                font.pixelSize: 11
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 11 * Tema.escala
                             }
                         }
                         BotonRelleno {
                             id: botonUnirse
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 10
+                            anchors.rightMargin: 10 * Tema.escala
                             text: "Unirse"
                             onClicked: redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, filaSala.id, "")
                         }
@@ -1652,9 +480,9 @@ ApplicationWindow {
                     id: listaGuardadas
                     visible: viendoGuardadas
                     anchors.fill: parent
-                    anchors.margins: 10
+                    anchors.margins: 10 * Tema.escala
                     clip: true
-                    spacing: 8
+                    spacing: 8 * Tema.escala
                     model: guardadasDisponibles
                     delegate: Rectangle {
                         id: filaGuardada
@@ -1665,32 +493,33 @@ ApplicationWindow {
                         property bool renombrando: false
                         property bool confirmandoBorrado: false
                         width: ListView.view.width
-                        height: 44
-                        radius: 6
-                        color: ventana.colorFondo
+                        height: 44 * Tema.escala
+                        radius: 6 * Tema.escala
+                        color: Tema.colorFondo
                         border.width: 1
-                        border.color: ventana.colorBorde
+                        border.color: Tema.colorBorde
 
                         Column {
                             visible: !filaGuardada.renombrando
                             anchors.left: parent.left
                             anchors.right: filaAcciones.left
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.rightMargin: 10 * Tema.escala
                             Text {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaGuardada.archivo
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                             }
                             Text {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaGuardada.fecha + " · " + filaGuardada.humanos +
                                       " humano(s), " + filaGuardada.bots + " bot(s)"
-                                color: ventana.colorTextoTenue
-                                font.pixelSize: 11
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 11 * Tema.escala
                             }
                         }
 
@@ -1701,19 +530,20 @@ ApplicationWindow {
                             visible: filaGuardada.renombrando
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 10
-                            spacing: 6
+                            anchors.leftMargin: 10 * Tema.escala
+                            spacing: 6 * Tema.escala
                             TextField {
                                 id: campoRenombrar
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 160 * ventana.escala
+                                width: 160 * Tema.escala
                                 text: filaGuardada.archivo.replace(/\.pok$/, "")
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                                 background: Rectangle {
-                                    color: ventana.colorPanel
-                                    radius: 6
+                                    color: Tema.colorPanel
+                                    radius: 6 * Tema.escala
                                     border.width: 1
-                                    border.color: ventana.colorAccent
+                                    border.color: Tema.colorAccent
                                 }
                                 Keys.onReturnPressed: {
                                     redcliente.renombrarGuardada(servidorHost, servidorPuerto,
@@ -1737,8 +567,8 @@ ApplicationWindow {
                             visible: !filaGuardada.renombrando
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 10
-                            spacing: 6
+                            anchors.rightMargin: 10 * Tema.escala
+                            spacing: 6 * Tema.escala
                             BotonRelleno {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Reanudar"
@@ -1754,7 +584,7 @@ ApplicationWindow {
                             BotonContorno {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: filaGuardada.confirmandoBorrado ? "¿Seguro?" : "🗑"
-                                colorBorde: ventana.colorPeligro
+                                colorBorde: Tema.colorPeligro
                                 onClicked: {
                                     if (filaGuardada.confirmandoBorrado) {
                                         redcliente.borrarGuardada(servidorHost, servidorPuerto,
@@ -1771,7 +601,7 @@ ApplicationWindow {
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
+                spacing: 8 * Tema.escala
                 BotonContorno {
                     text: "Refrescar"
                     onClicked: viendoGuardadas ? redcliente.listarGuardadas(servidorHost, servidorPuerto)
@@ -1787,7 +617,7 @@ ApplicationWindow {
             Row {
                 visible: !viendoGuardadas
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
+                spacing: 8 * Tema.escala
                 // Row no centra verticalmente hijos de distinta altura por
                 // defecto (el TextField y el botón no miden lo mismo) — se
                 // centra cada uno a mano, mismo motivo que en los campos de
@@ -1795,15 +625,16 @@ ApplicationWindow {
                 TextField {
                     id: campoCodigoUnion
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 160 * ventana.escala
+                    width: 160 * Tema.escala
                     placeholderText: (activeFocus || text.length > 0) ? "" : "Código de sala privada"
                     color: "white"
-                    placeholderTextColor: ventana.colorTextoMuyTenue
+                    font.pixelSize: 13 * Tema.escala
+                    placeholderTextColor: Tema.colorTextoMuyTenue
                     background: Rectangle {
-                        color: ventana.colorPanel
-                        radius: 6
+                        color: Tema.colorPanel
+                        radius: 6 * Tema.escala
                         border.width: 1
-                        border.color: campoCodigoUnion.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                        border.color: campoCodigoUnion.activeFocus ? Tema.colorAccent : Tema.colorBorde
                     }
                 }
                 BotonContorno {
@@ -1816,15 +647,15 @@ ApplicationWindow {
             Text {
                 id: estadoTextoSalas
                 anchors.horizontalCenter: parent.horizontalCenter
-                color: ventana.colorPeligro
-                font.pixelSize: 11
+                color: Tema.colorPeligro
+                font.pixelSize: 11 * Tema.escala
                 text: mensajeErrorConexion
             }
 
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Salir"
-                colorBorde: ventana.colorPeligro
+                colorBorde: Tema.colorPeligro
                 onClicked: pantalla = "Inicio"
             }
         }
@@ -1845,27 +676,33 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             textoCentro: "Crear sala"
+            pantalla: pantalla
+            miSaldoActual: miSaldoActual
+            reconectandoAhora: reconectandoAhora
+            servidorHost: servidorHost
+            servidorPuerto: servidorPuerto
+            onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
         }
         Column {
             visible: pantalla === "CrearSala"
             anchors.top: barraCrearSala.bottom
-            anchors.topMargin: 24 * ventana.escala
+            anchors.topMargin: 24 * Tema.escala
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 30 * ventana.escala
+            anchors.bottomMargin: 30 * Tema.escala
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 16
+            spacing: 16 * Tema.escala
             // Más ancha que antes (era 700) — las filas con interruptor +
             // etiqueta larga ("Permitir recompra al quedarse sin fichas")
             // iban muy justas de espacio.
-            width: Math.min(820 * ventana.escala, ventana.width - 60 * ventana.escala)
+            width: Math.min(820 * Tema.escala, ventana.width - 60 * Tema.escala)
 
             Text {
                 id: tituloCrearSala
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Crear sala"
                 color: "white"
-                font.family: ventana.fuenteElegante
-                font.pixelSize: 22
+                font.family: Tema.fuenteElegante
+                font.pixelSize: 22 * Tema.escala
             }
 
             Rectangle {
@@ -1877,22 +714,22 @@ ApplicationWindow {
                         textoErrorCrearSala.height - parent.spacing * 3
                 border.width: 1
                 border.color: Qt.rgba(0, 0, 0, 0.3)
-                radius: 8
+                radius: 8 * Tema.escala
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.4) }
-                    GradientStop { position: 1.0; color: ventana.colorPanel }
+                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                    GradientStop { position: 1.0; color: Tema.colorPanel }
                 }
 
                 ScrollView {
                     id: scrollCrearSala
                     anchors.fill: parent
-                    anchors.margins: 18
+                    anchors.margins: 18 * Tema.escala
                     clip: true
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     Column {
                         width: scrollCrearSala.availableWidth
-                        spacing: 14
+                        spacing: 14 * Tema.escala
 
                         // Antes era una lista plana de filas — con tantas
                         // opciones, agruparlas por tema (igual que las
@@ -1901,14 +738,14 @@ ApplicationWindow {
                         // ayuda a leerlo de un vistazo.
                         Column {
                             width: parent.width
-                            spacing: 6
+                            spacing: 6 * Tema.escala
                             Text {
                                 text: "SALA"
-                                color: ventana.colorTextoMuyTenue
-                                font.pixelSize: 11
+                                color: Tema.colorTextoMuyTenue
+                                font.pixelSize: 11 * Tema.escala
                                 font.letterSpacing: 1
                             }
-                            Rectangle { width: parent.width; height: 1; color: ventana.colorBorde }
+                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
                         }
 
                         TextField {
@@ -1916,23 +753,25 @@ ApplicationWindow {
                             width: parent.width
                             placeholderText: (activeFocus || text.length > 0) ? "" : "Nombre de la sala"
                             color: "white"
-                            placeholderTextColor: ventana.colorTextoMuyTenue
+                            font.pixelSize: 13 * Tema.escala
+                            placeholderTextColor: Tema.colorTextoMuyTenue
                             background: Rectangle {
-                                color: ventana.colorFondo
-                                radius: 6
+                                color: Tema.colorFondo
+                                radius: 6 * Tema.escala
                                 border.width: 1
-                                border.color: campoNombreSala.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                                border.color: campoNombreSala.activeFocus ? Tema.colorAccent : Tema.colorBorde
                             }
                         }
 
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Sala pública"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             Interruptor {
@@ -1944,38 +783,41 @@ ApplicationWindow {
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Tamaño de sala (asientos totales, máx. 9)"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             TextField {
                                 id: campoTamanoSala
-                                width: 60 * ventana.escala
+                                width: 60 * Tema.escala
                                 text: "6"
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 2; top: 9 }
                                 background: Rectangle {
-                                    color: ventana.colorPanel
-                                    radius: 6
+                                    color: Tema.colorPanel
+                                    radius: 6 * Tema.escala
                                     border.width: 1
-                                    border.color: campoTamanoSala.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                                    border.color: campoTamanoSala.activeFocus ? Tema.colorAccent : Tema.colorBorde
                                 }
                             }
                         }
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Rellenar con bots los asientos vacíos"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             Interruptor {
@@ -1987,19 +829,20 @@ ApplicationWindow {
                         Text {
                             width: parent.width
                             text: "Si faltan humanos al arrancar (o alguien se va con fichas), un bot ocupa el asiento en vez de perderlo o repartir sus fichas."
-                            color: ventana.colorTextoMuyTenue
-                            font.pixelSize: 10
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 10 * Tema.escala
                             wrapMode: Text.WordWrap
                         }
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Abierta tras iniciar"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             Interruptor {
@@ -2011,31 +854,32 @@ ApplicationWindow {
                         Text {
                             width: parent.width
                             text: "Con esto activo, cualquier asiento ocupado por un bot se puede sustituir por un jugador nuevo en cualquier momento de la partida."
-                            color: ventana.colorTextoMuyTenue
-                            font.pixelSize: 10
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 10 * Tema.escala
                             wrapMode: Text.WordWrap
                         }
             
                         Column {
                             width: parent.width
-                            spacing: 6
+                            spacing: 6 * Tema.escala
                             Text {
                                 text: "REGLAS DE APUESTA"
-                                color: ventana.colorTextoMuyTenue
-                                font.pixelSize: 11
+                                color: Tema.colorTextoMuyTenue
+                                font.pixelSize: 11 * Tema.escala
                                 font.letterSpacing: 1
                             }
-                            Rectangle { width: parent.width; height: 1; color: ventana.colorBorde }
+                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
                         }
 
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Dificultad de bots"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             SelectorPildoras {
@@ -2047,12 +891,13 @@ ApplicationWindow {
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Tipo de límite"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             SelectorPildoras {
@@ -2064,39 +909,42 @@ ApplicationWindow {
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             visible: selectorLimite.seleccionado === 2
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Cantidad fija por raise"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             TextField {
                                 id: campoMonteFijo
-                                width: 80 * ventana.escala
+                                width: 80 * Tema.escala
                                 text: "40"
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 1; top: 10000 }
                                 background: Rectangle {
-                                    color: ventana.colorPanel
-                                    radius: 6
+                                    color: Tema.colorPanel
+                                    radius: 6 * Tema.escala
                                     border.width: 1
-                                    border.color: campoMonteFijo.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                                    border.color: campoMonteFijo.activeFocus ? Tema.colorAccent : Tema.colorBorde
                                 }
                             }
                         }
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Min-raise obligatorio"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             Interruptor {
@@ -2108,12 +956,13 @@ ApplicationWindow {
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Permitir recompra al quedarse sin fichas"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             Interruptor {
@@ -2125,90 +974,96 @@ ApplicationWindow {
             
                         Column {
                             width: parent.width
-                            spacing: 6
+                            spacing: 6 * Tema.escala
                             Text {
                                 text: "PARTIDA"
-                                color: ventana.colorTextoMuyTenue
-                                font.pixelSize: 11
+                                color: Tema.colorTextoMuyTenue
+                                font.pixelSize: 11 * Tema.escala
                                 font.letterSpacing: 1
                             }
-                            Rectangle { width: parent.width; height: 1; color: ventana.colorBorde }
+                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
                         }
 
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Número de manos"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             TextField {
                                 id: campoNumManos
-                                width: 80 * ventana.escala
+                                width: 80 * Tema.escala
                                 text: "20"
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 1; top: 200 }
                                 background: Rectangle {
-                                    color: ventana.colorPanel
-                                    radius: 6
+                                    color: Tema.colorPanel
+                                    radius: 6 * Tema.escala
                                     border.width: 1
-                                    border.color: campoNumManos.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                                    border.color: campoNumManos.activeFocus ? Tema.colorAccent : Tema.colorBorde
                                 }
                             }
                         }
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Ciega grande"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             TextField {
                                 id: campoCiegaGrande
-                                width: 80 * ventana.escala
+                                width: 80 * Tema.escala
                                 text: "20"
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 2; top: 1000 }
                                 background: Rectangle {
-                                    color: ventana.colorPanel
-                                    radius: 6
+                                    color: Tema.colorPanel
+                                    radius: 6 * Tema.escala
                                     border.width: 1
-                                    border.color: campoCiegaGrande.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                                    border.color: campoCiegaGrande.activeFocus ? Tema.colorAccent : Tema.colorBorde
                                 }
                             }
                         }
             
                         Row {
                             width: parent.width
-                            spacing: 12
+                            spacing: 12 * Tema.escala
                             Text {
-                                width: 330 * ventana.escala
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Saldo inicial"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
                                 wrapMode: Text.WordWrap
                             }
                             TextField {
                                 id: campoSaldoInicial
-                                width: 80 * ventana.escala
+                                width: 80 * Tema.escala
                                 text: "1000"
                                 color: "white"
+                                font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 100; top: 100000 }
                                 background: Rectangle {
-                                    color: ventana.colorPanel
-                                    radius: 6
+                                    color: Tema.colorPanel
+                                    radius: 6 * Tema.escala
                                     border.width: 1
-                                    border.color: campoSaldoInicial.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                                    border.color: campoSaldoInicial.activeFocus ? Tema.colorAccent : Tema.colorBorde
                                 }
                             }
                         }
@@ -2222,18 +1077,18 @@ ApplicationWindow {
             Text {
                 id: textoErrorCrearSala
                 anchors.horizontalCenter: parent.horizontalCenter
-                color: ventana.colorPeligro
-                font.pixelSize: 11
+                color: Tema.colorPeligro
+                font.pixelSize: 11 * Tema.escala
                 text: mensajeErrorConexion
             }
 
             Row {
                 id: filaBotonesCrearSala
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
+                spacing: 10 * Tema.escala
                 BotonContorno {
                     text: "Cancelar"
-                    colorBorde: ventana.colorPeligro
+                    colorBorde: Tema.colorPeligro
                     onClicked: pantalla = "Salas"
                 }
                 BotonRelleno {
@@ -2273,58 +1128,64 @@ ApplicationWindow {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
+                pantalla: pantalla
+                miSaldoActual: miSaldoActual
+                reconectandoAhora: reconectandoAhora
+                servidorHost: servidorHost
+                servidorPuerto: servidorPuerto
+                onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
             }
 
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: 25 * ventana.escala
-                width: contenidoFin.width + 64 * ventana.escala
-                height: contenidoFin.height + 48 * ventana.escala
+                anchors.verticalCenterOffset: 25 * Tema.escala
+                width: contenidoFin.width + 64 * Tema.escala
+                height: contenidoFin.height + 48 * Tema.escala
                 border.width: 1
-                border.color: ventana.colorAccent
-                radius: 16
+                border.color: Tema.colorAccent
+                radius: 16 * Tema.escala
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.4) }
-                    GradientStop { position: 1.0; color: ventana.colorPanel }
+                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                    GradientStop { position: 1.0; color: Tema.colorPanel }
                 }
 
                 Column {
                     id: contenidoFin
                     anchors.centerIn: parent
-                    width: 300 * ventana.escala
-                    spacing: 14 * ventana.escala
+                    width: 300 * Tema.escala
+                    spacing: 14 * Tema.escala
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: partidaGuardada ? "PARTIDA GUARDADA" : "PARTIDA FINALIZADA"
-                        color: ventana.colorAccent
+                        color: Tema.colorAccent
                         font.letterSpacing: 2
-                        font.pixelSize: 12
+                        font.pixelSize: 12 * Tema.escala
                         font.bold: true
                     }
                     Text {
                         visible: !partidaGuardada
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "Ganador"
-                        color: ventana.colorTextoTenue
-                        font.pixelSize: 11
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
                     }
                     Text {
                         visible: !partidaGuardada
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: ganadorFinal
                         color: "white"
-                        font.family: ventana.fuenteElegante
-                        font.pixelSize: 26
+                        font.family: Tema.fuenteElegante
+                        font.pixelSize: 26 * Tema.escala
                         font.bold: true
                     }
                     Text {
                         visible: !partidaGuardada
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: saldoFinal + " fichas"
-                        color: ventana.colorAccent
-                        font.pixelSize: 15
+                        color: Tema.colorAccent
+                        font.pixelSize: 15 * Tema.escala
                     }
                     Text {
                         visible: !partidaGuardada
@@ -2333,8 +1194,8 @@ ApplicationWindow {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         text: finPorLimite ? "Se alcanzó el límite de manos." : "El resto de jugadores ha quedado eliminado."
-                        color: ventana.colorTextoTenue
-                        font.pixelSize: 12
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
                     }
                     Text {
                         visible: partidaGuardada
@@ -2343,7 +1204,8 @@ ApplicationWindow {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         text: "El Host puede continuar la partida desde sus partidas guardadas."
-                        color: ventana.colorTextoTenue
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
                     }
                     BotonRelleno {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -2367,6 +1229,12 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             textoCentro: hostActual !== "" ? "Sala de " + hostActual : ""
+            pantalla: pantalla
+            miSaldoActual: miSaldoActual
+            reconectandoAhora: reconectandoAhora
+            servidorHost: servidorHost
+            servidorPuerto: servidorPuerto
+            onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
         }
 
         // Item, no Row: mismo motivo que en la mesa — un Row no centra
@@ -2376,7 +1244,7 @@ ApplicationWindow {
             visible: pantalla === "Lobby"
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 25 * ventana.escala
+            anchors.verticalCenterOffset: 25 * Tema.escala
             width: columnaSala.width + 40 + chatLobby.width
             height: Math.max(columnaSala.height, chatLobby.height)
 
@@ -2384,27 +1252,27 @@ ApplicationWindow {
                 id: columnaSala
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 22
+                spacing: 22 * Tema.escala
 
                 Column {
-                    spacing: 2
+                    spacing: 2 * Tema.escala
                     Text {
                         text: "Sala de " + (hostActual !== "" ? hostActual : "espera")
                         color: "white"
-                        font.family: ventana.fuenteElegante
-                        font.pixelSize: 22
+                        font.family: Tema.fuenteElegante
+                        font.pixelSize: 22 * Tema.escala
                         font.bold: true
                     }
                     Text {
                         id: contadorListos
-                        color: ventana.colorTextoTenue
-                        font.pixelSize: 12
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
                     }
                     Text {
                         visible: codigoSalaPropia !== ""
                         text: "Código para invitar: " + codigoSalaPropia
-                        color: ventana.colorAccent
-                        font.pixelSize: 12
+                        color: Tema.colorAccent
+                        font.pixelSize: 12 * Tema.escala
                         font.bold: true
                     }
                     Text {
@@ -2414,15 +1282,15 @@ ApplicationWindow {
                         // recuerde.
                         visible: nombresEsperadosLobby !== ""
                         text: "Nombres esperados: " + nombresEsperadosLobby
-                        color: ventana.colorTextoTenue
-                        font.pixelSize: 12
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
                         wrapMode: Text.WordWrap
-                        width: 260 * ventana.escala
+                        width: 260 * Tema.escala
                     }
                 }
 
                 Row {
-                    spacing: 18
+                    spacing: 18 * Tema.escala
                     Repeater {
                         model: jugadoresConectados
                         // Item posicionador con la property "required" (así
@@ -2455,8 +1323,9 @@ ApplicationWindow {
             ChatBox {
                 id: chatLobby
                 anchors.left: columnaSala.right
-                anchors.leftMargin: 40
+                anchors.leftMargin: 40 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
+                activo: chatActive
                 modelo: mensajesChat
                 miNombre: nombreUsuario.text
             }
@@ -2479,6 +1348,12 @@ ApplicationWindow {
                 // quiera mostrarse aquí debe pasar por una property (como
                 // "rondaActual") y entrar en esta misma expresión.
                 textoCentro: rondaActual + " · Mano " + manoActual + " · Ciega " + Math.round(ciegaActual / 2) + "/" + ciegaActual + " · Turno de " + turnoNombre
+                pantalla: pantalla
+                miSaldoActual: miSaldoActual
+                reconectandoAhora: reconectandoAhora
+                servidorHost: servidorHost
+                servidorPuerto: servidorPuerto
+                onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
             }
 
             // ── Centro: la mesa, pieza principal, con el panel de
@@ -2491,16 +1366,16 @@ ApplicationWindow {
                 anchors.top: barraSuperior.bottom
                 anchors.bottom: barraInferior.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.topMargin: 12 * ventana.escala
-                anchors.bottomMargin: 12 * ventana.escala
+                anchors.topMargin: 12 * Tema.escala
+                anchors.bottomMargin: 12 * Tema.escala
                 width: mesaJuego.width + 20 + panelLateralJuego.width
 
                 Mesa {
                     id: mesaJuego
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 820 * ventana.escala
-                    height: 460 * ventana.escala
+                    width: 820 * Tema.escala
+                    height: 460 * Tema.escala
                     jugadores: jugadoresPartida
                     cartasMesa: ventana.cartasMesa
                     bote: boteActual
@@ -2513,9 +1388,9 @@ ApplicationWindow {
                 PanelLateral {
                     id: panelLateralJuego
                     anchors.left: mesaJuego.right
-                    anchors.leftMargin: 20
+                    anchors.leftMargin: 20 * Tema.escala
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 340 * ventana.escala
+                    width: 340 * Tema.escala
                     height: mesaJuego.height
                     modeloHistorial: historial
                     modeloChat: mensajesChat
@@ -2530,9 +1405,9 @@ ApplicationWindow {
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 90 * ventana.escala
-                color: ventana.colorPanel
-                border.color: ventana.colorBorde
+                height: 90 * Tema.escala
+                color: Tema.colorPanel
+                border.color: Tema.colorBorde
                 border.width: 1
 
                 // Tus cartas asoman por encima del borde de la barra — el
@@ -2544,9 +1419,9 @@ ApplicationWindow {
                 Row {
                     id: filaCartasPropias
                     anchors.left: parent.left
-                    anchors.leftMargin: 16
+                    anchors.leftMargin: 16 * Tema.escala
                     anchors.verticalCenter: parent.top
-                    spacing: 6
+                    spacing: 6 * Tema.escala
                     Carta {
                         codigo: miCarta1
                         propia: true
@@ -2559,49 +1434,52 @@ ApplicationWindow {
 
                 Row {
                     anchors.left: filaCartasPropias.right
-                    anchors.leftMargin: 16
+                    anchors.leftMargin: 16 * Tema.escala
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 16
+                    spacing: 16 * Tema.escala
 
                     Column {
-                        spacing: 2
+                        spacing: 2 * Tema.escala
                         Text {
                             text: "ACTUAL"
-                            color: ventana.colorTextoTenue
-                            font.pixelSize: 10
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 10 * Tema.escala
                         }
                         Text {
                             text: comboActual
                             color: "white"
                             font.bold: true
-                            font.family: ventana.fuenteElegante
+                            font.pixelSize: 13 * Tema.escala
+                            font.family: Tema.fuenteElegante
                         }
                     }
                     Column {
-                        spacing: 2
+                        spacing: 2 * Tema.escala
                         Text {
                             text: "PROBABLE"
-                            color: ventana.colorTextoTenue
-                            font.pixelSize: 10
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 10 * Tema.escala
                         }
                         Text {
                             text: comboProbable
                             color: "#C7CFC9"
-                            font.family: ventana.fuenteElegante
+                            font.pixelSize: 13 * Tema.escala
+                            font.family: Tema.fuenteElegante
                         }
                     }
                     Column {
-                        spacing: 2
+                        spacing: 2 * Tema.escala
                         Text {
                             text: "MÁXIMA"
-                            color: ventana.colorTextoTenue
-                            font.pixelSize: 10
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 10 * Tema.escala
                         }
                         Text {
                             text: comboMaxima
-                            color: ventana.colorAccent
+                            color: Tema.colorAccent
                             font.bold: true
-                            font.family: ventana.fuenteElegante
+                            font.pixelSize: 13 * Tema.escala
+                            font.family: Tema.fuenteElegante
                         }
                     }
                 }
@@ -2613,12 +1491,12 @@ ApplicationWindow {
                     visible: tuTurno
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.rightMargin: 16
-                    spacing: 10
+                    anchors.rightMargin: 16 * Tema.escala
+                    spacing: 10 * Tema.escala
 
                     BotonContorno {
                         text: "Retirarse"
-                        colorBorde: ventana.colorPeligro
+                        colorBorde: Tema.colorPeligro
                         onClicked: {
                             redcliente.enviarAccion("FOLD", 0);
                             tuTurno = false;
@@ -2645,7 +1523,7 @@ ApplicationWindow {
                     }
                     Slider {
                         id: sliderSubida
-                        width: 220 * ventana.escala
+                        width: 220 * Tema.escala
                         // Antes 0..saldo, una aproximación sin mínimo ni
                         // tope real de pot-limit/fixed-limit. Ahora el rango
                         // exacto que manda el servidor en cada TU_TURNO.
@@ -2669,25 +1547,26 @@ ApplicationWindow {
                     // el valor de vuelta, igual que hacía el SpinBox.
                     TextField {
                         id: campoSubida
-                        width: 90 * ventana.escala
+                        width: 90 * Tema.escala
                         // Mismo motivo que el wordmark de arriba: Row no
                         // centra hijos de distinta altura entre sí (botones,
                         // slider y campo de texto no miden lo mismo por
                         // defecto) — se baja a mano. Ajusta este número si
                         // no queda perfecto a simple vista.
-                        y: 6
+                        y: 6 * Tema.escala
                         color: "white"
-                        selectionColor: ventana.colorAccent
+                        font.pixelSize: 14 * Tema.escala
+                        selectionColor: Tema.colorAccent
                         horizontalAlignment: Text.AlignHCenter
                         // Fondo/borde a mano — por defecto un TextField de
                         // Qt Quick Controls sale gris claro/blanco, fuera de
                         // sitio en esta paleta. El borde se ilumina con el
                         // color de acento solo cuando tiene el foco.
                         background: Rectangle {
-                            color: ventana.colorPanel
-                            radius: 6
+                            color: Tema.colorPanel
+                            radius: 6 * Tema.escala
                             border.width: 1
-                            border.color: campoSubida.activeFocus ? ventana.colorAccent : ventana.colorBorde
+                            border.color: campoSubida.activeFocus ? Tema.colorAccent : Tema.colorBorde
                         }
                         // bottom/top NO se atan a minSubidaActual/maxSubidaActual:
                         // IntValidator rechaza cada pulsación cuyo resultado
@@ -2730,7 +1609,7 @@ ApplicationWindow {
                         id: botonAllIn
                         property bool confirmando: false
                         text: confirmando ? "¿Seguro?" : "ALL"
-                        colorBorde: ventana.colorPeligro
+                        colorBorde: Tema.colorPeligro
                         onClicked: {
                             // Ver "Cliente" en el cajón de ajustes — con el
                             // interruptor activo, hace falta un segundo
@@ -2757,13 +1636,14 @@ ApplicationWindow {
                     visible: puedoRecomprar
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.rightMargin: 16
-                    spacing: 10
+                    anchors.rightMargin: 16 * Tema.escala
+                    spacing: 10 * Tema.escala
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Te has quedado sin fichas"
-                        color: ventana.colorTextoTenue
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
                     }
                     BotonRelleno {
                         text: recompraSolicitada ? "Recompra enviada…" : "Recomprar"
@@ -2789,18 +1669,19 @@ ApplicationWindow {
                     visible: votoExtensionAbierto
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.rightMargin: 16
-                    spacing: 6
+                    anchors.rightMargin: 16 * Tema.escala
+                    spacing: 6 * Tema.escala
 
                     Text {
                         id: votoExtensionTexto
-                        color: ventana.colorAccent
+                        color: Tema.colorAccent
                         font.bold: true
+                        font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
-                        width: 260 * ventana.escala
+                        width: 260 * Tema.escala
                     }
                     Row {
-                        spacing: 8
+                        spacing: 8 * Tema.escala
                         BotonRelleno {
                             text: "Sí, extender"
                             onClicked: {
@@ -2810,7 +1691,7 @@ ApplicationWindow {
                         }
                         BotonContorno {
                             text: "No, terminar aquí"
-                            colorBorde: ventana.colorPeligro
+                            colorBorde: Tema.colorPeligro
                             onClicked: {
                                 redcliente.votarExtension(false);
                                 votoExtensionAbierto = false;
@@ -3001,6 +1882,7 @@ ApplicationWindow {
             function onShowdownIniciado(cartasCsv) {
                 cartasMesa = cartasCsv.length > 0 ? cartasCsv.split(",") : [];
                 revealsShowdown = [];
+                resumenBotes = [];
                 showdownAbierto = true;
             }
             function onCartasMostradas(jugador, cartasCsv, combo) {
@@ -3012,7 +1894,16 @@ ApplicationWindow {
                     premio: 0
                 }]);
             }
-            function onBoteGanado(jugador, premio, combo) {
+            function onBoteEvaluado(numBote, cantidad, jugadoresCsv) {
+                resumenBotes = resumenBotes.concat([{
+                    numBote: numBote,
+                    cantidad: cantidad,
+                    competidores: jugadoresCsv.length > 0 ? jugadoresCsv.split(",") : [],
+                    ganador: "",
+                    premioGanador: 0
+                }]);
+            }
+            function onBoteGanado(jugador, premio, numBote, combo) {
                 revealsShowdown = revealsShowdown.map(function(r) {
                     if (r.nombre !== jugador) return r;
                     return {
@@ -3021,6 +1912,16 @@ ApplicationWindow {
                         combo: r.combo,
                         esGanador: true,
                         premio: r.premio + premio
+                    };
+                });
+                resumenBotes = resumenBotes.map(function(b) {
+                    if (b.numBote !== numBote) return b;
+                    return {
+                        numBote: b.numBote,
+                        cantidad: b.cantidad,
+                        competidores: b.competidores,
+                        ganador: jugador,
+                        premioGanador: premio
                     };
                 });
             }
@@ -3086,6 +1987,16 @@ ApplicationWindow {
                         break;
                     }
                 }
+            }
+            // BUG corregido: el servidor ya manda esto en cada turno de
+            // CUALQUIERA (no solo el propio), pero antes el cliente lo
+            // ignoraba del todo — comboActual/etc. solo se actualizaban
+            // dentro de onEsMiTurno, así que se quedaban congelados hasta
+            // que volvía a tocarte, en cada ronda de apuestas.
+            function onComboActualizado(comboA, comboP, comboM) {
+                comboActual = comboA;
+                comboProbable = comboP;
+                comboMaxima = comboM;
             }
             function onEsperandoVoto(mensaje) {
                 mensajeVoto = mensaje;
@@ -3220,7 +2131,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             text: "La ventana es demasiado pequeña para mostrar la partida correctamente.\nAgrándala para continuar."
             color: "white"
-            font.pixelSize: 16
+            font.pixelSize: 16 * Tema.escala
         }
     }
 
@@ -3236,19 +2147,20 @@ ApplicationWindow {
 
         Column {
             anchors.centerIn: parent
-            spacing: 12
+            spacing: 12 * Tema.escala
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Conexión perdida — reconectando..."
                 color: "white"
-                font.pixelSize: 18
+                font.pixelSize: 18 * Tema.escala
                 font.bold: true
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: segundosReconexion + "s restantes"
-                color: ventana.colorTextoTenue
+                color: Tema.colorTextoTenue
+                font.pixelSize: 13 * Tema.escala
             }
         }
     }
@@ -3268,21 +2180,21 @@ ApplicationWindow {
             // Nunca más ancho que la ventana menos aire a los lados — con
             // hasta 9 jugadores en el showdown, la fila de abajo (Flow) ya
             // se encarga de partir en varias líneas si no caben en una.
-            width: Math.min(parent.width - 80 * ventana.escala, 900 * ventana.escala)
-            spacing: 18 * ventana.escala
+            width: Math.min(parent.width - 80 * Tema.escala, 900 * Tema.escala)
+            spacing: 18 * Tema.escala
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "SHOWDOWN"
-                color: ventana.colorAccent
+                color: Tema.colorAccent
                 font.letterSpacing: 3
-                font.pixelSize: 13
+                font.pixelSize: 13 * Tema.escala
                 font.bold: true
             }
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 6
+                spacing: 6 * Tema.escala
                 Repeater {
                     model: cartasMesa
                     delegate: Carta {
@@ -3292,126 +2204,88 @@ ApplicationWindow {
                 }
             }
 
+            // Caso normal (un solo bote, sin all-in de por medio): el
+            // número total ya lo dice todo, no hace falta desglosar nada.
             Text {
+                visible: resumenBotes.length <= 1
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Bote: " + boteActual
-                color: ventana.colorTextoTenue
-                font.family: ventana.fuenteElegante
+                color: Tema.colorTextoTenue
+                font.pixelSize: 13 * Tema.escala
+                font.family: Tema.fuenteElegante
+            }
+
+            // Con side pots (varios all-in de distinto tamaño en la misma
+            // mano) un solo número no dice quién compite por cuál — eso es
+            // justo lo que hace sentir "opaco" el reparto. Una línea por
+            // bote, compacta a propósito (puede haber 2-3 líneas más aquí
+            // encima de la fila de cartas, que ya usa bastante alto).
+            Column {
+                visible: resumenBotes.length > 1
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
+                spacing: 3 * Tema.escala
+
+                Repeater {
+                    model: resumenBotes
+                    delegate: Text {
+                        required property var modelData
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 12 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                        color: Tema.colorTextoTenue
+                        text: {
+                            var etiqueta = modelData.numBote === 0
+                                    ? "Bote principal" : "Side pot " + modelData.numBote;
+                            var linea = etiqueta + ": " + modelData.cantidad +
+                                    " — compiten " + modelData.competidores.join(", ");
+                            if (modelData.ganador !== "")
+                                linea += " · ganó " + modelData.ganador + " (+" + modelData.premioGanador + ")";
+                            return linea;
+                        }
+                    }
+                }
             }
 
             // Una tarjeta por jugador que llegó al showdown — los que se
             // retiraron antes ni aparecen aquí (nunca llega su
-            // MUESTRA_CARTAS). "Flow" en vez de "Row" para que con mesas
-            // grandes (hasta 9 jugadores) pase a una segunda línea en vez
-            // de salirse de la pantalla.
-            Flow {
+            // MUESTRA_CARTAS). Agrupadas a mano en filas de tamaño fijo, en
+            // vez de un "Flow": Flow empaqueta el contenido pegado a la
+            // izquierda de su propio ancho, así que en cuanto no cabía todo
+            // en una línea (mesas grandes) o quedaba una fila incompleta al
+            // final, esa fila salía descentrada hacia la izquierda en vez
+            // de centrada como el resto — bug real visto en pruebas. Cada
+            // fila es su propio "Row" con su propio anchors.horizontalCenter,
+            // así que se centra sola sin importar cuántos elementos tenga.
+            Column {
                 id: filaReveals
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 16 * ventana.escala
-                // "width: parent.width" dejaba el Flow pegado a la izquierda
-                // con hueco vacío a la derecha en cuanto había menos
-                // jugadores de los que caben en una línea (el caso normal:
-                // 2-6). En vez de eso, el ancho es justo el que ocupa el
-                // contenido — así el "anchors.horizontalCenter" de arriba sí
-                // centra la fila entera — salvo que no quepa, en cuyo caso
-                // se usa el ancho completo para que siga partiendo en varias
-                // líneas con 9 jugadores.
-                readonly property real anchoItem: 130 * ventana.escala
-                readonly property real anchoContenido: revealsShowdown.length * anchoItem +
-                        Math.max(0, revealsShowdown.length - 1) * spacing
-                width: Math.min(parent.width, anchoContenido)
+                spacing: 16 * Tema.escala
+
+                readonly property real anchoItem: 130 * Tema.escala
+                // Cuántas tarjetas caben en una fila sin salirse del ancho
+                // disponible — fórmula estándar de "cuántos ítems de ancho w
+                // con hueco g caben en un espacio W": floor((W+g)/(w+g)).
+                readonly property int itemsPorFila: Math.max(1, Math.floor(
+                        (parent.width + spacing) / (anchoItem + spacing)))
 
                 Repeater {
-                    model: revealsShowdown
-                    delegate: Rectangle {
-                        id: tarjetaReveal
-                        required property var modelData
-                        width: 130 * ventana.escala
-                        // Altura según el contenido, no fija — con
-                        // "cartas: []" (ganó sin showdown real, ver
-                        // repartirBotes()) la fila de cartas desaparece,
-                        // y una altura fija de sobra dejaba un hueco vacío
-                        // enorme en medio de la tarjeta.
-                        height: columnaTarjetaReveal.height + 28 * ventana.escala
-                        radius: 12
-                        color: modelData.esGanador ? Qt.rgba(0.75, 0.56, 0.24, 0.10) : "transparent"
-                        border.width: modelData.esGanador ? 2 : 1
-                        border.color: modelData.esGanador ? ventana.colorAccent : ventana.colorBorde
+                    model: Math.ceil(revealsShowdown.length / filaReveals.itemsPorFila)
+                    delegate: Row {
+                        required property int index
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: filaReveals.spacing
 
-                        Column {
-                            id: columnaTarjetaReveal
-                            anchors.centerIn: parent
-                            spacing: 8 * ventana.escala
-
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: tarjetaReveal.modelData.nombre
-                                color: tarjetaReveal.modelData.esGanador ? ventana.colorAccent : "white"
-                                font.bold: tarjetaReveal.modelData.esGanador
-                                font.family: ventana.fuenteElegante
-                            }
-                            Row {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                spacing: 4
-                                Repeater {
-                                    model: tarjetaReveal.modelData.cartas
-                                    delegate: Carta {
-                                        required property string modelData
-                                        codigo: modelData
-                                    }
-                                }
-                            }
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: tarjetaReveal.modelData.combo
-                                color: ventana.colorTextoTenue
-                                font.pixelSize: 11
-                            }
-                            Rectangle {
-                                visible: tarjetaReveal.modelData.esGanador
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: textoGanancia.implicitWidth + 16
-                                height: 20
-                                radius: 10
-                                color: ventana.colorAccent
-                                clip: true
-
-                                // Brillo animado — el único sitio "hero" del
-                                // programa donde se justifica (ver "Sistema
-                                // visual", sección 16): una franja clara que
-                                // cruza en diagonal cada pocos segundos.
-                                // Nunca en botones normales — ahí competiría
-                                // con lo que de verdad hay que mirar.
-                                Rectangle {
-                                    width: 10
-                                    height: parent.height * 2.4
-                                    rotation: 22
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: "transparent" }
-                                        GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.55) }
-                                        GradientStop { position: 1.0; color: "transparent" }
-                                    }
-                                    SequentialAnimation on x {
-                                        running: tarjetaReveal.modelData.esGanador
-                                        loops: Animation.Infinite
-                                        NumberAnimation {
-                                            from: -20; to: textoGanancia.implicitWidth + 30
-                                            duration: 1400; easing.type: Easing.InOutQuad
-                                        }
-                                        PauseAnimation { duration: 1800 }
-                                    }
-                                }
-
-                                Text {
-                                    id: textoGanancia
-                                    anchors.centerIn: parent
-                                    text: "+" + tarjetaReveal.modelData.premio
-                                    color: ventana.colorPanel
-                                    font.bold: true
-                                    font.pixelSize: 11
-                                }
+                        Repeater {
+                            model: revealsShowdown.slice(
+                                    index * filaReveals.itemsPorFila,
+                                    (index + 1) * filaReveals.itemsPorFila)
+                            delegate: TarjetaReveal {
+                                required property var modelData
+                                datos: modelData
                             }
                         }
                     }
@@ -3426,16 +2300,21 @@ ApplicationWindow {
             Column {
                 visible: votoAbierto
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
+                spacing: 10 * Tema.escala
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: mensajeVoto
-                    color: ventana.colorAccent
+                    color: Tema.colorAccent
                     font.bold: true
+                    font.pixelSize: 13 * Tema.escala
                 }
                 PanelVoto {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    soyHost: soyHost
+                    onContinuar: { votoAbierto = false; mensajeVoto = ""; }
+                    onAbandonar: votoAbierto = false
+                    onGuardarYSalir: votoAbierto = false
                 }
             }
         }
@@ -3462,7 +2341,7 @@ ApplicationWindow {
         id: cajonAjustes
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: 300 * ventana.escala
+        width: 300 * Tema.escala
         // Se desliza desde fuera de la ventana en vez de aparecer/desaparecer
         // de golpe — "x" en vez de "anchors.right" porque necesita animarse.
         x: ajustesAbiertos ? parent.width - width : parent.width
@@ -3475,8 +2354,8 @@ ApplicationWindow {
         border.width: 1
         border.color: Qt.rgba(0, 0, 0, 0.3)
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(ventana.colorPanel, 1.4) }
-            GradientStop { position: 1.0; color: ventana.colorPanel }
+            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+            GradientStop { position: 1.0; color: Tema.colorPanel }
         }
         z: 62
 
@@ -3486,53 +2365,53 @@ ApplicationWindow {
         ScrollView {
             id: scrollAjustes
             anchors.fill: parent
-            anchors.margins: 22 * ventana.escala
+            anchors.margins: 22 * Tema.escala
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
         Column {
             width: scrollAjustes.availableWidth
-            spacing: 20 * ventana.escala
+            spacing: 20 * Tema.escala
 
             Text {
                 text: "Ajustes"
                 color: "white"
-                font.family: ventana.fuenteElegante
-                font.pixelSize: 20
+                font.family: Tema.fuenteElegante
+                font.pixelSize: 20 * Tema.escala
             }
 
             Column {
                 width: parent.width
-                spacing: 10 * ventana.escala
+                spacing: 10 * Tema.escala
 
                 Text {
                     text: "TEMA DE COLOR"
-                    color: ventana.colorTextoMuyTenue
-                    font.pixelSize: 11
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
                 }
 
                 Repeater {
-                    model: ventana.temas
+                    model: Tema.temas
                     delegate: Rectangle {
                         id: filaTema
                         required property var modelData
                         required property int index
                         width: parent.width
-                        height: 52 * ventana.escala
-                        radius: 8
-                        color: ventana.temaActual === filaTema.index ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
-                        border.width: ventana.temaActual === filaTema.index ? 2 : 1
-                        border.color: ventana.temaActual === filaTema.index ? filaTema.modelData.accent : ventana.colorBorde
+                        height: 52 * Tema.escala
+                        radius: 8 * Tema.escala
+                        color: Tema.temaActual === filaTema.index ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
+                        border.width: Tema.temaActual === filaTema.index ? 2 : 1
+                        border.color: Tema.temaActual === filaTema.index ? filaTema.modelData.accent : Tema.colorBorde
 
                         Row {
                             anchors.fill: parent
-                            anchors.margins: 10 * ventana.escala
-                            spacing: 12 * ventana.escala
+                            anchors.margins: 10 * Tema.escala
+                            spacing: 12 * Tema.escala
 
                             Rectangle {
-                                width: 30 * ventana.escala
-                                height: 30 * ventana.escala
+                                width: 30 * Tema.escala
+                                height: 30 * Tema.escala
                                 radius: width / 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: filaTema.modelData.tapete
@@ -3542,13 +2421,14 @@ ApplicationWindow {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: filaTema.modelData.nombre
-                                color: ventana.temaActual === filaTema.index ? "white" : ventana.colorTextoTenue
-                                font.bold: ventana.temaActual === filaTema.index
+                                color: Tema.temaActual === filaTema.index ? "white" : Tema.colorTextoTenue
+                                font.bold: Tema.temaActual === filaTema.index
+                                font.pixelSize: 13 * Tema.escala
                             }
                         }
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: ventana.temaActual = filaTema.index
+                            onClicked: Tema.temaActual = filaTema.index
                         }
                     }
                 }
@@ -3558,36 +2438,43 @@ ApplicationWindow {
             Column {
                 width: parent.width
                 visible: pantalla === "Partida"
-                spacing: 10 * ventana.escala
+                spacing: 10 * Tema.escala
 
                 Text {
                     text: "MESA ACTUAL"
-                    color: ventana.colorTextoMuyTenue
-                    font.pixelSize: 11
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
                 }
 
                 Repeater {
+                    // "Código de invitación" solo se añade si la sala es
+                    // privada (codigoSalaPropia no vacío) — antes este dato
+                    // solo se veía en la pantalla de Lobby y desaparecía en
+                    // cuanto arrancaba la partida, así que si alguien se
+                    // unía después no había forma de recuperarlo.
                     model: [
                         { etiqueta: "Ciega actual", valor: Math.round(ciegaActual / 2) + " / " + ciegaActual },
                         { etiqueta: "Mano", valor: manoActual + " / " + objetivoManos },
                         { etiqueta: "Tipo de límite", valor: ["Sin límite", "Límite bote", "Límite fijo"][tipoLimiteActual] || "—" },
                         { etiqueta: "Permite recompra", valor: permitirRecompraActual ? "Sí" : "No" },
                         { etiqueta: "Rellena con bots", valor: rellenarConBotsActual ? "Sí" : "No" }
-                    ]
+                    ].concat(codigoSalaPropia !== ""
+                        ? [{ etiqueta: "Código de invitación", valor: codigoSalaPropia }]
+                        : [])
                     delegate: Row {
                         required property var modelData
                         width: parent.width
                         Text {
-                            width: parent.width - 80 * ventana.escala
+                            width: parent.width - 80 * Tema.escala
                             text: modelData.etiqueta
-                            color: ventana.colorTextoTenue
-                            font.pixelSize: 12
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 12 * Tema.escala
                         }
                         Text {
                             text: modelData.valor
                             color: "white"
-                            font.pixelSize: 12
+                            font.pixelSize: 12 * Tema.escala
                             font.bold: true
                             horizontalAlignment: Text.AlignRight
                         }
@@ -3598,12 +2485,12 @@ ApplicationWindow {
             // ── Cliente ────────────────────────────────────────────────────
             Column {
                 width: parent.width
-                spacing: 10 * ventana.escala
+                spacing: 10 * Tema.escala
 
                 Text {
                     text: "CLIENTE"
-                    color: ventana.colorTextoMuyTenue
-                    font.pixelSize: 11
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
                 }
 
@@ -3613,7 +2500,8 @@ ApplicationWindow {
                         width: parent.width - 46
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Sonido de notificaciones"
-                        color: ventana.colorTextoTenue
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
                     Interruptor {
@@ -3628,7 +2516,8 @@ ApplicationWindow {
                         width: parent.width - 46
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Confirmar antes de ALL-IN"
-                        color: ventana.colorTextoTenue
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
                     Interruptor {
@@ -3637,13 +2526,51 @@ ApplicationWindow {
                         onAlternado: confirmarAllIn = !confirmarAllIn
                     }
                 }
+                Row {
+                    width: parent.width
+                    spacing: 8 * Tema.escala
+                    Text {
+                        width: parent.width - 118 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Tamaño de la interfaz"
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
+                        wrapMode: Text.WordWrap
+                    }
+                    // Mismo control que Ctrl+/Ctrl-/Ctrl+0 (ver Main.qml,
+                    // Shortcut) — para quien no conozca el atajo de
+                    // teclado o esté en una máquina donde no funcione.
+                    // Sin width/height explícitos: igual que cualquier
+                    // otro BotonContorno, su tamaño lo da el padding/font
+                    // ya escalados — fijarlo a 32x32 recortaría el glifo
+                    // a zoom alto, porque el texto interior sí crece.
+                    BotonContorno {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "−"
+                        onClicked: Tema.bajarZoom()
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 40
+                        horizontalAlignment: Text.AlignHCenter
+                        text: Math.round(Tema.zoomManual * 100) + "%"
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.pixelSize: 13 * Tema.escala
+                    }
+                    BotonContorno {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "+"
+                        onClicked: Tema.subirZoom()
+                    }
+                }
 
                 // Chuleta de manos — acordeón simple, plegado por defecto.
                 // Pensado para amigos con distinto nivel de experiencia
                 // jugando en la misma mesa.
                 Column {
                     width: parent.width
-                    spacing: 8 * ventana.escala
+                    spacing: 8 * Tema.escala
                     Item {
                         // Antes el MouseArea era hijo del Row de arriba —
                         // un Row coloca a sus hijos EN FILA, así que el
@@ -3656,16 +2583,17 @@ ApplicationWindow {
                         Row {
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 6
+                            spacing: 6 * Tema.escala
                             Text {
                                 id: textoRanking
                                 text: "Ranking de manos"
-                                color: ventana.colorTextoTenue
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 13 * Tema.escala
                             }
                             Text {
                                 text: chuletaAbierta ? "▲" : "▼"
-                                color: ventana.colorTextoMuyTenue
-                                font.pixelSize: 10
+                                color: Tema.colorTextoMuyTenue
+                                font.pixelSize: 10 * Tema.escala
                             }
                         }
                         MouseArea {
@@ -3679,7 +2607,7 @@ ApplicationWindow {
                     Column {
                         width: parent.width
                         visible: chuletaAbierta
-                        spacing: 10 * ventana.escala
+                        spacing: 10 * Tema.escala
                         Repeater {
                             model: [
                                 { nombre: "1. Escalera Real", cartas: ["AS", "KS", "QS", "JS", "TS"] },
@@ -3697,15 +2625,15 @@ ApplicationWindow {
                                 required property var modelData
                                 required property int index
                                 width: parent.width
-                                spacing: 4 * ventana.escala
+                                spacing: 4 * Tema.escala
                                 Text {
                                     text: modelData.nombre
-                                    color: index < 3 ? ventana.colorAccent : ventana.colorTextoTenue
+                                    color: index < 3 ? Tema.colorAccent : Tema.colorTextoTenue
                                     font.bold: index < 3
-                                    font.pixelSize: 12
+                                    font.pixelSize: 12 * Tema.escala
                                 }
                                 Row {
-                                    spacing: 3 * ventana.escala
+                                    spacing: 3 * Tema.escala
                                     Repeater {
                                         model: modelData.cartas
                                         delegate: Carta {
@@ -3717,8 +2645,8 @@ ApplicationWindow {
                                             // que cabe sin desbordar el cajón (300 de
                                             // ancho, 22 de margen a cada lado): 5 cartas
                                             // + 4 huecos de separación ≤ 256.
-                                            width: 46 * ventana.escala
-                                            height: 64 * ventana.escala
+                                            width: 46 * Tema.escala
+                                            height: 64 * Tema.escala
                                         }
                                     }
                                 }

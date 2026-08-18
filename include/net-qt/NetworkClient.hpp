@@ -212,6 +212,11 @@ class NetworkClient : public QObject {
   void esMiTurno(int bote, int igualar, int miSaldo, int miApuesta, int timeoutMs, int minSubida,
                  int maxSubida, QString c1, QString c2, QString comboActual,
                  QString comboProbable, QString comboMaxima);
+  /// COMBO_UPDATE: el servidor ya lo manda en cada turno (de cualquiera,
+  /// no solo el propio) para que la predicción de mano no se quede
+  /// congelada hasta que vuelva a tocarte — antes se ignoraba en el
+  /// cliente, que solo actualizaba comboActual/etc. dentro de esMiTurno().
+  void comboActualizado(QString actual, QString probable, QString maxima);
   void esperandoVoto(QString mensaje);
   void esperandoVotoExtension(QString mensaje, int manos);
   void mesaActualizada(QString mesa);
@@ -247,10 +252,15 @@ class NetworkClient : public QObject {
   /// Empieza el showdown — cartasCsv son las comunitarias finales
   /// ("AS,KH,..."). Dispara la pantalla dedicada en Main.qml.
   void showdownIniciado(QString cartasCsv);
+  /// Se empieza a resolver un bote (0 = principal, 1+ = side pots) — antes
+  /// de saber quién gana. "jugadoresCsv": nombres de quienes compiten por
+  /// ESTE bote en concreto, separados por comas — para mostrar de forma
+  /// transparente quién puede ganarlo, no solo el monto.
+  void boteEvaluado(int numBote, int cantidad, QString jugadoresCsv);
   /// Un jugador enseña su mano en el showdown (cartasCsv: "AS,KH").
   void cartasMostradas(QString jugador, QString cartasCsv, QString combo);
   /// Un jugador se lleva un bote (principal o side pot) en el showdown.
-  void boteGanado(QString jugador, int premio, QString combo);
+  void boteGanado(QString jugador, int premio, int numBote, QString combo);
   /// Todos se retiraron menos uno — se lleva el bote sin mostrar cartas
   /// (no hay MUESTRA_CARTAS). Main.qml reutiliza el overlay de showdown
   /// para este caso también, con una única tarjeta sin cartas.
@@ -544,11 +554,18 @@ class NetworkClient : public QObject {
             } else if (evento == "EVALUANDO_BOTE") {
               int numBote = net::jsonGetInt(payload, "num_bote");
               int cantidad = net::jsonGetInt(payload, "cantidad");
+              // "jugadores" es un campo de texto libre (nombres separados
+              // por comas) — va último en el payload por la misma razón de
+              // siempre en este protocolo (evitar que un nombre con
+              // caracteres raros desalinee campos numéricos detrás suyo).
+              QString jugadoresCsv =
+                  QString::fromStdString(net::jsonGetStr(payload, "jugadores"));
               QString linea = numBote == 0
                                   ? "── Bote principal (" + QString::number(cantidad) + ")"
                                   : "── Side pot " + QString::number(numBote) + " (" +
                                         QString::number(cantidad) + ")";
               emit eventoJuego(linea, "showdown");
+              emit boteEvaluado(numBote, cantidad, jugadoresCsv);
             } else if (evento == "MUESTRA_CARTAS") {
               QString jugador =
                   QString::fromStdString(net::jsonGetStr(payload, "jugador"));
@@ -561,9 +578,10 @@ class NetworkClient : public QObject {
                   QString::fromStdString(net::jsonGetStr(payload, "jugador"));
               QString combo = QString::fromStdString(net::jsonGetStr(payload, "combo"));
               int premio = net::jsonGetInt(payload, "premio");
+              int numBote = net::jsonGetInt(payload, "num_bote");
               emit eventoJuego(": +" + QString::number(premio) + "  (" + combo + ")",
                                 "showdown", jugador);
-              emit boteGanado(jugador, premio, combo);
+              emit boteGanado(jugador, premio, numBote, combo);
             } else if (evento == "GANADOR_SIN_SHOWDOWN") {
               QString jugador =
                   QString::fromStdString(net::jsonGetStr(payload, "jugador"));
@@ -616,9 +634,18 @@ class NetworkClient : public QObject {
             } else if (evento == "PARTIDA_GUARDADA") {
               QString archivo = QString::fromStdString(net::jsonGetStr(payload, "archivo"));
               emit partidaGuardada(archivo);
+            } else if (evento == "COMBO_UPDATE") {
+              // BUG corregido: esto caía en el "else" de abajo y se
+              // ignoraba sin más — la predicción de mano solo se
+              // actualizaba dentro de esMiTurno(), así que se quedaba
+              // congelada hasta que volvía a tocarte, en cada ronda.
+              QString actual = QString::fromStdString(net::jsonGetStr(payload, "combo_actual"));
+              QString probable = QString::fromStdString(net::jsonGetStr(payload, "combo_probable"));
+              QString maxima = QString::fromStdString(net::jsonGetStr(payload, "combo_maxima"));
+              emit comboActualizado(actual, probable, maxima);
             } else {
               // Antes esto volcaba el nombre crudo del evento al historial
-              // ("COMUNITARIAS", "COMBO_UPDATE"...) para CUALQUIER tipo no
+              // ("COMUNITARIAS"...) para CUALQUIER tipo no
               // contemplado explícitamente arriba — ruido garantizado cada
               // vez que se añadía un evento nuevo al protocolo sin acordarse
               // de tratarlo aquí. Mejor lista blanca: lo que no se reconoce
