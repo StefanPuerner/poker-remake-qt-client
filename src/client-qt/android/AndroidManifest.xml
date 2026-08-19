@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!--
+    AndroidManifest.xml de PokerClientMobile.
+
+    OJO: en el workflow de CI (build-android-dev.yml) este fichero se
+    SOBREESCRIBE en tiempo de build con la plantilla real que trae el
+    propio kit de Qt para Android instalado ahí (src/android/templates/
+    AndroidManifest.xml), parcheada solo con el paquete/nombre de la app
+    y el bloqueo a horizontal — se descubrió que esta versión escrita a
+    mano (de memoria, sin tener nunca un Qt-para-Android real a mano)
+    tenía referencias @array/... que no coincidían con lo que
+    androiddeployqt genera de verdad para Qt 6.7.3 ("resource ... not
+    found" al enlazar). Se deja aquí igualmente como referencia/punto de
+    partida para builds locales fuera de ese workflow.
+
+    Los dos cambios a propósito sobre la plantilla base de Qt:
+      - android:screenOrientation="landscape": decisión ya tomada (ver
+        memoria del proyecto, plan móvil) — el primer cliente móvil es
+        horizontal puro, sin soporte vertical.
+      - android:label/nombre del paquete: identifican esta app en concreto
+        en vez del placeholder genérico de la plantilla.
+-->
+<manifest package="com.pokerremake.clientmobile" xmlns:android="http://schemas.android.com/apk/res/android" android:versionName="0.1" android:versionCode="1" android:installLocation="auto">
+    <application android:name="org.qtproject.qt.android.bindings.QtApplication" android:label="PokerRemake" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:appCategory="game" android:extractNativeLibs="true" android:hardwareAccelerated="true" android:requestLegacyExternalStorage="true">
+        <activity android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density" android:name="org.qtproject.qt.android.bindings.QtActivity" android:label="PokerRemake" android:screenOrientation="landscape" android:windowLayoutInDisplayCutoutMode="always" android:launchMode="singleTop" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <meta-data android:name="android.app.lib_name" android:value="PokerClientMobile"/>
+            <meta-data android:name="android.app.qt_sources_resource_id" android:resource="@array/qt_sources"/>
+            <meta-data android:name="android.app.repository" android:value="default"/>
+            <meta-data android:name="android.app.qt_libs_resource_id" android:resource="@array/qt_libs"/>
+            <meta-data android:name="android.app.bundled_libs_resource_id" android:resource="@array/bundled_libs"/>
+            <meta-data android:name="android.app.bundle_local_qt_libs" android:value="1"/>
+            <meta-data android:name="android.app.bundled_in_lib_resource_id" android:resource="@array/bundled_in_lib"/>
+            <meta-data android:name="android.app.bundled_in_assets_resource_id" android:resource="@array/bundled_in_assets"/>
+            <meta-data android:name="android.app.background_running" android:value="false"/>
+            <meta-data android:name="android.app.auto_screen_scale_factor" android:value="true"/>
+        </activity>
+    </application>
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <supports-screens android:largeScreens="true" android:normalScreens="true" android:anyDensity="true" android:smallScreens="true"/>
+</manifest>

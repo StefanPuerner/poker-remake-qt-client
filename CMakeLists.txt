@@ -72,20 +72,31 @@ else()
     target_compile_options(PokerClientQt PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-# ── PokerClientMobile — interfaz táctil/landscape (de momento, binario de
-#  escritorio normal como el de arriba; el empaquetado a APK de Android es
-#  un paso aparte, todavía no incluido en este repo). Árbol QML separado
-#  de PokerClientQt: reutiliza solo la capa de red (NetworkClient.hpp), el
-#  resto de componentes parte de cero en qml-mobile/ pensado para tamaños
-#  de objetivo táctil, feedback "pressed" en vez de hover, y tipografía a
-#  la densidad de un móvil. URI distinto (PokerQuickMobile en vez de
-#  PokerQuick) para evitar colisión de carpetas en el directorio de build.
+# ── PokerClientMobile — interfaz táctil/landscape. En Linux/escritorio es
+#  un binario normal, igual que PokerClientQt; al cross-compilar para
+#  Android (ver build-android.yml) se empaqueta como APK. Árbol QML
+#  separado de PokerClientQt: reutiliza solo la capa de red
+#  (NetworkClient.hpp), el resto de componentes parte de cero en
+#  qml-mobile/ pensado para tamaños de objetivo táctil, feedback "pressed"
+#  en vez de hover, y tipografía a la densidad de un móvil. URI distinto
+#  (PokerQuickMobile en vez de PokerQuick) para evitar colisión de
+#  carpetas en el directorio de build.
 qt_add_executable(PokerClientMobile
     src/client-qt/main-mobile.cpp
     src/net/Protocol.cpp
     include/net-qt/NetworkClient.hpp
 )
 set_target_properties(PokerClientMobile PROPERTIES AUTOMOC ON)
+
+# Solo importa al cross-compilar para Android (androiddeployqt la lee para
+# generar el APK) — en Linux/escritorio esta propiedad simplemente no se
+# usa. Fija el bloqueo a horizontal y de dónde salen manifest/iconos.
+if(ANDROID)
+    set_target_properties(PokerClientMobile PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/client-qt/android
+        QT_ANDROID_MIN_SDK_VERSION 28
+    )
+endif()
 
 # Mismo motivo que el Tema.qml de escritorio más arriba.
 set_source_files_properties(src/client-qt/qml-mobile/Tema.qml

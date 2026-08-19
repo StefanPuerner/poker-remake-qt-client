@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono adaptativo (Android 8+/API 26+), el sistema lo prefiere por
+     encima de los PNG planos de res/mipmap-*/ic_launcher.png en cuanto
+     existe uno (calificador "-anydpi-v26", más específico que "-v4").
+     Sin este fichero, si la plantilla de Qt trae el suyo propio con
+     referencias que no encajan con lo que se sobreescribió a mano, la
+     resolución del icono puede fallar del todo y Android cae al icono
+     roto genérico, visto en real en el launcher. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>

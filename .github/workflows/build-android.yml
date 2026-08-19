@@ -1,0 +1,201 @@
+# Igual que build-windows.yml/build-linux.yml, pero para Android: compila
+# PokerClientMobile cross-compilado y lo empaqueta como .apk dentro de un
+# .zip descargable, adjunto al Release al subir una etiqueta v*.
+#
+# Por qué dos instalaciones de Qt6 (desktop Y android): androiddeployqt
+# cross-compila el binario para el móvil, pero moc/rcc/qmlcachegen (las
+# herramientas que generan código C++ a partir de QML/.hpp con Q_OBJECT)
+# tienen que CORRER en el runner (Linux x86_64), no en el móvil — el kit
+# de Qt para Android no las trae utilizables directamente para eso.
+# QT_HOST_PATH le dice a CMake dónde están esas herramientas host.
+#
+# Por qué Qt 6.7.3 y no una versión más reciente (6.8/6.9): investigado a
+# fondo (reproducido en local con aqtinstall, la misma herramienta que usa
+# install-qt-action) — aunque los paquetes de Qt 6.8+ para Android SÍ
+# existen en el servidor de Qt, el catálogo interno de aqtinstall
+# (combinations.json) no los tiene registrados todavía para host=linux —
+# cualquier versión 6.8+ falla con "No versions of Qt exist for spec"
+# antes de intentar descargar nada. 6.7.3 es la más reciente que el
+# catálogo sí reconoce.
+#
+# El APK sale firmado con el keystore de depuración automático de Gradle
+# (no hay firma de código real todavía, mismo motivo por el que Windows
+# reparte un .zip portable en vez de un instalador — ver ese workflow):
+# instalable y jugable, pero Android lo marcará como "de un desarrollador
+# desconocido" al instalar fuera de una tienda.
+
+name: Build Android
+
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK (lo necesita Gradle, que empaqueta el APK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar el SDK de Android (cmdline-tools, platform-tools, licencias)
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar el NDK (versión fija, compatible con Qt 6.7.3)
+        run: sdkmanager --install "ndk;26.1.10909125"
+
+      # El runner de GitHub Actions trae VARIAS plataformas de Android
+      # preinstaladas de fábrica, y androiddeployqt elige sola "la más
+      # nueva que encuentre" sin mirar ninguna propiedad de CMake --
+      # perseguir sus nombres uno a uno no funciona (probado: android-36
+      # y android-35 con sufijo "-ext" fallan porque aapt2 no entiende ese
+      # formato; "android-37" no es ni un paquete instalado de verdad).
+      # En vez de seguir filtrando por patrones de nombre, se borra el
+      # contenido de platforms/ y se deja SOLO android-34 -- sea lo que
+      # sea que el runner traiga de fábrica, no hay nada más entre lo que
+      # "elegir la más nueva" pueda equivocarse.
+      - name: Instalar la plataforma SDK 34 y dejar SOLO esa en platforms/
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
+          for dir in "$ANDROID_SDK_ROOT"/platforms/*/; do
+            nombre="$(basename "$dir")"
+            if [ "$nombre" != "android-34" ]; then
+              echo "Quitando $nombre..."
+              rm -rf "$dir"
+            fi
+          done
+          echo "Plataformas instaladas tras el ajuste:"
+          ls "$ANDROID_SDK_ROOT/platforms/"
+
+      # El runner trae /etc/apt/apt-mirrors.txt con el mirror de Azure
+      # primero -- cuando ese mirror está caído, apt sigue intentándolo
+      # varios minutos antes de caer al archive.ubuntu.com canónico. Esto
+      # no arregla el mirror de Azure (infraestructura de GitHub) -- solo
+      # deja de esperarlo, yendo directos al mirror fiable.
+      - name: Saltarse el mirror de Azure si está caído (evita minutos perdidos en apt-get update)
+        run: echo "http://archive.ubuntu.com/ubuntu" | sudo tee /etc/apt/apt-mirrors.txt
+
+      - name: Instalar Qt6 para escritorio (moc/rcc/qmlcachegen — corren en el runner, no en el móvil)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          host: 'linux'
+          target: 'desktop'
+          dir: '${{ github.workspace }}/qt'
+          set-env: false
+
+      - name: Instalar Qt6 para Android (arm64-v8a)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          host: 'linux'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          dir: '${{ github.workspace }}/qt'
+
+      # Se usa la plantilla real de AndroidManifest.xml del propio kit de
+      # Qt para Android (la que se sabe que su androiddeployqt rellena
+      # bien) en vez del fichero versionado en el repo, y se le aplican
+      # encima solo los cambios que de verdad queremos: paquete/nombre de
+      # la app, orientación horizontal bloqueada, iconos, categoría, y el
+      # recorte de pantalla (windowLayoutInDisplayCutoutMode) -- todo con
+      # comprobación de "ya existe" antes de insertar, para no dejar
+      # nunca un atributo duplicado (aapt2 lo descarta en silencio en vez
+      # de fallar, un bug real ya cazado con ese patrón).
+      - name: Usar la plantilla real de AndroidManifest.xml del propio Qt
+        run: |
+          PLANTILLA="$QT_ROOT_DIR/src/android/templates/AndroidManifest.xml"
+          if [ ! -f "$PLANTILLA" ]; then
+            echo "No se encontró la plantilla en $PLANTILLA -- buscando alternativas:"
+            find "$QT_ROOT_DIR" -iname "AndroidManifest.xml"
+            exit 1
+          fi
+          DESTINO="src/client-qt/android/AndroidManifest.xml"
+          cp "$PLANTILLA" "$DESTINO"
+          sed -i 's/package="[^"]*"/package="com.pokerremake.clientmobile"/' "$DESTINO"
+          sed -i 's/android:label="[^"]*"/android:label="PokerRemake"/g' "$DESTINO"
+          if ! grep -q 'android:icon=' "$DESTINO"; then
+            sed -i 's#<application #<application android:icon="@mipmap/ic_launcher" #' "$DESTINO"
+          fi
+          if ! grep -q 'android:roundIcon=' "$DESTINO"; then
+            sed -i 's#<application #<application android:roundIcon="@mipmap/ic_launcher_round" #' "$DESTINO"
+          fi
+          if ! grep -q 'android:appCategory=' "$DESTINO"; then
+            sed -i 's#<application #<application android:appCategory="game" #' "$DESTINO"
+          fi
+          sed -i 's/<activity /<activity android:screenOrientation="landscape" /' "$DESTINO"
+
+          if grep -q 'android:windowLayoutInDisplayCutoutMode="[^"]*"' "$DESTINO"; then
+            sed -i 's/android:windowLayoutInDisplayCutoutMode="[^"]*"/android:windowLayoutInDisplayCutoutMode="always"/' "$DESTINO"
+          else
+            sed -i 's/<activity /<activity android:windowLayoutInDisplayCutoutMode="always" /' "$DESTINO"
+          fi
+          if ! grep -q 'android:windowLayoutInDisplayCutoutMode="always"' "$DESTINO"; then
+            echo "AVISO: windowLayoutInDisplayCutoutMode sigue sin quedar en \"always\" tras el parche -- revisar a mano."
+          fi
+
+          if ! grep -q "android.permission.INTERNET" "$DESTINO"; then
+            sed -i 's#</manifest>#    <uses-permission android:name="android.permission.INTERNET"/>\n</manifest>#' "$DESTINO"
+          fi
+          echo "AndroidManifest.xml final:"
+          cat "$DESTINO"
+
+      # "qt-cmake" (el script que trae el propio kit de Qt para Android) en
+      # vez de "cmake" a secas con --toolchain a mano: encadena el
+      # toolchain del NDK con las rutas de Qt correctamente -- es la forma
+      # oficial de Qt de configurar CMake para Android.
+      - name: Configurar CMake (cross-compilando para Android)
+        run: |
+          QT_HOST_DIR="${{ github.workspace }}/qt/Qt/6.7.3/gcc_64"
+          if [ ! -d "$QT_HOST_DIR" ]; then
+            echo "QT_HOST_DIR no existe en la ruta esperada: $QT_HOST_DIR"
+            find "${{ github.workspace }}/qt" -maxdepth 4 -type d
+            exit 1
+          fi
+          NDK_DIR="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          # CMAKE_BUILD_TYPE=Debug, no RelWithDebInfo como en los otros
+          # workflows: Qt lo traduce a la variante "release" de Gradle en
+          # Android, y un release SIN keystore de firma configurado
+          # (no tenemos ninguno) produce un APK sin firmar -- exactamente
+          # lo que Android rechaza al instalar. La variante debug la firma
+          # Gradle solo, con un keystore de depuración automático.
+          "$QT_ROOT_DIR/bin/qt-cmake" -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DQT_HOST_PATH="$QT_HOST_DIR" \
+            -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+            -DANDROID_NDK_ROOT="$NDK_DIR"
+
+      - name: Compilar y empaquetar el APK
+        run: cmake --build build --target PokerClientMobile_make_apk -j$(nproc)
+
+      # Un solo .apk esperado bajo build/ -- se copia con un nombre fijo y
+      # legible antes de comprimir, en vez de arrastrar la ruta larga que
+      # genera Gradle (.../build/outputs/apk/debug/android-build-debug.apk).
+      - name: Empaquetar el APK en un .zip descargable
+        run: |
+          APK=$(find build -iname "*.apk" | head -1)
+          if [ -z "$APK" ]; then echo "No se encontró ningún .apk bajo build/"; exit 1; fi
+          mkdir -p dist-android
+          cp "$APK" dist-android/PokerRemake.apk
+          cd dist-android && zip -r ../PokerRemake-Android-arm64.zip PokerRemake.apk
+
+      - name: Subir el .zip como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokerRemake-Android
+          path: PokerRemake-Android-arm64.zip
+
+      - name: Adjuntar al Release de GitHub
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PokerRemake-Android-arm64.zip

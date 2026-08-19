@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Color de fondo de la capa "background" del icono adaptativo (Android
+     8+, res/mipmap-anydpi-v26/ic_launcher.xml), el mismo verde oscuro
+     del propio icono/tema de la app, para que quede continuo detrás de
+     la capa "foreground" recortada por la máscara del launcher. -->
+<resources>
+    <color name="ic_launcher_background">#0B1A14</color>
+</resources>
