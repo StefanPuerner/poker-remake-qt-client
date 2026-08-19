@@ -26,6 +26,17 @@ jobs:
       - name: Clonar el repositorio
         uses: actions/checkout@v4
 
+      # El runner trae /etc/apt/apt-mirrors.txt con el mirror de Azure
+      # primero -- install-qt-action llama a "apt-get update" por su
+      # cuenta antes de instalar Qt, y cuando ese mirror está caído sigue
+      # intentándolo (varias líneas "Ign:" repetidas por cada fuente)
+      # antes de caer al archive.ubuntu.com canónico, perdiendo varios
+      # minutos por el camino (mismo problema ya visto y arreglado en el
+      # workflow de Android). No arregla el mirror de Azure
+      # (infraestructura de GitHub, no nuestra) -- solo deja de esperarlo.
+      - name: Saltarse el mirror de Azure si está caído (evita minutos perdidos en apt-get update)
+        run: echo "http://archive.ubuntu.com/ubuntu" | sudo tee /etc/apt/apt-mirrors.txt
+
       # Misma acción que en Windows, mismo Qt — solo cambia "host" a linux.
       - name: Instalar Qt6
         uses: jurplel/install-qt-action@v4
