@@ -72,4 +72,65 @@ else()
     target_compile_options(PokerClientQt PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# ── PokerClientMobile — interfaz táctil/landscape (de momento, binario de
+#  escritorio normal como el de arriba; el empaquetado a APK de Android es
+#  un paso aparte, todavía no incluido en este repo). Árbol QML separado
+#  de PokerClientQt: reutiliza solo la capa de red (NetworkClient.hpp), el
+#  resto de componentes parte de cero en qml-mobile/ pensado para tamaños
+#  de objetivo táctil, feedback "pressed" en vez de hover, y tipografía a
+#  la densidad de un móvil. URI distinto (PokerQuickMobile en vez de
+#  PokerQuick) para evitar colisión de carpetas en el directorio de build.
+qt_add_executable(PokerClientMobile
+    src/client-qt/main-mobile.cpp
+    src/net/Protocol.cpp
+    include/net-qt/NetworkClient.hpp
+)
+set_target_properties(PokerClientMobile PROPERTIES AUTOMOC ON)
+
+# Mismo motivo que el Tema.qml de escritorio más arriba.
+set_source_files_properties(src/client-qt/qml-mobile/Tema.qml
+                             src/client-qt/qml-mobile/EstadoOverlays.qml PROPERTIES
+    QT_QML_SINGLETON_TYPE TRUE
+)
+
+qt_add_qml_module(PokerClientMobile
+    URI PokerQuickMobile
+    VERSION 1.0
+    NO_CACHEGEN
+    QML_FILES
+        src/client-qt/qml-mobile/Main.qml
+        src/client-qt/qml-mobile/Tema.qml
+        src/client-qt/qml-mobile/EstadoOverlays.qml
+        src/client-qt/qml-mobile/BotonContorno.qml
+        src/client-qt/qml-mobile/BotonRelleno.qml
+        src/client-qt/qml-mobile/TecladoNumerico.qml
+        src/client-qt/qml-mobile/CampoEmergente.qml
+        src/client-qt/qml-mobile/SelectorNumerico.qml
+        src/client-qt/qml-mobile/Interruptor.qml
+        src/client-qt/qml-mobile/SelectorPildoras.qml
+        src/client-qt/qml-mobile/BarraSuperior.qml
+        src/client-qt/qml-mobile/IconoAjustes.qml
+        src/client-qt/qml-mobile/CabeceraPullRefrescar.qml
+        src/client-qt/qml-mobile/AsientoMini.qml
+        src/client-qt/qml-mobile/ChatBox.qml
+        src/client-qt/qml-mobile/Carta.qml
+        src/client-qt/qml-mobile/Asiento.qml
+        src/client-qt/qml-mobile/Mesa.qml
+        src/client-qt/qml-mobile/CajonPartida.qml
+        src/client-qt/qml-mobile/PanelVoto.qml
+        src/client-qt/qml-mobile/TarjetaReveal.qml
+        src/client-qt/qml-mobile/ChuletaFlotante.qml
+    RESOURCES
+        assets/fonts/EBGaramond.ttf
+)
+
+target_include_directories(PokerClientMobile PRIVATE include)
+target_link_libraries(PokerClientMobile PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+
+if(MSVC)
+    target_compile_options(PokerClientMobile PRIVATE /W4)
+else()
+    target_compile_options(PokerClientMobile PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 message(STATUS "Configuración de PokerRemakeQtClient completada con éxito.")
