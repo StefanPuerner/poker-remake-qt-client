@@ -59,6 +59,29 @@ jobs:
           cp pokerremake.desktop AppDir/usr/share/applications/
           cp assets/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/pokerremake.png
 
+      # linuxdeploy no empaqueta el plugin de plataforma "wayland" de Qt
+      # (el runner no tiene una sesión Wayland de la que copiarlo -- no es
+      # cuestión de pedírselo con una variable, los ficheros del plugin ni
+      # siquiera están accesibles para copiar en un runner headless), así
+      # que en cualquier sesión Wayland real (Hyprland, GNOME, KDE...) que
+      # exporte QT_QPA_PLATFORM=wayland, la app fallaba en seco al no
+      # encontrar ese plugin dentro del AppImage (confirmado extrayendo un
+      # AppImage real: cero ficheros libqwayland-*.so empaquetados). Y
+      # forzando xcb a mano sin más, Qt elegía por defecto la integración
+      # GLX (frágil bajo XWayland, "Failed to create dummy context"
+      # reproducido en real) en vez de EGL, que sí funciona. Este hook lo
+      # ejecuta el AppRun que genera linuxdeploy ANTES de lanzar el
+      # binario -- "${VAR:-...}" para no pisar nada si quien lo ejecuta ya
+      # trae sus propias variables. Mismo fix ya validado en el repo
+      # privado (build-appimage-dev.yml).
+      - name: Forzar XWayland+EGL en el AppImage (evita el plugin wayland ausente y el fallo de GLX)
+        run: |
+          mkdir -p AppDir/apprun-hooks
+          cat > AppDir/apprun-hooks/linuxdeploy-plugin-qt-egl.sh << 'EOF'
+          export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
+          export QT_XCB_GL_INTEGRATION="${QT_XCB_GL_INTEGRATION:-xcb_egl}"
+          EOF
+
       # QML_SOURCES_PATHS le dice al plugin de Qt dónde mirar los .qml
       # fuente para averiguar qué módulos de Qt Quick hacen falta bundlear
       # (Controls, etc.) — lo mismo que hicimos ayer a mano.
