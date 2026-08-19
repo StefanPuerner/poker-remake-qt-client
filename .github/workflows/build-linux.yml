@@ -44,6 +44,11 @@ jobs:
           version: '6.8.*'
           host: 'linux'
           target: 'desktop'
+          # Multimedia es un módulo ADICIONAL (no viene con "desktop" a
+          # secas) -- PokerClientQt lo necesita para el sonido de "tu
+          # turno" (ver CMakeLists.txt). Sin esto, find_package(Qt6
+          # REQUIRED COMPONENTS Multimedia) aborta el configure entero.
+          modules: 'qtmultimedia'
 
       - name: Configurar CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo

@@ -120,12 +120,20 @@ Rectangle {
                 border.width: 1
                 border.color: textoChat.activeFocus ? Tema.colorAccent : Tema.colorBorde
             }
+            // Antes había que Tab + Espacio hasta "Enviar" tras escribir
+            // — Enter manda el mensaje directamente, igual que en móvil.
+            onAccepted: botonEnviar.clicked()
         }
         BotonRelleno {
             id: botonEnviar
             height: 44 * Tema.escala
             text: "Enviar"
             onClicked: {
+                // Con Enter ahora enviando directamente (ver arriba), un
+                // Enter en el campo vacío ya no debe mandar un mensaje en
+                // blanco -- antes esto no hacía falta porque llegar hasta
+                // aquí exigía Tab + Espacio a propósito.
+                if (textoChat.text.length === 0) return;
                 redcliente.enviarChat(textoChat.text, "sala");
                 cajaChat.modelo.append({
                     autor: cajaChat.miNombre,

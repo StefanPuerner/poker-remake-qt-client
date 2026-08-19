@@ -11,6 +11,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Window
+import Qt.labs.settings
+import QtMultimedia
 
 ApplicationWindow {
     id: ventana
@@ -71,11 +73,48 @@ ApplicationWindow {
     // "Carta" y el resto de componentes leen de verdad.
     Binding { target: Tema; property: "fuenteElegante"; value: cargadorFuenteElegante.name }
 
+    // ── Ajustes persistentes (nombre, sonido, tema) ─────────────────────
+    // Qt.labs.settings los guarda solo (INI en ~/.config en Linux, registro
+    // en Windows) sin escribir nada de C++: cada "property alias" lee el
+    // valor guardado nada más arrancar, y vuelve a guardarlo en cuanto
+    // cambia. "nombreUsuario" y "Tema" se declaran más abajo/en otro
+    // fichero, pero un id es visible en todo el documento QML sin
+    // importar el orden -- para cuando este Settings arranca de verdad
+    // (Component.onCompleted), el resto del árbol ya existe.
+    Settings {
+        id: ajustesPersistentes
+        category: "PokerRemake"
+        property alias nombreGuardado: nombreUsuario.text
+        property alias sonido: ventana.sonidoActivado
+        // "tema" NO es un property alias a Tema.temaActual a propósito:
+        // un alias a una propiedad de un SINGLETON (a diferencia de un id
+        // normal dentro de este mismo documento) da un alias que el
+        // linter marca como no resoluble -- comprobado en real que no es
+        // solo un aviso cosmético: con ese alias puesto, este Settings
+        // entero dejaba de escribir NADA en disco (ni siquiera
+        // nombreGuardado/sonido, que sí funcionan solos). Se guarda como
+        // un entero normal y se sincroniza a mano en los dos sentidos más
+        // abajo, mismo patrón que la Binding de fuenteElegante de arriba.
+        property int temaGuardado: 0
+    }
+    Component.onCompleted: Tema.temaActual = ajustesPersistentes.temaGuardado
+    Connections {
+        target: Tema
+        function onTemaActualChanged() { ajustesPersistentes.temaGuardado = Tema.temaActual; }
+    }
+
     property string pantalla: "Inicio"
     property bool ajustesAbiertos: false
-    // Ajustes de cliente (sección "Cliente" del cajón) — en memoria por
-    // ahora, sin persistencia entre sesiones (no hay QSettings todavía).
-    property bool sonidoActivado: true
+    // Ajustes de cliente (sección "Cliente" del cajón). Desactivado por
+    // defecto a propósito (pedido explícito) — quien lo quiera, lo activa
+    // él mismo una vez y queda recordado (ver Settings arriba).
+    property bool sonidoActivado: false
+
+    // Aviso de "tu turno" — dos tonos sintetizados, ver assets/sonidos/.
+    SoundEffect {
+        id: sonidoTurno
+        source: "qrc:/qt/qml/PokerQuick/assets/sonidos/turno.wav"
+    }
     property bool confirmarAllIn: false
     property bool chuletaAbierta: false
     // Centralizados para que la barra superior pueda mostrarlos, y para no
@@ -306,6 +345,10 @@ ApplicationWindow {
                         color: nombreUsuario.activeFocus ? Tema.colorAccent : Tema.colorBorde
                     }
                 }
+                // Antes había que Tab + Espacio hasta el botón para
+                // continuar tras escribir el nombre — Enter hace lo mismo
+                // que pulsar el botón principal de esta pantalla.
+                onAccepted: botonSalasDisponibles.clicked()
             }
             // "Entrar a la mesa" (conexión directa a la sala legacy) ya no
             // hace falta — "Salas disponibles" es el único camino de
@@ -313,6 +356,7 @@ ApplicationWindow {
             // sitio, salir del programa — Inicio sigue teniendo dos
             // botones, solo que ahora son "entrar" y "salir" de verdad.
             BotonRelleno {
+                id: botonSalasDisponibles
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Salas disponibles"
                 radioBorde: 999
@@ -661,8 +705,12 @@ ApplicationWindow {
                         border.width: 1
                         border.color: campoCodigoUnion.activeFocus ? Tema.colorAccent : Tema.colorBorde
                     }
+                    // Igual que en Inicio: Enter hace lo mismo que pulsar
+                    // el botón de al lado, sin tener que ir hasta él con Tab.
+                    onAccepted: botonUnirsePorCodigo.clicked()
                 }
                 BotonContorno {
+                    id: botonUnirsePorCodigo
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Unirse por código"
                     onClicked: redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, "", campoCodigoUnion.text)
@@ -1293,12 +1341,42 @@ ApplicationWindow {
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                     }
-                    Text {
+                    Row {
                         visible: codigoSalaPropia !== ""
-                        text: "Código para invitar: " + codigoSalaPropia
-                        color: Tema.colorAccent
-                        font.pixelSize: 12 * Tema.escala
-                        font.bold: true
+                        spacing: 8 * Tema.escala
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Código para invitar: " + codigoSalaPropia
+                            color: Tema.colorAccent
+                            font.pixelSize: 12 * Tema.escala
+                            font.bold: true
+                        }
+                        BotonContorno {
+                            id: botonCopiarCodigo
+                            property bool copiado: false
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: copiado ? "Copiado" : "Copiar"
+                            onClicked: {
+                                // Sin API de portapapeles en QML puro — el
+                                // truco establecido es un TextEdit oculto:
+                                // seleccionar todo y copiar hace lo mismo
+                                // que Ctrl+C en cualquier campo de texto.
+                                portapapelesCodigoSala.text = codigoSalaPropia;
+                                portapapelesCodigoSala.selectAll();
+                                portapapelesCodigoSala.copy();
+                                copiado = true;
+                                temporizadorCopiado.restart();
+                            }
+                            Timer {
+                                id: temporizadorCopiado
+                                interval: 1500
+                                onTriggered: botonCopiarCodigo.copiado = false
+                            }
+                        }
+                        TextEdit {
+                            id: portapapelesCodigoSala
+                            visible: false
+                        }
                     }
                     Text {
                         // Solo relevante si esta sala viene de reanudar una
@@ -2029,6 +2107,7 @@ ApplicationWindow {
                 miCarta1 = c1;
                 miCarta2 = c2;
                 tuTurno = true;
+                if (sonidoActivado) sonidoTurno.play();
                 igualarActual = igualar;
                 miApuestaActual = miApuesta;
                 miSaldoActual = miSaldo;

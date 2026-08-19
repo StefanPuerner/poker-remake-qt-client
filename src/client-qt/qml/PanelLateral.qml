@@ -239,12 +239,18 @@ Rectangle {
                     border.width: 1
                     border.color: campoChatPanel.activeFocus ? Tema.colorAccent : Tema.colorBorde
                 }
+                // Antes había que Tab + Espacio hasta "Enviar" tras
+                // escribir — Enter manda el mensaje directamente.
+                onAccepted: botonEnviarPanel.clicked()
             }
             BotonRelleno {
                 id: botonEnviarPanel
                 height: 44 * Tema.escala
                 text: "Enviar"
                 onClicked: {
+                    // Enter en el campo vacío ya no debe mandar un
+                    // mensaje en blanco (ver el comentario en ChatBox.qml).
+                    if (campoChatPanel.text.length === 0) return;
                     redcliente.enviarChat(campoChatPanel.text, "partida");
                     panelLateral.modeloChat.append({
                         autor: panelLateral.miNombre,

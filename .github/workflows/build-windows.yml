@@ -45,6 +45,11 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
+          # Multimedia es un módulo ADICIONAL (no viene con "desktop" a
+          # secas) -- PokerClientQt lo necesita para el sonido de "tu
+          # turno" (ver CMakeLists.txt). Sin esto, find_package(Qt6
+          # REQUIRED COMPONENTS Multimedia) aborta el configure entero.
+          modules: 'qtmultimedia'
 
       # Paso 3: configurar el proyecto con CMake — igual que
       # "cmake -B build" en Linux, pero MSVC es un generador de "varios

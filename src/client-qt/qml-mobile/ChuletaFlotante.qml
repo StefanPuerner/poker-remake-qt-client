@@ -32,9 +32,11 @@ Popup {
     }
 
     contentItem: Column {
+        id: columnaChuleta
         spacing: 12 * Tema.escala
 
         Row {
+            id: filaTituloChuleta
             width: parent.width
             Text {
                 width: parent.width - botonCerrarChuleta.width
@@ -52,7 +54,17 @@ Popup {
 
         ScrollView {
             width: parent.width
-            height: parent.height - 40 * Tema.escala
+            // "parent.height" (el de columnaChuleta) NO vale aquí: una
+            // Column sin ancla ni altura explícita se mide sumando la
+            // altura de sus hijos -- y este ScrollView es uno de esos
+            // hijos, así que "parent.height" sería circular (se resuelve
+            // al alto natural del contenido SIN recortar, más alto que
+            // el hueco real del popup -- por eso las últimas cartas se
+            // salían por debajo del recuadro visible). El alto real
+            // disponible es el del propio Popup (availableHeight, ya
+            // descuenta el padding), menos la fila del título y el
+            // espaciado entre ambos.
+            height: chuletaFlotante.availableHeight - filaTituloChuleta.height - columnaChuleta.spacing
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 

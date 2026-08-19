@@ -29,6 +29,14 @@ int main(int argc, char* argv[]) {
       Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
   QGuiApplication app(argc, argv);
+  // Sin esto, Qt.labs.settings (usado en Main.qml para recordar nombre,
+  // sonido y tema entre sesiones) no sabe dónde escribir el fichero de
+  // ajustes -- QSettings en formato nativo necesita al menos el nombre de
+  // la aplicación (y por convención también el de la organización) para
+  // construir esa ruta por defecto; sin ellos, escribe silenciosamente en
+  // ninguna parte (comprobado en real: cero fichero de settings creado).
+  QGuiApplication::setOrganizationName("PokerRemake");
+  QGuiApplication::setApplicationName("PokerClientQt");
   QQmlApplicationEngine engine;
   NetworkClient client;
   engine.rootContext()->setContextProperty("redcliente", &client);

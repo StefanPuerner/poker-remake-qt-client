@@ -68,10 +68,29 @@ qt_add_qml_module(PokerClientQt
         # los nombres de fuente del sistema no son fiables entre plataformas.
         # Licencia completa en assets/fonts/OFL.txt.
         assets/fonts/EBGaramond.ttf
+        # Aviso de "tu turno" — dos tonos sintetizados (sin depender de
+        # audio con licencia de terceros), ver assets/sonidos/.
+        assets/sonidos/turno.wav
 )
 
 target_include_directories(PokerClientQt PRIVATE include)
 target_link_libraries(PokerClientQt PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+
+# Sonido de notificación ("tu turno") — Multimedia es un módulo ADICIONAL
+# de Qt6 (no viene con Quick), y solo hace falta para PokerClientQt, nunca
+# para PokerClientMobile. "if(NOT ANDROID)": al cross-compilar para
+# Android este mismo fichero se procesa entero igualmente con el kit de
+# Qt-para-Android como CMAKE_TOOLCHAIN (ver build-android.yml) -- ese kit
+# no tiene por qué traer Multimedia instalado, así que buscarlo ahí
+# rompería el configure entero de una build que ni siquiera compila
+# PokerClientQt. target_link_libraries usa "if(TARGET ...)" en vez de
+# asumir que existe, por el mismo motivo.
+if(NOT ANDROID)
+    find_package(Qt6 REQUIRED COMPONENTS Multimedia)
+endif()
+if(TARGET Qt6::Multimedia)
+    target_link_libraries(PokerClientQt PRIVATE Qt6::Multimedia)
+endif()
 
 # -Wall/-Wextra/-Wpedantic son flags de GCC/Clang — MSVC (el compilador que
 # usa Windows) no los reconoce y falla directamente al verlos. Su

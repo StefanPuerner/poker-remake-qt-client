@@ -148,7 +148,11 @@ Rectangle {
             // Sin iconos por pestaña a propósito: los símbolos usados antes
             // (⏱✓☰💬) tofu'ban en este build de Android (mismo problema
             // que "✎"/"🗑" en partidas guardadas) -- solo texto, garantizado.
-            readonly property var nombres: ["Turno", "Cartas", "Estim.", "Opciones", "Historial", "Chat"]
+            // "Opciones" se fusionó con "Turno" (pedido explícito, una
+            // pestaña menos sin perder utilidad): la misma pestaña
+            // muestra el estado del turno cuando no es el tuyo, y los
+            // botones de acción en cuanto lo es.
+            readonly property var nombres: ["Turno", "Cartas", "Estim.", "Historial", "Chat"]
 
             Repeater {
                 model: tiraPestanas.nombres
@@ -176,7 +180,7 @@ Rectangle {
                     // Aviso de decisión pendiente: solo si es tu turno Y no
                     // estás ya mirando la pestaña que la resuelve.
                     Rectangle {
-                        visible: cajon.tuTurno && pestana.modelData === "Opciones" && !pestana.activa
+                        visible: cajon.tuTurno && pestana.modelData === "Turno" && !pestana.activa
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.topMargin: 4 * Tema.escala
@@ -204,85 +208,6 @@ Rectangle {
         Item {
             width: parent.width
             height: parent.height - y
-
-            // — Turno —
-            Column {
-                visible: cajon.pestanaActiva === "Turno"
-                anchors.centerIn: parent
-                spacing: 10 * Tema.escala
-                width: parent.width - 20 * Tema.escala
-
-                Item {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 64 * Tema.escala
-                    height: 64 * Tema.escala
-                    Canvas {
-                        id: anilloCajon
-                        anchors.fill: parent
-                        onPaint: {
-                            var ctx = getContext("2d");
-                            ctx.reset();
-                            var cx = width / 2, cy = height / 2, r = width / 2 - 3;
-                            ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08);
-                            ctx.lineWidth = 3;
-                            ctx.beginPath();
-                            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-                            ctx.stroke();
-                            ctx.strokeStyle = cajon.fraccionTiempo < 0.2 ? Tema.colorPeligro : Tema.colorAccent;
-                            ctx.beginPath();
-                            ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + cajon.fraccionTiempo * 2 * Math.PI);
-                            ctx.stroke();
-                        }
-                        // "onFraccionTiempoChanged" no puede ir en el Item
-                        // padre: esa propiedad es de "cajon" (la raíz),
-                        // asignarlo a un Item que no la tiene es un fallo
-                        // de carga de QML, no solo un aviso -- rompe TODO
-                        // el componente (visto en real: pantalla en blanco
-                        // total, ver logcat). Connections sí puede
-                        // escuchar la señal de un objeto ajeno.
-                        Connections {
-                            target: cajon
-                            function onFraccionTiempoChanged() { anilloCajon.requestPaint(); }
-                        }
-                        Component.onCompleted: requestPaint()
-                    }
-                    Text {
-                        anchors.centerIn: parent
-                        text: cajon.turnoNombre.length > 0 ? cajon.turnoNombre.charAt(0) : "—"
-                        color: Tema.colorAccent
-                        font.family: Tema.fuenteElegante
-                        font.bold: true
-                        font.pixelSize: 20 * Tema.escala
-                    }
-                }
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: cajon.tuTurno ? "Es tu turno"
-                                        : (cajon.turnoNombre !== "" ? "Turno de " + cajon.turnoNombre : "—")
-                    color: cajon.tuTurno ? Tema.colorAccent : "white"
-                    font.bold: true
-                    font.family: Tema.fuenteElegante
-                    font.pixelSize: 14 * Tema.escala
-                    wrapMode: Text.WordWrap
-                    horizontalAlignment: Text.AlignHCenter
-                    width: parent.width
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: cajon.rondaActual + " · Mano " + cajon.manoActual + " / " + cajon.objetivoManos
-                    color: Tema.colorTextoTenue
-                    font.pixelSize: 11 * Tema.escala
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Bote: " + cajon.bote
-                    color: Tema.colorAccent
-                    font.bold: true
-                    font.family: Tema.fuenteElegante
-                    font.pixelSize: 13 * Tema.escala
-                }
-            }
 
             // — Cartas —
             Column {
@@ -336,12 +261,16 @@ Rectangle {
                 }
             }
 
-            // — Opciones (acciones + recompra) — Flickable porque en real
-            // los botones (retirarse/igualar/subir/all + el stepper) no
-            // caben en el alto disponible del cajón; así los de más abajo
-            // quedan accesibles con scroll en vez de cortados.
+            // — Turno / Opciones (fusionadas) — la misma pestaña muestra el
+            // estado del turno (anillo, de quién es, ronda/bote) cuando no
+            // es el tuyo, y los botones de acción en cuanto lo es; pedido
+            // explícito para quitar una pestaña sin perder ninguna
+            // utilidad. Flickable porque en real los botones
+            // (retirarse/igualar/subir/all + el stepper) no caben en el
+            // alto disponible del cajón; así los de más abajo quedan
+            // accesibles con scroll en vez de cortados.
             Flickable {
-                visible: cajon.pestanaActiva === "Opciones"
+                visible: cajon.pestanaActiva === "Turno"
                 anchors.fill: parent
                 anchors.margins: 12 * Tema.escala
                 contentWidth: width
@@ -354,13 +283,83 @@ Rectangle {
                 width: parent.width
                 spacing: 8 * Tema.escala
 
-                Text {
+                // Estado informativo: no es tu turno y no puedes recomprar
+                // -- lo que antes mostraba en solitario la pestaña "Turno".
+                Column {
                     visible: !cajon.tuTurno && !cajon.puedoRecomprar
+                    anchors.horizontalCenter: parent.horizontalCenter
                     width: parent.width
-                    text: "Esperando tu turno…"
-                    color: Tema.colorTextoTenue
-                    font.pixelSize: 12 * Tema.escala
-                    horizontalAlignment: Text.AlignHCenter
+                    spacing: 10 * Tema.escala
+
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 64 * Tema.escala
+                        height: 64 * Tema.escala
+                        Canvas {
+                            id: anilloCajon
+                            anchors.fill: parent
+                            onPaint: {
+                                var ctx = getContext("2d");
+                                ctx.reset();
+                                var cx = width / 2, cy = height / 2, r = width / 2 - 3;
+                                ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08);
+                                ctx.lineWidth = 3;
+                                ctx.beginPath();
+                                ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+                                ctx.stroke();
+                                ctx.strokeStyle = cajon.fraccionTiempo < 0.2 ? Tema.colorPeligro : Tema.colorAccent;
+                                ctx.beginPath();
+                                ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + cajon.fraccionTiempo * 2 * Math.PI);
+                                ctx.stroke();
+                            }
+                            // "onFraccionTiempoChanged" no puede ir en el Item
+                            // padre: esa propiedad es de "cajon" (la raíz),
+                            // asignarlo a un Item que no la tiene es un fallo
+                            // de carga de QML, no solo un aviso -- rompe TODO
+                            // el componente (visto en real: pantalla en blanco
+                            // total, ver logcat). Connections sí puede
+                            // escuchar la señal de un objeto ajeno.
+                            Connections {
+                                target: cajon
+                                function onFraccionTiempoChanged() { anilloCajon.requestPaint(); }
+                            }
+                            Component.onCompleted: requestPaint()
+                        }
+                        Text {
+                            anchors.centerIn: parent
+                            text: cajon.turnoNombre.length > 0 ? cajon.turnoNombre.charAt(0) : "—"
+                            color: Tema.colorAccent
+                            font.family: Tema.fuenteElegante
+                            font.bold: true
+                            font.pixelSize: 20 * Tema.escala
+                        }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: cajon.turnoNombre !== "" ? "Turno de " + cajon.turnoNombre : "—"
+                        color: "white"
+                        font.bold: true
+                        font.family: Tema.fuenteElegante
+                        font.pixelSize: 14 * Tema.escala
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                        width: parent.width
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: cajon.rondaActual + " · Mano " + cajon.manoActual + " / " + cajon.objetivoManos
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Bote: " + cajon.bote
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.family: Tema.fuenteElegante
+                        font.pixelSize: 13 * Tema.escala
+                    }
                 }
 
                 Column {

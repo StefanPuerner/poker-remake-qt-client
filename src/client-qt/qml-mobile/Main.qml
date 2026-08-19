@@ -1431,6 +1431,7 @@ ApplicationWindow {
             opacity: 0.94
 
             Flickable {
+                id: flickableShowdownMovil
                 anchors.fill: parent
                 anchors.margins: 16 * Tema.escala
                 contentWidth: width
@@ -1555,6 +1556,55 @@ ApplicationWindow {
                             onAbandonar: ventana.votoAbierto = false
                             onGuardarYSalir: ventana.votoAbierto = false
                         }
+                    }
+                }
+            }
+
+            // Pista de que hay más contenido por debajo del scroll --
+            // pedido explícito (algunos probadores no se daban cuenta de
+            // que había que deslizar para llegar al botón de continuar).
+            // Fundido + texto que rebota suavemente, visibles solo
+            // mientras quede contenido sin ver por debajo (se ocultan
+            // solos en cuanto se llega al final, no hace falta tocar nada
+            // para que desaparezcan).
+            Rectangle {
+                id: fundidoInferiorShowdown
+                visible: opacity > 0
+                opacity: (flickableShowdownMovil.contentHeight > flickableShowdownMovil.height &&
+                          flickableShowdownMovil.contentY <
+                              flickableShowdownMovil.contentHeight - flickableShowdownMovil.height - 4) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 46 * Tema.escala
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: 1.0; color: Qt.rgba(0.04, 0.078, 0.059, 0.96) }
+                }
+
+                Text {
+                    id: textoPistaScrollShowdown
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 6 * Tema.escala
+                    text: "más abajo"
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 10 * Tema.escala
+
+                    // "transform", no animar anchors.bottomMargin directo:
+                    // el anclaje reafirma la posición en cada layout y
+                    // pelearía con la animación. Un Translate se aplica
+                    // aparte, en tiempo de render, sin ese conflicto
+                    // (mismo patrón que el desplazamiento del chat sobre
+                    // el teclado en ChatBox.qml).
+                    property real rebote: 0
+                    transform: Translate { y: -textoPistaScrollShowdown.rebote }
+                    SequentialAnimation on rebote {
+                        loops: Animation.Infinite
+                        running: fundidoInferiorShowdown.opacity > 0
+                        NumberAnimation { from: 0; to: 4 * Tema.escala; duration: 550; easing.type: Easing.InOutQuad }
+                        NumberAnimation { from: 4 * Tema.escala; to: 0; duration: 550; easing.type: Easing.InOutQuad }
                     }
                 }
             }
