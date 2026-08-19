@@ -123,24 +123,58 @@ jobs:
           cp "$PLANTILLA" "$DESTINO"
           sed -i 's/package="[^"]*"/package="com.pokerremake.clientmobile"/' "$DESTINO"
           sed -i 's/android:label="[^"]*"/android:label="PokerRemake"/g' "$DESTINO"
+
+          # BUG real encontrado y arreglado aquí (2026-08-19): la plantilla
+          # real de Qt (confirmado contra el fuente de qtbase 6.7.3) tiene
+          # "<application" y "<activity" SOLOS en su propia línea, seguidos
+          # de salto de línea -- NUNCA de un espacio. Los sed de abajo
+          # buscaban literalmente "<application " / "<activity " (con
+          # espacio) para insertar justo detrás -- ese patrón nunca
+          # encajaba contra la plantilla real, así que icon/roundIcon/
+          # appCategory/screenOrientation/windowLayoutInDisplayCutoutMode
+          # NUNCA llegaban a insertarse (fallaban en silencio, sed no avisa
+          # de un patrón que no encuentra nada que sustituir) -- de ahí que
+          # el icono siguiera siendo el genérico de Android pese a que los
+          # recursos adaptativos sí estaban bien. Ahora se ancla solo al
+          # nombre de la etiqueta ("<application", "<activity", sin
+          # espacio), que encaja sea cual sea lo que venga después
+          # (espacio o salto de línea) -- inserta justo detrás del nombre,
+          # el resto de atributos siguen en la línea de después sin
+          # problema (el espacio en blanco entre atributos XML es libre).
           if ! grep -q 'android:icon=' "$DESTINO"; then
-            sed -i 's#<application #<application android:icon="@mipmap/ic_launcher" #' "$DESTINO"
+            sed -i 's#<application#<application android:icon="@mipmap/ic_launcher"#' "$DESTINO"
           fi
           if ! grep -q 'android:roundIcon=' "$DESTINO"; then
-            sed -i 's#<application #<application android:roundIcon="@mipmap/ic_launcher_round" #' "$DESTINO"
+            sed -i 's#<application#<application android:roundIcon="@mipmap/ic_launcher_round"#' "$DESTINO"
           fi
           if ! grep -q 'android:appCategory=' "$DESTINO"; then
-            sed -i 's#<application #<application android:appCategory="game" #' "$DESTINO"
+            sed -i 's#<application#<application android:appCategory="game"#' "$DESTINO"
           fi
-          sed -i 's/<activity /<activity android:screenOrientation="landscape" /' "$DESTINO"
+
+          # La plantilla real SÍ trae ya android:screenOrientation="unspecified"
+          # en <activity> -- no se puede insertar otro a ciegas (atributo
+          # duplicado, aapt2 lo tira sin avisar). Mismo patrón
+          # sobreescribe-si-existe/inserta-si-no que ya usa
+          # windowLayoutInDisplayCutoutMode más abajo.
+          if grep -q 'android:screenOrientation="[^"]*"' "$DESTINO"; then
+            sed -i 's/android:screenOrientation="[^"]*"/android:screenOrientation="landscape"/' "$DESTINO"
+          else
+            sed -i 's/<activity/<activity android:screenOrientation="landscape"/' "$DESTINO"
+          fi
 
           if grep -q 'android:windowLayoutInDisplayCutoutMode="[^"]*"' "$DESTINO"; then
             sed -i 's/android:windowLayoutInDisplayCutoutMode="[^"]*"/android:windowLayoutInDisplayCutoutMode="always"/' "$DESTINO"
           else
-            sed -i 's/<activity /<activity android:windowLayoutInDisplayCutoutMode="always" /' "$DESTINO"
+            sed -i 's/<activity/<activity android:windowLayoutInDisplayCutoutMode="always"/' "$DESTINO"
           fi
           if ! grep -q 'android:windowLayoutInDisplayCutoutMode="always"' "$DESTINO"; then
             echo "AVISO: windowLayoutInDisplayCutoutMode sigue sin quedar en \"always\" tras el parche -- revisar a mano."
+          fi
+          if ! grep -q 'android:screenOrientation="landscape"' "$DESTINO"; then
+            echo "AVISO: screenOrientation sigue sin quedar en \"landscape\" tras el parche -- revisar a mano."
+          fi
+          if ! grep -q 'android:icon="@mipmap/ic_launcher"' "$DESTINO"; then
+            echo "AVISO: android:icon sigue sin quedar puesto tras el parche -- revisar a mano."
           fi
 
           if ! grep -q "android.permission.INTERNET" "$DESTINO"; then
