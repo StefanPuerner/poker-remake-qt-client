@@ -1,22 +1,13 @@
 #include "../../include/net/Protocol.hpp"
 
-// arpa/inet.h y unistd.h son cabeceras POSIX — no existen en Windows.
-// Las funciones que las necesitan (más abajo, writeAll/readAll/sendMsg/
-// recvMsg) trabajan sobre un descriptor de fichero "crudo" al estilo
-// Linux — son las que usa el servidor y el cliente ncurses por socket
-// directo. El cliente Qt habla por QTcpSocket (con su propio qToBigEndian
-// para el orden de bytes) y no llama a ninguna de estas cuatro, así que en
-// Windows simplemente se excluyen de la compilación: no hacen falta y no
-// tienen un equivalente POSIX directo en ese sistema.
-#ifndef _WIN32
-#include <arpa/inet.h>  // htonl(), ntohl() — conversión Big Endian
-#include <unistd.h>     // read(), write()
-#endif
-
 #include <cctype>
-#include <cerrno>
-#include <cstring>
 #include <stdexcept>
+
+// writeAll/readAll/sendMsg/recvMsg (las únicas cuatro funciones de este
+// fichero que dependían de sockets POSIX crudos) viven ahora en
+// SocketIO.cpp — ver el comentario de cabecera de ese fichero. Todo lo que
+// queda aquí es lógica de texto pura (sin sockets), que es exactamente lo
+// que necesita el cliente Qt (sobre QTcpSocket, no sockets POSIX).
 
 namespace net {
 
@@ -82,104 +73,6 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "CARGAR_PARTIDA") return MsgType::CARGAR_PARTIDA;
   return MsgType::UNKNOWN;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Primitivas de I/O — la base de todo (solo POSIX, ver comentario arriba)
-// ─────────────────────────────────────────────────────────────────────────────
-#ifndef _WIN32
-
-void writeAll(int fd, const void* buf, std::size_t n) {
-  const char* ptr = static_cast<const char*>(buf);
-  std::size_t restante = n;
-
-  while (restante > 0) {
-    // write() devuelve cuántos bytes escribió realmente.
-    // En un socket lleno de buffer puede ser menos que lo pedido.
-    ssize_t wr = ::write(fd, ptr, restante);
-
-    if (wr == 0) {
-      throw ConexionCerrada{};
-    }
-    if (wr < 0) {
-      // EINTR: una señal del sistema interrumpió la llamada.
-      // No es un error real: simplemente reintentamos.
-      if (errno == EINTR) continue;
-      throw ErrorRed{"write() falló: " + std::string{strerror(errno)}};
-    }
-
-    ptr += wr;
-    restante -= static_cast<std::size_t>(wr);
-  }
-}
-
-void readAll(int fd, void* buf, std::size_t n) {
-  char* ptr = static_cast<char*>(buf);
-  std::size_t restante = n;
-
-  while (restante > 0) {
-    // read() puede devolver menos bytes de los pedidos.
-    // Eso es completamente normal en sockets: el kernel fragmenta
-    // los datos según el tamaño del buffer y la velocidad de llegada.
-    ssize_t rd = ::read(fd, ptr, restante);
-
-    if (rd == 0) {
-      // EOF: el otro extremo cerró su lado de la conexión.
-      throw ConexionCerrada{};
-    }
-    if (rd < 0) {
-      if (errno == EINTR) continue;
-      throw ErrorRed{"read() falló: " + std::string{strerror(errno)}};
-    }
-
-    ptr += rd;
-    restante -= static_cast<std::size_t>(rd);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  sendMsg / recvMsg — el protocolo completo
-// ─────────────────────────────────────────────────────────────────────────────
-
-void sendMsg(int fd, const Message& msg) {
-  // El payload ya contiene el campo "type" dentro del JSON,
-  // así que en el cable solo enviamos: longitud (4 bytes) + JSON.
-
-  // htonl() convierte el uint32 al orden de bytes de red (Big Endian).
-  // Si el servidor corre en x86 (Little Endian) y el cliente en ARM,
-  // ambos leen el mismo número gracias a esta conversión.
-  uint32_t longitudBE = htonl(static_cast<uint32_t>(msg.payload.size()));
-
-  writeAll(fd, &longitudBE, 4);                          // header
-  writeAll(fd, msg.payload.data(), msg.payload.size());  // payload
-}
-
-Message recvMsg(int fd) {
-  // 1. Leer los 4 bytes del header
-  uint32_t longitudBE;
-  readAll(fd, &longitudBE, 4);
-
-  // ntohl() invierte la conversión: Big Endian → orden nativo de la CPU
-  uint32_t longitud = ntohl(longitudBE);
-
-  // Sanidad: rechazar mensajes absurdamente grandes.
-  // Protege contra datos corruptos o clientes maliciosos.
-  constexpr uint32_t MAX_MSG = 4 * 1024 * 1024;  // 4 MB
-  if (longitud > MAX_MSG) {
-    throw ErrorRed{"Mensaje demasiado grande: " + std::to_string(longitud)};
-  }
-
-  // 2. Leer exactamente 'longitud' bytes de payload
-  std::string payload(longitud, '\0');
-  if (longitud > 0) {
-    readAll(fd, payload.data(), longitud);
-  }
-
-  // 3. Extraer el campo "type" del JSON para construir el enum
-  std::string tipoStr = jsonGetStr(payload, "type");
-  return Message{strToMsgType(tipoStr), std::move(payload)};
-}
-
-#endif  // _WIN32 — fin de las primitivas POSIX
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Escapado de strings JSON

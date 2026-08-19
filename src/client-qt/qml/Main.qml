@@ -134,8 +134,33 @@ ApplicationWindow {
     // tamaño (side pots). Cada entrada: numBote, cantidad, competidores
     // (nombres), y ganador/premioGanador/comboGanador una vez resuelto.
     property var resumenBotes: []
+
+    // El servidor va poniendo boteActual a 0 progresivamente A MEDIDA que
+    // paga cada bote del showdown (Partida.cpp::showdown(), para que el
+    // saldo/bote se vea fresco en otros clientes mientras se resuelven
+    // varios side pots) -- si la pantalla de showdown usa boteActual
+    // directamente, muestra "Bote: 0" casi todo el rato que estás viendo
+    // las cartas reveladas, en vez del bote real que hubo en juego. Se
+    // reconstruye sumando lo que YA se capturó en su momento (antes de que
+    // lo pisaran): resumenBotes (viene de onBoteEvaluado, antes del pago) o,
+    // si no hubo evaluación real (bote sin showdown, un solo jugador vivo),
+    // el premio ya guardado en revealsShowdown.
+    function boteTotalShowdown() {
+        if (resumenBotes.length > 0)
+            return resumenBotes.reduce(function(acc, b) { return acc + b.cantidad; }, 0);
+        if (revealsShowdown.length > 0)
+            return revealsShowdown.reduce(function(acc, r) { return acc + r.premio; }, 0);
+        return boteActual;
+    }
+
     property bool votoExtensionAbierto: false
     property bool chatActive: false
+    // Mensaje de "te has unido a mitad de partida, esperando a la próxima
+    // mano" (EN_ESPERA) y roster de quién más está esperando a sentarse en
+    // esta sala ahora mismo (SALA_ESPERANDO_UPDATE) — antes esta gente era
+    // invisible del todo hasta que por fin les tocaba jugar.
+    property string mensajeEnEspera: ""
+    property var listaEsperando: []
     property string ganadorFinal: ""
     property int saldoFinal: 0
     property bool finPorLimite: false
@@ -1316,6 +1341,23 @@ ApplicationWindow {
                     radioBorde: 999
                     onClicked: redcliente.empezarPartida()
                 }
+
+                Text {
+                    visible: listaEsperando.length > 0
+                    text: "Esperando a sentarse: " + listaEsperando.join(", ")
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 12 * Tema.escala
+                    wrapMode: Text.WordWrap
+                    width: 260 * Tema.escala
+                }
+                Text {
+                    visible: mensajeEnEspera !== ""
+                    text: mensajeEnEspera
+                    color: Tema.colorAccent
+                    font.pixelSize: 12 * Tema.escala
+                    wrapMode: Text.WordWrap
+                    width: 260 * Tema.escala
+                }
             }
 
             // No hay historial en el lobby — solo chat, directamente, sin
@@ -1326,7 +1368,7 @@ ApplicationWindow {
                 anchors.leftMargin: 40 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
                 activo: chatActive
-                modelo: mensajesChat
+                modelo: mensajesChatSala
                 miNombre: nombreUsuario.text
             }
         }
@@ -1393,7 +1435,7 @@ ApplicationWindow {
                     width: 340 * Tema.escala
                     height: mesaJuego.height
                     modeloHistorial: historial
-                    modeloChat: mensajesChat
+                    modeloChat: mensajesChatPartida
                     miNombre: nombreUsuario.text
                 }
             }
@@ -1707,6 +1749,17 @@ ApplicationWindow {
             function onConectado() {
                 pantalla = "Lobby";
                 chatActive = true;
+                // Sin esto, el chat y el historial de una sesión anterior
+                // (con otro nombre, en otra sala) se quedaban visibles
+                // para siempre en la app -- nunca se vaciaban al empezar
+                // una conexión nueva. No es una fuga del servidor entre
+                // salas: el cliente simplemente nunca limpiaba su propia
+                // lista local.
+                mensajesChatSala.clear();
+                mensajesChatPartida.clear();
+                historial.clear();
+                mensajeEnEspera = "";
+                listaEsperando = [];
             }
             function onError(mensaje) {
                 // Sin pantalla propia: puede llegar estando en Inicio, Salas
@@ -1799,16 +1852,24 @@ ApplicationWindow {
                 hostActual = host;
                 nombresEsperadosLobby = esperadosNombresCsv;
             }
-            function onChatRecibido(de, texto) {
-                mensajesChat.append({
+            function onChatRecibido(de, texto, canal) {
+                var destino = canal === "partida" ? mensajesChatPartida : mensajesChatSala;
+                destino.append({
                     autor: de,
                     mensaje: texto,
                     hora: Qt.formatTime(new Date(), "hh:mm")
                 });
             }
+            function onEnEspera(mensaje) {
+                mensajeEnEspera = mensaje;
+            }
+            function onSalaEsperandoActualizada(nombres) {
+                listaEsperando = nombres;
+            }
             function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots) {
                 pantalla = "Partida";
                 chatActive = false;
+                mensajeEnEspera = "";
                 objetivoManos = manos;
                 tipoLimiteActual = tipoLimite;
                 permitirRecompraActual = permitirRecompra;
@@ -1886,6 +1947,18 @@ ApplicationWindow {
                 showdownAbierto = true;
             }
             function onCartasMostradas(jugador, cartasCsv, combo) {
+                // Un jugador elegible para varios botes (principal + side
+                // pots) recibe un MUESTRA_CARTAS por CADA bote en el que
+                // compite (Partida::showdown(), un bucle por bote) -- sin
+                // este filtro, se le creaba una tarjeta nueva cada vez
+                // (vista en real: un jugador duplicado, una tarjeta con el
+                // total correcto y otra suelta solo con el premio del
+                // side pot). El dinero real del jugador no se veía
+                // afectado (eso lo gestiona el servidor aparte), pero la
+                // tarjeta fantasma sí. La entrada ya existente sigue
+                // sumando cada premio con normalidad (onBoteGanado más
+                // abajo).
+                if (revealsShowdown.some(function(r) { return r.nombre === jugador; })) return;
                 revealsShowdown = revealsShowdown.concat([{
                     nombre: jugador,
                     cartas: cartasCsv.split(","),
@@ -2100,8 +2173,17 @@ ApplicationWindow {
             }
         }
 
+        // Chat de sala (Lobby + quien espera a sentarse a mitad de partida)
+        // y chat de partida (pestaña "Chat" de PanelLateral, solo
+        // jugadores ya sentados) van cada uno a su propia lista -- antes
+        // compartían una sola (mensajesChat) y se mezclaban sin más. El
+        // servidor ya los separa por el campo "canal" del CHAT (ver
+        // NetworkObserver::relayPendingChat()/broadcastASala()).
         ListModel {
-            id: mensajesChat
+            id: mensajesChatSala
+        }
+        ListModel {
+            id: mensajesChatPartida
         }
         ListModel {
             id: jugadoresConectados
@@ -2209,7 +2291,7 @@ ApplicationWindow {
             Text {
                 visible: resumenBotes.length <= 1
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Bote: " + boteActual
+                text: "Bote: " + boteTotalShowdown()
                 color: Tema.colorTextoTenue
                 font.pixelSize: 13 * Tema.escala
                 font.family: Tema.fuenteElegante
@@ -2303,8 +2385,14 @@ ApplicationWindow {
                 spacing: 10 * Tema.escala
 
                 Text {
+                    // No se usa mensajeVoto tal cual: el servidor lo
+                    // redacta pensando en el cliente ncurses ("Pulsa
+                    // Enter para continuar..."), que no pinta nada aquí
+                    // con un botón real al lado. Este texto es solo la
+                    // cabecera, el botón de abajo (PanelVoto) ya dice
+                    // qué hacer.
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: mensajeVoto
+                    text: "Fin de la mano"
                     color: Tema.colorAccent
                     font.bold: true
                     font.pixelSize: 13 * Tema.escala

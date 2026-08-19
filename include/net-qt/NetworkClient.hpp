@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QTcpSocket>
 #include <QTimer>
@@ -127,10 +128,16 @@ class NetworkClient : public QObject {
     }));
   }
 
-  Q_INVOKABLE void enviarChat(const QString& texto) {
+  /// @param canal "sala" (se ve en la sala de espera y también en la
+  /// partida — quien esté esperando a sentarse lo recibe igual) o
+  /// "partida" (solo llega a los jugadores ya sentados). Ver
+  /// NetworkObserver::relayPendingChat()/broadcastASala() en el servidor.
+  Q_INVOKABLE void enviarChat(const QString& texto, const QString& canal) {
     enviarMensaje(net::buildMsg(
         net::MsgType::CHAT,
-        {{"de", nombre_.toStdString()}, {"texto", texto.toStdString()}}));
+        {{"de", nombre_.toStdString()},
+         {"texto", texto.toStdString()},
+         {"canal", canal.toStdString()}}));
   }
 
   Q_INVOKABLE void enviarAccion(const QString& accion, int cantidad) {
@@ -178,7 +185,17 @@ class NetworkClient : public QObject {
   void error(QString msg);
   void lobbyActualizado(QString jugadoresCsv, int listos, int esperados, QString host,
                         QString esperadosNombresCsv);
-  void chatRecibido(QString de, QString texto);
+  /// @param canal "sala" o "partida" — ver enviarChat(). Vacío (mensajes
+  /// del lobby previo a esta funcionalidad, o de la fase de lobby anterior
+  /// al arranque de la partida, que no etiqueta el campo) se trata igual
+  /// que "sala" en el cliente.
+  void chatRecibido(QString de, QString texto, QString canal);
+  /// Se aceptó tu JOIN_GAME a mitad de partida pero todavía no tienes
+  /// asiento — llegará PARTIDA_INICIADA cuando de verdad te sienten.
+  void enEspera(QString mensaje);
+  /// Roster de quién está esperando a sentarse en esta sala ahora mismo
+  /// (puede estar vacío si nadie espera).
+  void salaEsperandoActualizada(QStringList nombres);
   /**
    * @brief La partida empieza — además de la señal, ahora trae las
    * reglas de la sala (fijas toda la sesión) para la sección "Mesa
@@ -315,11 +332,59 @@ class NetworkClient : public QObject {
   /// Arranca (o reinicia) la ventana de reintentos de 60s tras perder la conexión.
   void iniciarReconexion() {
     reconectando_ = true;
+    relojReconexion_.start();
     segundosReconexionRestantes_ = 60;
     emit reconectando(segundosReconexionRestantes_);
     timerReintento_.start();
   }
 
+  /// Segundos reales restantes de la ventana de 60s, medidos contra
+  /// relojReconexion_ (reloj de pared) en vez de contar "ticks" del
+  /// QTimer de 2s — ver el porqué en intentarReconexionAhora().
+  int segundosRealesRestantes() const {
+    return std::max(0, 60 - static_cast<int>(relojReconexion_.elapsed() / 1000));
+  }
+
+ public:
+  /**
+   * @brief Un intento de reconexión, ahora mismo — comparte lógica entre
+   * el QTimer de 2s y la llamada explícita al volver de segundo plano
+   * (ver aplicarPantallaInmersiva()/applicationStateChanged en
+   * main-mobile.cpp).
+   *
+   * Antes, la ventana de 60s se llevaba restando "2" a un contador cada
+   * vez que el QTimer disparaba — asumiendo que cada disparo representa
+   * siempre 2 segundos reales. En Android, un móvil suspendido (pantalla
+   * apagada) puede congelar el bucle de eventos de la app entero durante
+   * la suspensión: ningún QTimer dispara mientras tanto. Al volver, el
+   * temporizador se reanuda con normalidad, pero como el contador nunca
+   * avanzó durante la suspensión, la ventana de 60s "efectivos" podía
+   * alargarse muchísimo más allá de 60 segundos reales — el bucle de
+   * "reconectando" que se ve en el móvil, disparando cada 2s sin llegar
+   * nunca a agotarse. El reemplazo mide contra relojReconexion_ (reloj de
+   * pared real, con QElapsedTimer, que SÍ seguía corriendo mientras la
+   * app estaba suspendida) en vez de contar disparos — así la ventana de
+   * 60s es de verdad 60 segundos de reloj, pase lo que pase con el bucle
+   * de eventos mientras tanto. Además, llamarlo explícitamente al
+   * reanudar la app fuerza un intento inmediato en vez de esperar a que
+   * el próximo tick del QTimer (que pudo quedar con retraso) dispare.
+   */
+  void intentarReconexionAhora() {
+    if (!reconectando_) return;  // nada que reintentar ahora mismo
+    int restantes = segundosRealesRestantes();
+    if (restantes <= 0) {
+      timerReintento_.stop();
+      reconectando_ = false;
+      emit reconexionFallida();
+      return;
+    }
+    segundosReconexionRestantes_ = restantes;
+    emit reconectando(restantes);
+    socket_.abort();
+    socket_.connectToHost(hostGuardado_, puertoGuardado_);
+  }
+
+ private:
   /**
    * @brief Conexión persistente compartida por conectar()/crearSala()/unirseASala().
    *
@@ -360,16 +425,23 @@ class NetworkClient : public QObject {
       buffer_.clear();
       esperandoHeader_ = true;
       if (reconectando_) {
-        // El servidor ya nos conoce por nombre (waitReconnect); no hace
-        // falta re-emitir "conectado" — eso reiniciaría al cliente a la
-        // pantalla de Lobby aunque estuviéramos a mitad de partida. La
-        // reconexión SIEMPRE es JOIN_LOBBY, nunca el primerMensaje original
-        // (que solo tiene sentido la primera vez).
-        reconectando_ = false;
-        timerReintento_.stop();
+        // OJO: un connected() aquí es solo el handshake TCP -- NO significa
+        // que ya estemos reconectados de verdad. Antes esto ponía
+        // reconectando_ = false y emitía reconectado() en este mismo punto;
+        // en una red inestable el socket podía conectar y caerse otra vez
+        // milisegundos después, antes de que el servidor llegara siquiera a
+        // leer el JOIN_LOBBY -- errorOccurred() encontraba reconectando_ ya
+        // en false y lo trataba como una caída COMPLETAMENTE NUEVA,
+        // reiniciando la ventana de 60s desde cero. Resultado real, visto
+        // en el móvil: el aviso de "reconectando" parpadeando y
+        // reiniciándose cada 1-2s sin avanzar nunca. reconectando_ se deja
+        // en true (y el reintento sigue vivo) hasta que llega la
+        // confirmación de verdad: el primer mensaje real del servidor tras
+        // el JOIN_LOBBY (ver el bloque que marca esperandoConfirmacionTrasReconectar_
+        // más abajo, en el bucle de readyRead).
+        esperandoConfirmacionTrasReconectar_ = true;
         enviarMensaje(net::buildMsg(net::MsgType::JOIN_LOBBY,
                                     {{"nombre", nombre_.toStdString()}}));
-        emit reconectado();
       } else {
         conectadoAlgunaVez_ = true;
         emit conectado();
@@ -391,18 +463,8 @@ class NetworkClient : public QObject {
     // (src/client/main.cpp) — un intento cada 2s, hasta 60s en total,
     // igual que la ventana que espera el servidor (NetworkObserver::waitReconnect).
     timerReintento_.setInterval(2000);
-    connect(&timerReintento_, &QTimer::timeout, this, [this]() {
-      segundosReconexionRestantes_ -= 2;
-      if (segundosReconexionRestantes_ <= 0) {
-        timerReintento_.stop();
-        reconectando_ = false;
-        emit reconexionFallida();
-        return;
-      }
-      emit reconectando(segundosReconexionRestantes_);
-      socket_.abort();
-      socket_.connectToHost(hostGuardado_, puertoGuardado_);
-    });
+    connect(&timerReintento_, &QTimer::timeout, this,
+            [this]() { intentarReconexionAhora(); });
     connect(&socket_, &QTcpSocket::readyRead, this, [this]() {
       buffer_ += socket_.readAll();  // todo lo que ha llegado se ACUMULA aquí
 
@@ -418,6 +480,17 @@ class NetworkClient : public QObject {
           std::string payload(buffer_.constData(), longitudEsperada_);
           buffer_.remove(0, longitudEsperada_);
           esperandoHeader_ = true;  // listo para el próximo mensaje
+
+          // Confirmación real de reconexión: el primer mensaje que de
+          // verdad llega del servidor tras el connected()+JOIN_LOBBY de
+          // más arriba. Solo AQUÍ se puede dar la reconexión por buena
+          // (ver el porqué en el comentario de connected()).
+          if (esperandoConfirmacionTrasReconectar_) {
+            esperandoConfirmacionTrasReconectar_ = false;
+            reconectando_ = false;
+            timerReintento_.stop();
+            emit reconectado();
+          }
 
           qDebug() << "Mensaje completo:" << QString::fromStdString(payload);
           std::string tipo = net::jsonGetStr(payload, "type");
@@ -437,7 +510,9 @@ class NetworkClient : public QObject {
             QString de = QString::fromStdString(net::jsonGetStr(payload, "de"));
             QString texto =
                 QString::fromStdString(net::jsonGetStr(payload, "texto"));
-            emit chatRecibido(de, texto);
+            QString canal =
+                QString::fromStdString(net::jsonGetStr(payload, "canal"));
+            emit chatRecibido(de, texto, canal);
           } else if (tipo == "GAME_EVENT") {
             std::string evento = net::jsonGetStr(payload, "evento");
             if (evento == "PARTIDA_INICIADA") {
@@ -453,6 +528,13 @@ class NetworkClient : public QObject {
               // somos el host seguían usando la copia local, desincronizada.
               nombre_ = QString::fromStdString(net::jsonGetStr(payload, "nombre"));
               emit nombreAsignado(nombre_);
+            } else if (evento == "EN_ESPERA") {
+              QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+              emit enEspera(mensaje);
+            } else if (evento == "SALA_ESPERANDO_UPDATE") {
+              QString csv = QString::fromStdString(net::jsonGetStr(payload, "jugadores"));
+              QStringList nombres = csv.isEmpty() ? QStringList{} : csv.split(',');
+              emit salaEsperandoActualizada(nombres);
             } else if (evento == "TUS_CARTAS") {
               QString c1 = QString::fromStdString(net::jsonGetStr(payload, "c1"));
               QString c2 = QString::fromStdString(net::jsonGetStr(payload, "c2"));
@@ -700,8 +782,10 @@ class NetworkClient : public QObject {
   quint16 puertoGuardado_ = 0;
   bool conectadoAlgunaVez_ = false;
   bool reconectando_ = false;
+  bool esperandoConfirmacionTrasReconectar_ = false;  // ver connected(), no basta con el handshake TCP
   bool desconexionEsperada_ = false;  // LEAVE/SAVE_AND_EXIT: cierre a propósito, no una caída
   int segundosReconexionRestantes_ = 0;
+  QElapsedTimer relojReconexion_;  // reloj de pared real, ver intentarReconexionAhora()
   QTimer timerReintento_;
   QByteArray buffer_;
   bool esperandoHeader_ = true;

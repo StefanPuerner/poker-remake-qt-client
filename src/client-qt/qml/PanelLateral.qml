@@ -245,7 +245,7 @@ Rectangle {
                 height: 44 * Tema.escala
                 text: "Enviar"
                 onClicked: {
-                    redcliente.enviarChat(campoChatPanel.text);
+                    redcliente.enviarChat(campoChatPanel.text, "partida");
                     panelLateral.modeloChat.append({
                         autor: panelLateral.miNombre,
                         mensaje: campoChatPanel.text,

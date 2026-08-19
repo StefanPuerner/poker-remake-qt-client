@@ -126,7 +126,7 @@ Rectangle {
             height: 44 * Tema.escala
             text: "Enviar"
             onClicked: {
-                redcliente.enviarChat(textoChat.text);
+                redcliente.enviarChat(textoChat.text, "sala");
                 cajaChat.modelo.append({
                     autor: cajaChat.miNombre,
                     mensaje: textoChat.text,
