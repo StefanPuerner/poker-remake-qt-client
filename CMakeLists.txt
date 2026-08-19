@@ -13,8 +13,18 @@ find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Network)
 # Políticas explícitas de qt_add_qml_module (silencian avisos de CMake):
 # QTP0001 = usar el prefijo de recursos por defecto ':/qt/qml/'.
 # QTP0004 = no exigir qmldir manual por cada subcarpeta con .qml.
+# QTP0004 solo existe desde Qt 6.8 (confirmado leyendo el propio
+# Qt6QmlMacros.cmake: "__qt_internal_setup_policy(QTP0004 "6.8.0" ...)")
+# -- el build de Android usa Qt 6.7.3 (la versión más reciente que el
+# catálogo de aqtinstall reconoce para Android, ver build-android.yml) y
+# qt_policy(SET QTP0004 NEW) ahí aborta el configure entero con
+# "QTP0004 is not a known Qt policy". Sin el guard, Qt6_VERSION < 6.8
+# simplemente no lo pide -- comportamiento de antes de que la política
+# existiera, no un cambio funcional real.
 qt_policy(SET QTP0001 NEW)
-qt_policy(SET QTP0004 NEW)
+if(Qt6_VERSION VERSION_GREATER_EQUAL "6.8.0")
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 qt_add_executable(PokerClientQt
     src/client-qt/main.cpp
