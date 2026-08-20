@@ -33,7 +33,8 @@ class NetworkClient : public QObject {
                              int numManos, int ciegaGrande, int saldo,
                              int tipoLimite, bool aplicarMinRaise, int monteFijo,
                              int dificultadBots, bool permitirRecompra,
-                             bool rellenarConBots, bool abiertaTrasInicio) {
+                             bool rellenarConBots, bool abiertaTrasInicio,
+                             bool preguntarExtension) {
     iniciarConexionConMensaje(host, puerto, nombre, net::buildMsg(net::MsgType::CREATE_GAME, {
         {"nombre",             nombre.toStdString()},
         {"nombre_sala",        nombreSala.toStdString()},
@@ -49,6 +50,7 @@ class NetworkClient : public QObject {
         {"permitir_recompra",  permitirRecompra ? "1" : "0"},
         {"rellenar_con_bots",  rellenarConBots ? "1" : "0"},
         {"abierta_tras_inicio", abiertaTrasInicio ? "1" : "0"},
+        {"preguntar_extension", preguntarExtension ? "1" : "0"},
     }));
   }
 
@@ -205,7 +207,8 @@ class NetworkClient : public QObject {
    * @param tipoLimite 0=Sin límite, 1=Límite bote, 2=Límite fijo (mismo
    * enum que TipoLimite en GameTypes.hpp).
    */
-  void partidaIniciada(int manos, int tipoLimite, bool permitirRecompra, bool rellenarConBots);
+  void partidaIniciada(int manos, int tipoLimite, bool permitirRecompra, bool rellenarConBots,
+                       bool preguntarExtension);
   void estadoMesaActualizado(QString ronda, int bote, QString turno,
                              QString jugadoresStr, int timeoutMs);
   /**
@@ -237,7 +240,17 @@ class NetworkClient : public QObject {
   void esperandoVoto(QString mensaje);
   void esperandoVotoExtension(QString mensaje, int manos);
   void mesaActualizada(QString mesa);
-  void finDePartida(QString ganador, int saldo, bool porLimite);
+  /// @param manosDisputadas Total de manos jugadas en la sesión.
+  /// @param mejorMano Nombre de la mejor combinación conseguida en toda la
+  /// partida (ej. "Escalera de Color"), o "" si nadie llegó a showdown.
+  /// @param mejorManoJugador Quién la consiguió, o "" si mejorMano está vacío.
+  /// @param eliminacionesCsv "nombre1:mano1;nombre2:mano2;..." -- "mano" es
+  /// el número de mano en que ese jugador quedó eliminado, o "X" si
+  /// terminó la partida todavía en juego (mismo formato que ya usa
+  /// Interfaz::mostrarDetallePartida() en ncurses).
+  void finDePartida(QString ganador, int saldo, bool porLimite,
+                    int manosDisputadas, QString mejorMano, QString mejorManoJugador,
+                    QString eliminacionesCsv);
   void abandonaste(QString mensaje);
   void saldosActualizados(QString jugadoresStr);
   void partidaGuardada(QString archivo);
@@ -520,7 +533,17 @@ class NetworkClient : public QObject {
               int tipoLimite = net::jsonGetInt(payload, "tipo_limite");
               bool permitirRecompra = net::jsonGetInt(payload, "permitir_recompra") == 1;
               bool rellenarConBots = net::jsonGetInt(payload, "rellenar_con_bots") == 1;
-              emit partidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots);
+              // jsonGetInt da 0 (false) si el servidor no manda el campo
+              // (partida legacy vieja) -- pero el comportamiento de
+              // siempre en la sala legacy SIEMPRE pregunta, así que
+              // tratar "ausente" como true (no false, a diferencia de los
+              // otros campos de arriba) es lo que de verdad coincide con
+              // lo que esa sala hace.
+              bool preguntarExtension = net::jsonGetStr(payload, "preguntar_extension").empty()
+                                             ? true
+                                             : net::jsonGetInt(payload, "preguntar_extension") == 1;
+              emit partidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots,
+                                   preguntarExtension);
             } else if (evento == "NOMBRE_ASIGNADO") {
               // El nombre con el que el servidor nos identifica de verdad
               // (puede diferir del que escribimos, si llegó vacío o el
@@ -678,7 +701,16 @@ class NetworkClient : public QObject {
               QString ganador =
                   QString::fromStdString(net::jsonGetStr(payload, "ganador"));
               int saldo = net::jsonGetInt(payload, "saldo");
-              emit finDePartida(ganador, saldo, evento == "FIN_PARTIDA_LIMITE");
+              int manosDisputadas = net::jsonGetInt(payload, "manos_disputadas");
+              QString mejorMano =
+                  QString::fromStdString(net::jsonGetStr(payload, "mejor_mano"));
+              QString mejorManoJugador =
+                  QString::fromStdString(net::jsonGetStr(payload, "mejor_mano_jugador"));
+              QString eliminacionesCsv =
+                  QString::fromStdString(net::jsonGetStr(payload, "eliminaciones"));
+              emit finDePartida(ganador, saldo, evento == "FIN_PARTIDA_LIMITE",
+                                manosDisputadas, mejorMano, mejorManoJugador,
+                                eliminacionesCsv);
             } else if (evento == "ABANDONASTE") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
               emit abandonaste(mensaje);

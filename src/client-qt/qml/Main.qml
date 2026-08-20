@@ -203,6 +203,13 @@ ApplicationWindow {
     property string ganadorFinal: ""
     property int saldoFinal: 0
     property bool finPorLimite: false
+    // Estadísticas de la partida terminada -- ya las calculaba el motor
+    // (Partida::generarEstadisticas()) para el historial de ncurses, pero
+    // nunca llegaban al cliente Qt en el momento de terminar.
+    property int manosDisputadasFinal: 0
+    property string mejorManoFinal: ""
+    property string mejorManoJugadorFinal: ""
+    property var eliminacionesFinal: []  // [{nombre, mano}, ...]
     property bool partidaGuardada: false
     property string archivoGuardado: ""
     property bool reconectandoAhora: false
@@ -230,6 +237,7 @@ ApplicationWindow {
     property int tipoLimiteActual: 0
     property bool permitirRecompraActual: false
     property bool rellenarConBotsActual: false
+    property bool preguntarExtensionActual: true
     property string turnoNombre: ""
     property string rondaActual: ""
     // Jugadores retirados en la mano actual — el servidor no manda esto
@@ -1084,7 +1092,25 @@ ApplicationWindow {
                                 }
                             }
                         }
-            
+
+                        Row {
+                            width: parent.width
+                            spacing: 12 * Tema.escala
+                            Text {
+                                width: 330 * Tema.escala
+                                font.pixelSize: 13 * Tema.escala
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Preguntar si extender al llegar al límite de manos"
+                                color: Tema.colorTextoTenue
+                                wrapMode: Text.WordWrap
+                            }
+                            Interruptor {
+                                id: interruptorPreguntarExtension
+                                activo: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
                         Row {
                             width: parent.width
                             spacing: 12 * Tema.escala
@@ -1181,7 +1207,8 @@ ApplicationWindow {
                             selectorDificultad.seleccionado,
                             interruptorRecompra.activo,
                             interruptorRellenar.activo,
-                            interruptorAbierta.activo
+                            interruptorAbierta.activo,
+                            interruptorPreguntarExtension.activo
                         );
                     }
                 }
@@ -1270,6 +1297,71 @@ ApplicationWindow {
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                     }
+
+                    // ── Estadísticas de la partida ────────────────────
+                    // El motor ya las calculaba (Partida::generarEstadisticas(),
+                    // el mismo dato que ncurses guarda en su historial) pero
+                    // nunca llegaban al cliente Qt en el momento de terminar.
+                    Rectangle {
+                        visible: !partidaGuardada
+                        width: parent.width
+                        height: 1
+                        color: Tema.colorBorde
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: !partidaGuardada
+                        text: "Manos disputadas: " + manosDisputadasFinal
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    Column {
+                        visible: !partidaGuardada && mejorManoFinal !== ""
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 1 * Tema.escala
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "MEJOR MANO DE LA PARTIDA"
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 9 * Tema.escala
+                            font.letterSpacing: 1
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: mejorManoFinal + " — " + mejorManoJugadorFinal
+                            color: Tema.colorAccent
+                            font.bold: true
+                            font.family: Tema.fuenteElegante
+                            font.pixelSize: 14 * Tema.escala
+                        }
+                    }
+                    Column {
+                        visible: !partidaGuardada && eliminacionesFinal.length > 0
+                        width: parent.width
+                        spacing: 3 * Tema.escala
+                        Repeater {
+                            model: eliminacionesFinal
+                            delegate: Row {
+                                required property var modelData
+                                width: parent.width
+                                Text {
+                                    width: parent.width - textoManoEliminacion.width
+                                    text: modelData.nombre
+                                    color: modelData.nombre === ganadorFinal ? Tema.colorAccent : "white"
+                                    font.bold: modelData.nombre === ganadorFinal
+                                    font.pixelSize: 11 * Tema.escala
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    id: textoManoEliminacion
+                                    text: modelData.mano === "X" ? "Sigue en juego" : "Mano " + modelData.mano
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                            }
+                        }
+                    }
+
                     Text {
                         visible: partidaGuardada
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1944,7 +2036,7 @@ ApplicationWindow {
             function onSalaEsperandoActualizada(nombres) {
                 listaEsperando = nombres;
             }
-            function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots) {
+            function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots, preguntarExtension) {
                 pantalla = "Partida";
                 chatActive = false;
                 mensajeEnEspera = "";
@@ -1952,6 +2044,7 @@ ApplicationWindow {
                 tipoLimiteActual = tipoLimite;
                 permitirRecompraActual = permitirRecompra;
                 rellenarConBotsActual = rellenarConBots;
+                preguntarExtensionActual = preguntarExtension;
             }
             function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs) {
                 rondaActual = ronda;
@@ -2188,10 +2281,19 @@ ApplicationWindow {
             function onMesaActualizada(cartasCsv) {
                 cartasMesa = cartasCsv.length > 0 ? cartasCsv.split(",") : [];
             }
-            function onFinDePartida(ganador, saldo, porLimite) {
+            function onFinDePartida(ganador, saldo, porLimite, manosDisputadas, mejorMano, mejorManoJugador, eliminacionesCsv) {
                 ganadorFinal = ganador;
                 saldoFinal = saldo;
                 finPorLimite = porLimite;
+                manosDisputadasFinal = manosDisputadas;
+                mejorManoFinal = mejorMano;
+                mejorManoJugadorFinal = mejorManoJugador;
+                eliminacionesFinal = eliminacionesCsv.length > 0
+                    ? eliminacionesCsv.split(";").map(function(par) {
+                          var campos = par.split(":");
+                          return { nombre: campos[0], mano: campos[1] };
+                      })
+                    : [];
                 partidaGuardada = false;
                 // Mismo motivo que onEsperandoVoto: la partida terminó, ya
                 // no hay ningún turno de acción pendiente que mostrar.
@@ -2625,7 +2727,8 @@ ApplicationWindow {
                         { etiqueta: "Mano", valor: manoActual + " / " + objetivoManos },
                         { etiqueta: "Tipo de límite", valor: ["Sin límite", "Límite bote", "Límite fijo"][tipoLimiteActual] || "—" },
                         { etiqueta: "Permite recompra", valor: permitirRecompraActual ? "Sí" : "No" },
-                        { etiqueta: "Rellena con bots", valor: rellenarConBotsActual ? "Sí" : "No" }
+                        { etiqueta: "Rellena con bots", valor: rellenarConBotsActual ? "Sí" : "No" },
+                        { etiqueta: "Pregunta al extender", valor: preguntarExtensionActual ? "Sí" : "No" }
                     ].concat(codigoSalaPropia !== ""
                         ? [{ etiqueta: "Código de invitación", valor: codigoSalaPropia }]
                         : [])

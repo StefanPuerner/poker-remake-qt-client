@@ -142,6 +142,7 @@ ApplicationWindow {
     property int tipoLimiteActual: 0
     property bool permitirRecompraActual: false
     property bool rellenarConBotsActual: false
+    property bool preguntarExtensionActual: true
     property string rondaActual: ""
     property int boteActual: 0
     property string turnoNombre: ""
@@ -177,6 +178,10 @@ ApplicationWindow {
     property string ganadorFinal: ""
     property int saldoFinal: 0
     property bool finPorLimite: false
+    property int manosDisputadasFinal: 0
+    property string mejorManoFinal: ""
+    property string mejorManoJugadorFinal: ""
+    property var eliminacionesFinal: []
     property bool partidaGuardada: false
 
     // Mismo patrón que escritorio: el servidor manda timeout_ms en cada
@@ -268,7 +273,7 @@ ApplicationWindow {
         function onSalaEsperandoActualizada(nombres) {
             listaEsperando = nombres;
         }
-        function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots) {
+        function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots, preguntarExtension) {
             pantalla = "Partida";
             chatActive = false;
             mensajeEnEspera = "";
@@ -276,6 +281,7 @@ ApplicationWindow {
             tipoLimiteActual = tipoLimite;
             permitirRecompraActual = permitirRecompra;
             rellenarConBotsActual = rellenarConBots;
+            preguntarExtensionActual = preguntarExtension;
         }
         function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs) {
             rondaActual = ronda;
@@ -441,10 +447,19 @@ ApplicationWindow {
             tuTurno = false;
             turnoNombre = "";
         }
-        function onFinDePartida(ganador, saldo, porLimite) {
+        function onFinDePartida(ganador, saldo, porLimite, manosDisputadas, mejorMano, mejorManoJugador, eliminacionesCsv) {
             ganadorFinal = ganador;
             saldoFinal = saldo;
             finPorLimite = porLimite;
+            manosDisputadasFinal = manosDisputadas;
+            mejorManoFinal = mejorMano;
+            mejorManoJugadorFinal = mejorManoJugador;
+            eliminacionesFinal = eliminacionesCsv.length > 0
+                ? eliminacionesCsv.split(";").map(function(par) {
+                      var campos = par.split(":");
+                      return { nombre: campos[0], mano: campos[1] };
+                  })
+                : [];
             partidaGuardada = false;
             tuTurno = false;
             turnoNombre = "";
@@ -1165,6 +1180,23 @@ ApplicationWindow {
                     Row {
                         width: parent.width
                         Text {
+                            width: parent.width - interruptorPreguntarExtensionMovil.width
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Preguntar si extender al llegar al límite"
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        Interruptor {
+                            id: interruptorPreguntarExtensionMovil
+                            activo: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    Row {
+                        width: parent.width
+                        Text {
                             width: parent.width - selectorCiegaMovil.width
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Ciega grande"
@@ -1241,7 +1273,8 @@ ApplicationWindow {
                         selectorDificultadMovil.seleccionado,
                         interruptorRecompraMovil.activo,
                         interruptorRellenarMovil.activo,
-                        interruptorAbiertaMovil.activo
+                        interruptorAbiertaMovil.activo,
+                        interruptorPreguntarExtensionMovil.activo
                     );
                 }
             }
@@ -1665,7 +1698,12 @@ ApplicationWindow {
         Rectangle {
             anchors.centerIn: parent
             width: contenidoFinMovil.width + 48 * Tema.escala
-            height: contenidoFinMovil.height + 36 * Tema.escala
+            // Con las estadísticas nuevas (elimina uno por jugador, hasta 9)
+            // el contenido puede pasarse del alto disponible en landscape
+            // móvil -- se limita al alto de la ventana y se deja scrollear
+            // en vez de desbordar sin forma de verlo (mismo patrón que el
+            // showdown/CrearSala).
+            height: Math.min(contenidoFinMovil.height + 36 * Tema.escala, ventana.height - 40 * Tema.escala)
             border.width: 1
             border.color: Tema.colorAccent
             radius: 14 * Tema.escala
@@ -1674,9 +1712,16 @@ ApplicationWindow {
                 GradientStop { position: 1.0; color: Tema.colorPanel }
             }
 
+            Flickable {
+                anchors.fill: parent
+                anchors.margins: 18 * Tema.escala
+                contentWidth: contenidoFinMovil.width
+                contentHeight: contenidoFinMovil.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
             Column {
                 id: contenidoFinMovil
-                anchors.centerIn: parent
                 width: Math.min(280 * Tema.escala, ventana.width - 80 * Tema.escala)
                 spacing: 12 * Tema.escala
 
@@ -1721,6 +1766,68 @@ ApplicationWindow {
                     color: Tema.colorTextoTenue
                     font.pixelSize: 12 * Tema.escala
                 }
+
+                // ── Estadísticas de la partida ────────────────────
+                Rectangle {
+                    visible: !ventana.partidaGuardada
+                    width: parent.width
+                    height: 1
+                    color: Tema.colorBorde
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !ventana.partidaGuardada
+                    text: "Manos disputadas: " + ventana.manosDisputadasFinal
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 11 * Tema.escala
+                }
+                Column {
+                    visible: !ventana.partidaGuardada && ventana.mejorManoFinal !== ""
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 1 * Tema.escala
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "MEJOR MANO DE LA PARTIDA"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 8 * Tema.escala
+                        font.letterSpacing: 1
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: ventana.mejorManoFinal + " — " + ventana.mejorManoJugadorFinal
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.family: Tema.fuenteElegante
+                        font.pixelSize: 13 * Tema.escala
+                    }
+                }
+                Column {
+                    visible: !ventana.partidaGuardada && ventana.eliminacionesFinal.length > 0
+                    width: parent.width
+                    spacing: 3 * Tema.escala
+                    Repeater {
+                        model: ventana.eliminacionesFinal
+                        delegate: Row {
+                            required property var modelData
+                            width: parent.width
+                            Text {
+                                width: parent.width - textoManoEliminacionMovil.width
+                                text: modelData.nombre
+                                color: modelData.nombre === ventana.ganadorFinal ? Tema.colorAccent : "white"
+                                font.bold: modelData.nombre === ventana.ganadorFinal
+                                font.pixelSize: 10 * Tema.escala
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                id: textoManoEliminacionMovil
+                                text: modelData.mano === "X" ? "Sigue en juego" : "Mano " + modelData.mano
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 10 * Tema.escala
+                            }
+                        }
+                    }
+                }
+
                 Text {
                     visible: ventana.partidaGuardada
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -1741,6 +1848,7 @@ ApplicationWindow {
                         redcliente.refrescarSalas(ventana.servidorHost, ventana.servidorPuerto);
                     }
                 }
+            }
             }
         }
     }
@@ -1861,7 +1969,8 @@ ApplicationWindow {
                             { etiqueta: "Mano", valor: ventana.manoActual + " / " + ventana.objetivoManos },
                             { etiqueta: "Tipo de límite", valor: ["Sin límite", "Límite bote", "Límite fijo"][ventana.tipoLimiteActual] || "—" },
                             { etiqueta: "Permite recompra", valor: ventana.permitirRecompraActual ? "Sí" : "No" },
-                            { etiqueta: "Rellena con bots", valor: ventana.rellenarConBotsActual ? "Sí" : "No" }
+                            { etiqueta: "Rellena con bots", valor: ventana.rellenarConBotsActual ? "Sí" : "No" },
+                            { etiqueta: "Pregunta al extender", valor: ventana.preguntarExtensionActual ? "Sí" : "No" }
                         ].concat(ventana.codigoSalaPropia !== ""
                             ? [{ etiqueta: "Código de invitación", valor: ventana.codigoSalaPropia }]
                             : [])
