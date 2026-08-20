@@ -3,9 +3,10 @@
 Clientes gráficos (Qt Quick/QML) para jugar Texas Hold'em en red contra un
 servidor [PokerRemake](https://github.com/StefanPuerner/poker-remake). Este
 repo contiene **solo el cliente** — de escritorio y móvil —: crea/lista
-salas, juega la partida, chatea y guarda/carga partidas hablando el
-protocolo TCP/JSON del servidor. No incluye el motor de juego ni la lógica
-de servidor.
+salas, juega la partida, chatea, guarda/carga partidas y muestra
+estadísticas al terminar (manos disputadas, mejor mano de la partida,
+racha de eliminaciones) hablando el protocolo TCP/JSON del servidor. No
+incluye el motor de juego ni la lógica de servidor.
 
 - **`PokerClientQt`** — interfaz de escritorio, ratón/teclado.
 - **`PokerClientMobile`** — interfaz táctil, pensada para landscape en
