@@ -144,6 +144,10 @@ ApplicationWindow {
     property bool reconectandoAhora: false
     property int segundosReconexion: 0
     property bool viendoGuardadas: false
+    // Pestaña "Sala privada" del selector de Salas -- unirse por código
+    // (ver SelectorPildoras más abajo). Independiente de viendoGuardadas
+    // porque el selector ahora tiene 3 opciones, no un simple on/off.
+    property bool viendoPrivada: false
     // Deslizar-hacia-abajo-para-refrescar (pull-to-refresh) en las listas
     // de Salas/Guardadas -- puestas a true al soltar por debajo del
     // umbral, a false en cuanto llega la respuesta del servidor.
@@ -813,9 +817,10 @@ ApplicationWindow {
         SelectorPildoras {
             id: tabsSalas
             anchors.verticalCenter: parent.verticalCenter
-            opciones: ["Salas públicas", "Partidas guardadas"]
+            opciones: ["Salas públicas", "Partidas guardadas", "Sala privada"]
             onSeleccionadoChanged: {
                 ventana.viendoGuardadas = seleccionado === 1;
+                ventana.viendoPrivada = seleccionado === 2;
                 if (ventana.viendoGuardadas)
                     redcliente.listarGuardadas(ventana.servidorHost, ventana.servidorPuerto);
             }
@@ -881,7 +886,7 @@ ApplicationWindow {
             Text {
                 anchors.centerIn: parent
                 width: parent.width - 40 * Tema.escala
-                visible: !ventana.viendoGuardadas && listaSalasMovil.count === 0
+                visible: !ventana.viendoGuardadas && !ventana.viendoPrivada && listaSalasMovil.count === 0
                 text: "No hay salas públicas disponibles ahora mismo."
                 color: Tema.colorTextoTenue
                 horizontalAlignment: Text.AlignHCenter
@@ -901,7 +906,7 @@ ApplicationWindow {
 
             ListView {
                 id: listaSalasMovil
-                visible: !ventana.viendoGuardadas
+                visible: !ventana.viendoGuardadas && !ventana.viendoPrivada
                 anchors.fill: parent
                 anchors.margins: 10 * Tema.escala
                 clip: true
@@ -1049,6 +1054,54 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+            }
+
+            // Pestaña "Sala privada" -- campo "de mentira" que abre
+            // CampoEmergente (mismo patrón que el nombre de sala en
+            // CrearSala) más un botón "Unirse", en vez de la lista de
+            // salas/guardadas. Vive en la misma caja para no tener que
+            // duplicar tamaño/posición -- solo cambia qué contenido enseña.
+            Column {
+                anchors.centerIn: parent
+                visible: ventana.viendoPrivada
+                spacing: 14 * Tema.escala
+                width: parent.width - 60 * Tema.escala
+
+                Rectangle {
+                    id: cajaCodigoPrivadoMovil
+                    width: parent.width
+                    height: Tema.tamanoMinTactil
+                    radius: 6 * Tema.escala
+                    color: Tema.colorFondo
+                    border.width: 1
+                    border.color: areaCodigoPrivado.pressed ? Tema.colorAccent : Tema.colorBorde
+                    property string valor: ""
+                    Text {
+                        anchors.centerIn: parent
+                        text: cajaCodigoPrivadoMovil.valor !== "" ? cajaCodigoPrivadoMovil.valor : "Código de sala privada"
+                        color: cajaCodigoPrivadoMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                        font.pixelSize: 14 * Tema.escala
+                    }
+                    MouseArea {
+                        id: areaCodigoPrivado
+                        anchors.fill: parent
+                        onClicked: campoCodigoPrivadoMovil.abrir(cajaCodigoPrivadoMovil.valor)
+                    }
+                    CampoEmergente {
+                        id: campoCodigoPrivadoMovil
+                        parent: Overlay.overlay
+                        etiqueta: "Código de sala privada"
+                        maxLongitud: 6
+                        onAceptado: (texto) => cajaCodigoPrivadoMovil.valor = texto.toUpperCase()
+                    }
+                }
+                BotonRelleno {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Unirse"
+                    enabled: cajaCodigoPrivadoMovil.valor !== ""
+                    opacity: enabled ? 1.0 : 0.5
+                    onClicked: ventana.unirse("", cajaCodigoPrivadoMovil.valor)
                 }
             }
         }
