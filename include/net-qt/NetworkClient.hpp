@@ -14,8 +14,31 @@
 
 class NetworkClient : public QObject {
   Q_OBJECT
+  // Estadísticas de fin de partida como propiedades en vez de parámetros
+  // de la señal finDePartida -- bug real visto solo en el APK de Android
+  // (nunca en escritorio ni en el propio móvil corriendo como ventana de
+  // escritorio, mismo binario): con una señal de 7 parámetros conectada
+  // vía "Connections { function onFinDePartida(...) {...} }", los 3
+  // primeros (ganador/saldo/porLimite) llegaban bien pero los 4 últimos
+  // se quedaban siempre en su valor por defecto (0/""), como si QML
+  // estuviera invocando una versión más vieja del handler que ignora los
+  // parámetros de más. finDePartida() vuelve a sus 3 parámetros
+  // originales (esos siempre funcionaron); estos 4 datos se leen como
+  // propiedades normales, el mecanismo más maduro y probado de QML/Qt --
+  // se fijan ANTES de emitir finDePartida, así que ya están listos para
+  // cuando el handler de QML los lee.
+  Q_PROPERTY(int manosDisputadasFinal READ manosDisputadasFinal NOTIFY estadisticasFinCambiaron)
+  Q_PROPERTY(QString mejorManoFinal READ mejorManoFinal NOTIFY estadisticasFinCambiaron)
+  Q_PROPERTY(QString mejorManoJugadorFinal READ mejorManoJugadorFinal NOTIFY estadisticasFinCambiaron)
+  Q_PROPERTY(QString eliminacionesFinalCsv READ eliminacionesFinalCsv NOTIFY estadisticasFinCambiaron)
+
  public:
   using QObject::QObject;
+
+  int manosDisputadasFinal() const { return manosDisputadasFinal_; }
+  QString mejorManoFinal() const { return mejorManoFinal_; }
+  QString mejorManoJugadorFinal() const { return mejorManoJugadorFinal_; }
+  QString eliminacionesFinalCsv() const { return eliminacionesFinalCsv_; }
 
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
                             QString nombre) {
@@ -80,6 +103,21 @@ class NetworkClient : public QObject {
         [this](const std::string& payload) {
           emit salasActualizadas(
               QString::fromStdString(net::jsonGetStr(payload, "salas")));
+        });
+  }
+
+  /**
+   * @brief Sonda ligera de "¿hay servidor al otro lado?" para la pantalla
+   * Inicio — mismo socket efímero que refrescarSalas() (reutiliza
+   * LISTAR_SALAS: barato, y el servidor ya lo cierra tras responder), pero
+   * con su propio signal en vez de salasActualizadas(), para no disparar
+   * una actualización de la lista de salas cada vez que Inicio solo quiere
+   * saber si hay conexión.
+   */
+  Q_INVOKABLE void comprobarConexion(const QString& host, quint16 puerto) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::LISTAR_SALAS),
+        [this](const std::string& payload) {
+          emit conexionComprobada(!payload.empty());
         });
   }
 
@@ -172,6 +210,14 @@ class NetworkClient : public QObject {
         {{"accion", siExtender ? "EXTENDER" : "NO_EXTENDER"}}));
   }
 
+  /// Solo lo llama el host, tras ELEGIR_MANOS_EXTRA (todos ya aceptaron
+  /// continuar) -- cuántas manos más quiere añadir.
+  Q_INVOKABLE void elegirManosExtra(int cantidad) {
+    enviarMensaje(net::buildMsg(
+        net::MsgType::ACTION,
+        {{"accion", "MANOS_EXTRA"}, {"cantidad", std::to_string(cantidad)}}));
+  }
+
   Q_INVOKABLE void abandonar() {
     desconexionEsperada_ = true;  // el servidor va a cerrar nuestro socket a propósito
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "LEAVE"}}));
@@ -238,7 +284,20 @@ class NetworkClient : public QObject {
   /// cliente, que solo actualizaba comboActual/etc. dentro de esMiTurno().
   void comboActualizado(QString actual, QString probable, QString maxima);
   void esperandoVoto(QString mensaje);
-  void esperandoVotoExtension(QString mensaje, int manos);
+  /// FASE 1 de la extensión de partida: todos votan si quieren seguir
+  /// jugando o no (sin número de manos todavía, eso lo decide el host
+  /// solo si la votación sale que sí -- ver elegirManosExtraPedido()).
+  void esperandoVotoExtension(QString mensaje);
+  /// FASE 2, solo para el HOST: la votación salió que sí, hay que elegir
+  /// cuántas manos más añadir (con elegirManosExtra()).
+  void elegirManosExtraPedido(QString mensaje);
+  /// FASE 2, para el RESTO (no host): aviso de que se está esperando a que
+  /// el host termine de elegir, para no dejarlos mirando una pantalla
+  /// muda sin saber qué pasa.
+  void esperandoEleccionManos(QString mensaje, QString host);
+  /// La partida se extendió de verdad -- nuevoObjetivoManos ya incluye las
+  /// manos añadidas (no hay que sumarlas a mano en QML).
+  void partidaExtendida(int manosExtra, int nuevoObjetivoManos);
   void mesaActualizada(QString mesa);
   /// @param manosDisputadas Total de manos jugadas en la sesión.
   /// @param mejorMano Nombre de la mejor combinación conseguida en toda la
@@ -248,9 +307,12 @@ class NetworkClient : public QObject {
   /// el número de mano en que ese jugador quedó eliminado, o "X" si
   /// terminó la partida todavía en juego (mismo formato que ya usa
   /// Interfaz::mostrarDetallePartida() en ncurses).
-  void finDePartida(QString ganador, int saldo, bool porLimite,
-                    int manosDisputadas, QString mejorMano, QString mejorManoJugador,
-                    QString eliminacionesCsv);
+  void finDePartida(QString ganador, int saldo, bool porLimite);
+  /// Avisa de que manosDisputadasFinal/mejorManoFinal/mejorManoJugadorFinal/
+  /// eliminacionesFinalCsv ya están al día -- se emite justo antes de
+  /// finDePartida, así que para cuando ese llega, estas propiedades ya
+  /// tienen el valor de la partida que acaba de terminar.
+  void estadisticasFinCambiaron();
   void abandonaste(QString mensaje);
   void saldosActualizados(QString jugadoresStr);
   void partidaGuardada(QString archivo);
@@ -271,6 +333,9 @@ class NetworkClient : public QObject {
   void errorSala(QString mensaje);
   /// Respuesta a refrescarSalas(): "id:nombre:conectados:esperados;..." (puede ser "").
   void salasActualizadas(QString salasCsv);
+  /// Respuesta a comprobarConexion(): true si el servidor respondió algo,
+  /// false si la conexión falló (host caído, puerto cerrado, sin red...).
+  void conexionComprobada(bool conectado);
   /// Respuesta a listarGuardadas(): "archivo:fecha:humanos:bots;..." (puede ser "").
   void guardadasActualizadas(QString guardadasCsv);
   /// Respuesta a renombrarGuardada() — mensaje vacío si fue bien.
@@ -319,26 +384,44 @@ class NetworkClient : public QObject {
                              std::function<void(const std::string&)> alRecibir) {
     auto* sock = new QTcpSocket(this);
     auto buffer = std::make_shared<QByteArray>();
+    // Evita que alRecibir() se dispare dos veces (p. ej. el timeout de
+    // abajo Y un errorOccurred casi simultáneo al hacer sock->abort()).
+    auto respondido = std::make_shared<bool>(false);
     connect(sock, &QTcpSocket::connected, sock, [sock, msgSaliente]() {
       uint32_t len = qToBigEndian<uint32_t>(static_cast<uint32_t>(msgSaliente.payload.size()));
       sock->write(reinterpret_cast<const char*>(&len), 4);
       sock->write(msgSaliente.payload.data(), static_cast<qint64>(msgSaliente.payload.size()));
     });
-    connect(sock, &QTcpSocket::readyRead, sock, [sock, buffer, alRecibir]() {
+    connect(sock, &QTcpSocket::readyRead, sock, [sock, buffer, alRecibir, respondido]() {
       *buffer += sock->readAll();
       if (buffer->size() < 4) return;
       uint32_t n = qFromBigEndian<uint32_t>(
           reinterpret_cast<const uchar*>(buffer->constData()));
       if (buffer->size() < static_cast<int>(4 + n)) return;
       std::string payload(buffer->constData() + 4, n);
-      alRecibir(payload);
+      if (!*respondido) { *respondido = true; alRecibir(payload); }
       sock->disconnectFromHost();
     });
-    connect(sock, &QTcpSocket::errorOccurred, sock, [sock, alRecibir]() {
-      alRecibir("");  // fallo silencioso: quien llama decide qué mostrar con un payload vacío
+    connect(sock, &QTcpSocket::errorOccurred, sock, [sock, alRecibir, respondido]() {
+      if (!*respondido) { *respondido = true; alRecibir(""); }  // fallo silencioso: quien llama decide qué mostrar con un payload vacío
       sock->deleteLater();
     });
     connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
+    // Timeout explícito -- sin esto, connectToHost() contra una IP
+    // inalcanzable de verdad (p. ej. la IP de Tailscale tras apagar la
+    // VPN, sin RST ni ICMP de vuelta) se queda colgado lo que tarde el
+    // SO en agotar sus reintentos de SYN -- en Linux, con los valores por
+    // defecto, más de un minuto. El indicador de conexión de Inicio
+    // sondea cada 12s sin cancelar el intento anterior, así que sin este
+    // timeout se quedaba pegado en "conectado" mucho más de lo esperable
+    // tras cortar la VPN (bug real reportado: quitar la VPN no hacía
+    // volver el indicador a "sin conexión").
+    QTimer::singleShot(4000, sock, [sock, alRecibir, respondido]() {
+      if (*respondido) return;
+      *respondido = true;
+      alRecibir("");
+      sock->abort();
+    });
     sock->connectToHost(host, puerto);
   }
 
@@ -388,11 +471,30 @@ class NetworkClient : public QObject {
     if (restantes <= 0) {
       timerReintento_.stop();
       reconectando_ = false;
+      esperandoConfirmacionTrasReconectar_ = false;
       emit reconexionFallida();
       return;
     }
     segundosReconexionRestantes_ = restantes;
     emit reconectando(restantes);
+    if (esperandoConfirmacionTrasReconectar_) {
+      // Bug real encontrado en vivo: este método se llama cada 2s pase lo
+      // que pase, y ANTES hacía socket_.abort()+connectToHost() sin mirar
+      // si ya había un intento en curso -- en una red con latencia real
+      // (RTT + hasta 300ms de poll del lado servidor antes de que
+      // comprobarReconexiones() procese el JOIN_LOBBY), la vuelta completa
+      // podía tardar más de 2s. El propio timer entonces abortaba SU
+      // PROPIO intento a medias antes de que la confirmación llegara,
+      // reiniciando el handshake una y otra vez sin dejarlo nunca
+      // completarse -- el temporizador de 60s bajaba con normalidad pero
+      // la reconexión, en la práctica, nunca tenía ocasión real de
+      // terminar. Mientras esperandoConfirmacionTrasReconectar_ sea true
+      // ya hay un socket conectado y un JOIN_LOBBY en camino: dejarlo
+      // seguir en vez de cortarlo. Si ESTE intento en concreto vuelve a
+      // caer antes de confirmar, errorOccurred() (más abajo) limpia el
+      // flag para que el próximo tick sí reintente desde cero.
+      return;
+    }
     socket_.abort();
     socket_.connectToHost(hostGuardado_, puertoGuardado_);
   }
@@ -463,7 +565,16 @@ class NetworkClient : public QObject {
     });
 
     connect(&socket_, &QTcpSocket::errorOccurred, this, [this]() {
-      if (reconectando_) return;  // el propio timerReintento_ ya reintenta
+      if (reconectando_) {
+        // Este intento concreto (con o sin TCP ya establecido) acaba de
+        // fallar -- limpiar el flag de "esperando confirmación" para que
+        // el PRÓXIMO tick de timerReintento_ vuelva a intentar
+        // socket_.abort()+connectToHost() en vez de quedarse callado para
+        // siempre esperando una confirmación que ya no va a llegar por
+        // este socket (ver el comentario largo en intentarReconexionAhora()).
+        esperandoConfirmacionTrasReconectar_ = false;
+        return;
+      }
       if (desconexionEsperada_) return;  // salida a propósito (LEAVE/SAVE_AND_EXIT) — no es una caída
       if (conectadoAlgunaVez_) {
         iniciarReconexion();
@@ -651,8 +762,14 @@ class NetworkClient : public QObject {
               emit esperandoVoto(mensaje);
             } else if (evento == "ESPERAR_VOTO_EXTENSION") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
-              int manos = net::jsonGetInt(payload, "manos");
-              emit esperandoVotoExtension(mensaje, manos);
+              emit esperandoVotoExtension(mensaje);
+            } else if (evento == "ELEGIR_MANOS_EXTRA") {
+              QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+              emit elegirManosExtraPedido(mensaje);
+            } else if (evento == "ESPERANDO_ELECCION_MANOS") {
+              QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+              QString host = QString::fromStdString(net::jsonGetStr(payload, "host"));
+              emit esperandoEleccionManos(mensaje, host);
             } else if (evento == "MESA_UPDATE") {
               QString mesa = QString::fromStdString(net::jsonGetStr(payload, "mesa"));
               emit mesaActualizada(mesa);
@@ -695,22 +812,23 @@ class NetworkClient : public QObject {
               emit ganadorSinShowdown(jugador, bote);
             } else if (evento == "PARTIDA_EXTENDIDA") {
               int manos = net::jsonGetInt(payload, "manos");
+              int nuevoObjetivo = net::jsonGetInt(payload, "objetivo_nuevo");
               emit eventoJuego("Partida extendida por otras " + QString::number(manos) +
                                 " manos", "sistema");
+              emit partidaExtendida(manos, nuevoObjetivo);
             } else if (evento == "FIN_PARTIDA" || evento == "FIN_PARTIDA_LIMITE") {
               QString ganador =
                   QString::fromStdString(net::jsonGetStr(payload, "ganador"));
               int saldo = net::jsonGetInt(payload, "saldo");
-              int manosDisputadas = net::jsonGetInt(payload, "manos_disputadas");
-              QString mejorMano =
+              manosDisputadasFinal_ = net::jsonGetInt(payload, "manos_disputadas");
+              mejorManoFinal_ =
                   QString::fromStdString(net::jsonGetStr(payload, "mejor_mano"));
-              QString mejorManoJugador =
+              mejorManoJugadorFinal_ =
                   QString::fromStdString(net::jsonGetStr(payload, "mejor_mano_jugador"));
-              QString eliminacionesCsv =
+              eliminacionesFinalCsv_ =
                   QString::fromStdString(net::jsonGetStr(payload, "eliminaciones"));
-              emit finDePartida(ganador, saldo, evento == "FIN_PARTIDA_LIMITE",
-                                manosDisputadas, mejorMano, mejorManoJugador,
-                                eliminacionesCsv);
+              emit estadisticasFinCambiaron();
+              emit finDePartida(ganador, saldo, evento == "FIN_PARTIDA_LIMITE");
             } else if (evento == "ABANDONASTE") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
               emit abandonaste(mensaje);
@@ -823,4 +941,9 @@ class NetworkClient : public QObject {
   bool esperandoHeader_ = true;
   uint32_t longitudEsperada_ = 0;
   QTcpSocket socket_;
+
+  int manosDisputadasFinal_ = 0;
+  QString mejorManoFinal_;
+  QString mejorManoJugadorFinal_;
+  QString eliminacionesFinalCsv_;
 };

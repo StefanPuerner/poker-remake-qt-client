@@ -100,6 +100,13 @@ int main(int argc, char* argv[]) {
       Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
   QGuiApplication app(argc, argv);
+  // Sin esto, Qt.labs.settings (nombre/sonido/tema persistentes, ver
+  // qml-mobile/Main.qml) no sabe dónde escribir -- mismo motivo que en el
+  // cliente de escritorio (src/client-qt/main.cpp). Nombre de aplicación
+  // distinto del de escritorio a propósito: son ajustes independientes,
+  // cada cliente guarda los suyos.
+  QGuiApplication::setOrganizationName("PokerRemake");
+  QGuiApplication::setApplicationName("PokerClientMobile");
   QQmlApplicationEngine engine;
   NetworkClient client;
   engine.rootContext()->setContextProperty("redcliente", &client);

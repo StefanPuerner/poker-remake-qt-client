@@ -3,6 +3,7 @@ import QtQuick
 import PokerQuickMobile
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import Qt.labs.settings
 
 ApplicationWindow {
     id: ventana
@@ -85,15 +86,53 @@ ApplicationWindow {
         onActivated: ventana.consumirAtras()
     }
 
+    // ── Ajustes persistentes (nombre, sonido, tema) ─────────────────────
+    // Mismo patrón que escritorio (ver Main.qml de qml/) -- antes esto
+    // vivía solo en memoria, se perdía al cerrar la app. "tema" NO es un
+    // property alias directo a Tema.temaActual a propósito: un alias a una
+    // propiedad de un SINGLETON rompe el Settings entero en silencio (nada
+    // se guarda, ni siquiera el resto de aliases) -- comprobado en real en
+    // el cliente de escritorio. Se guarda como entero normal y se
+    // sincroniza a mano en los dos sentidos, justo debajo.
+    Settings {
+        id: ajustesPersistentesMovil
+        category: "PokerRemake"
+        property alias nombreGuardado: ventana.nombreJugador
+        property alias sonido: ventana.sonidoActivado
+        property int temaGuardado: 0
+    }
+    Component.onCompleted: Tema.temaActual = ajustesPersistentesMovil.temaGuardado
+    Connections {
+        target: Tema
+        function onTemaActualChanged() { ajustesPersistentesMovil.temaGuardado = Tema.temaActual; }
+    }
+
     // ── Ajustes ──────────────────────────────────────────────────────────
-    // En memoria por ahora, sin persistencia entre sesiones — mismo
-    // criterio que escritorio (a la espera de un almacén de ajustes real).
-    property bool sonidoActivado: true
+    // Desactivado por defecto (misma decisión que en escritorio).
+    property bool sonidoActivado: false
 
     // ── Sesión / red ─────────────────────────────────────────────────────
     property string nombreJugador: ""
     property string servidorHost: SERVER_HOST_DEFAULT
     property int servidorPuerto: SERVER_PORT_DEFAULT
+    // Estado de conectividad mostrado en Inicio -- mismo mecanismo que
+    // escritorio (comprobandoConexion distingue "aún no sabemos" de "ya
+    // sabemos que no hay servidor", para no enseñar el aviso rojo un
+    // instante antes de tener respuesta real).
+    property bool conectadoAlServidor: false
+    property bool comprobandoConexion: true
+    // Sonda periódica mientras se está en Inicio -- host/puerto son fijos
+    // en tiempo de ejecución, así que no hace falta relanzarla por ningún
+    // cambio de ajustes, solo al llegar a esta pantalla y cada intervalo
+    // mientras se siga en ella. triggeredOnStart dispara una comprobación
+    // inmediata tanto al arrancar la app como al volver a Inicio.
+    Timer {
+        interval: 12000
+        running: ventana.pantalla === "Inicio"
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: redcliente.comprobarConexion(ventana.servidorHost, ventana.servidorPuerto)
+    }
     // Compartido entre Inicio y Salas — las dos pueden iniciar una conexión
     // (refrescarSalas/unirseASala/cargarPartidaGuardada) y un fallo puede
     // llegar estando en cualquiera de las dos.
@@ -120,7 +159,14 @@ ApplicationWindow {
     property string codigoSalaPropia: ""
     property string nombresEsperadosLobby: ""
     property string hostActual: ""
-    property bool soyHost: hostActual !== "" && hostActual === nombreJugador
+    // Mismo bug que en el cliente de escritorio (ver Main.qml de qml/):
+    // hostActual pasa por sanitizarNombre() en el servidor, nombreJugador
+    // es el texto crudo -- un nombre con tilde/ñ deja de coincidir para
+    // siempre y "Guardar y salir" desaparece para el host real. Se
+    // recuerda directamente si este cliente creó la sala en vez de
+    // comparar nombres.
+    property bool creadorDeLaSala: false
+    property bool soyHost: creadorDeLaSala
     property string textoListos: ""
     property bool chatActive: false
     // Chat de sala (Lobby + quien espera a sentarse a mitad de partida) y
@@ -175,6 +221,12 @@ ApplicationWindow {
     property string mensajeVoto: ""
     property bool votoExtensionAbierto: false
     property string votoExtensionMensaje: ""
+    // FASE 2 de la extensión de partida (tras la unanimidad del voto de
+    // arriba): cuántas manos más se juegan. Solo el host lo elige
+    // (soyYoQuienElige); el resto solo ve el mensaje de espera.
+    property bool esperandoManosExtra: false
+    property string manosExtraMensaje: ""
+    property bool soyYoQuienElige: false
     property string ganadorFinal: ""
     property int saldoFinal: 0
     property bool finPorLimite: false
@@ -205,10 +257,12 @@ ApplicationWindow {
     // vacío que el servidor tendría que autogenerar.
     function unirse(salaId, codigo) {
         if (nombreJugador === "") { campoNombre.abrir(""); return; }
+        creadorDeLaSala = false;
         redcliente.unirseASala(servidorHost, servidorPuerto, nombreJugador, salaId, codigo);
     }
     function reanudar(archivo) {
         if (nombreJugador === "") { campoNombre.abrir(""); return; }
+        creadorDeLaSala = true;
         redcliente.cargarPartidaGuardada(servidorHost, servidorPuerto, nombreJugador, archivo, "", false);
     }
 
@@ -302,11 +356,19 @@ ApplicationWindow {
                     saldo: campos[1],
                     apuesta: campos[2]
                 });
-                // No hay un evento dedicado de "recompra confirmada" — se
-                // detecta viendo que el propio saldo ya no es 0.
-                if (campos[0] === nombreJugador && parseInt(campos[1]) > 0) {
-                    puedoRecomprar = false;
-                    recompraSolicitada = false;
+                if (campos[0] === nombreJugador) {
+                    // Mismo bug que en escritorio: miSaldoActual solo se
+                    // ponía al día en onEsMiTurno -- si aún no te ha
+                    // tocado, se quedaba a 0. Este GAME_STATE llega en
+                    // cada turno de cualquiera, así que es el sitio
+                    // correcto para mantenerlo al día siempre.
+                    miSaldoActual = parseInt(campos[1]);
+                    // No hay un evento dedicado de "recompra confirmada" —
+                    // se detecta viendo que el propio saldo ya no es 0.
+                    if (miSaldoActual > 0) {
+                        puedoRecomprar = false;
+                        recompraSolicitada = false;
+                    }
                 }
             }
         }
@@ -441,19 +503,50 @@ ApplicationWindow {
             tuTurno = false;
             turnoNombre = "";
         }
-        function onEsperandoVotoExtension(mensaje, manos) {
+        function onEsperandoVotoExtension(mensaje) {
             votoExtensionMensaje = mensaje;
             votoExtensionAbierto = true;
             tuTurno = false;
             turnoNombre = "";
         }
-        function onFinDePartida(ganador, saldo, porLimite, manosDisputadas, mejorMano, mejorManoJugador, eliminacionesCsv) {
+        // FASE 2 (unanimidad conseguida): al host le llega este evento en
+        // concreto (unicast) -- muestra el selector de cuántas manos
+        // añadir en vez del mensaje genérico de espera.
+        function onElegirManosExtraPedido(mensaje) {
+            manosExtraMensaje = mensaje;
+            soyYoQuienElige = true;
+            esperandoManosExtra = true;
+        }
+        // FASE 2 para el resto (broadcast, incluido el propio host, pero
+        // onElegirManosExtraPedido ya puso soyYoQuienElige=true para él).
+        function onEsperandoEleccionManos(mensaje, host) {
+            manosExtraMensaje = mensaje;
+            esperandoManosExtra = true;
+        }
+        function onPartidaExtendida(manosExtra, nuevoObjetivoManos) {
+            esperandoManosExtra = false;
+            soyYoQuienElige = false;
+            // BUG real encontrado en vivo: "Mano X/Y" se quedaba con el
+            // objetivo original tras extender -- ya viene calculado del
+            // servidor, no hace falta sumarlo aquí.
+            objetivoManos = nuevoObjetivoManos;
+        }
+        // manosDisputadasFinal/mejorManoFinal/mejorManoJugadorFinal/
+        // eliminacionesFinal se leen de redcliente (propiedades, no
+        // parámetros de la señal) -- ver el comentario largo en
+        // NetworkClient.hpp junto a esas Q_PROPERTY: en el APK de Android
+        // real, una señal de 7 parámetros aquí perdía los 4 últimos en
+        // silencio (bug visto solo ahí). estadisticasFinCambiaron() se
+        // emite justo antes que esta señal, así que las propiedades ya
+        // están al día para cuando se leen aquí.
+        function onFinDePartida(ganador, saldo, porLimite) {
             ganadorFinal = ganador;
             saldoFinal = saldo;
             finPorLimite = porLimite;
-            manosDisputadasFinal = manosDisputadas;
-            mejorManoFinal = mejorMano;
-            mejorManoJugadorFinal = mejorManoJugador;
+            manosDisputadasFinal = redcliente.manosDisputadasFinal;
+            mejorManoFinal = redcliente.mejorManoFinal;
+            mejorManoJugadorFinal = redcliente.mejorManoJugadorFinal;
+            var eliminacionesCsv = redcliente.eliminacionesFinalCsv;
             eliminacionesFinal = eliminacionesCsv.length > 0
                 ? eliminacionesCsv.split(";").map(function(par) {
                       var campos = par.split(":");
@@ -466,6 +559,8 @@ ApplicationWindow {
             showdownAbierto = false;
             votoAbierto = false;
             votoExtensionAbierto = false;
+            esperandoManosExtra = false;
+            soyYoQuienElige = false;
             pantalla = "Fin";
         }
         function onPartidaGuardada(archivo) {
@@ -479,17 +574,26 @@ ApplicationWindow {
             showdownAbierto = false;
             votoAbierto = false;
             votoExtensionAbierto = false;
+            esperandoManosExtra = false;
+            soyYoQuienElige = false;
             pantalla = "Fin";
         }
         function onAbandonaste(mensaje) {
             mensajeErrorConexion = mensaje;
             showdownAbierto = false;
             votoAbierto = false;
+            votoExtensionAbierto = false;
+            esperandoManosExtra = false;
+            soyYoQuienElige = false;
             pantalla = "Salas";
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
         }
         function onError(mensaje) {
             mensajeErrorConexion = "Error: " + mensaje;
+        }
+        function onConexionComprobada(conectado) {
+            comprobandoConexion = false;
+            conectadoAlServidor = conectado;
         }
         function onNombreRechazado(mensaje) {
             pantalla = "Inicio";
@@ -613,10 +717,34 @@ ApplicationWindow {
             }
         }
 
+        // Indicador de conectividad: sin esto, la única señal de "no hay
+        // servidor" era el error que salía DESPUÉS de intentar entrar a
+        // Salas — ahora se ve de antemano, en Inicio, y el botón ni
+        // siquiera deja pasar mientras no haya servidor confirmado.
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 6 * Tema.escala
+            Rectangle {
+                width: 8 * Tema.escala
+                height: 8 * Tema.escala
+                radius: width / 2
+                anchors.verticalCenter: parent.verticalCenter
+                color: ventana.comprobandoConexion ? Tema.colorTextoTenue
+                       : (ventana.conectadoAlServidor ? Tema.colorAccent : Tema.colorPeligro)
+            }
+            Text {
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
+                text: ventana.comprobandoConexion ? "Comprobando conexión…"
+                      : (ventana.conectadoAlServidor ? "Conectado al servidor" : "Sin conexión con el servidor")
+            }
+        }
         BotonRelleno {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Salas disponibles"
             radioBorde: 999
+            enabled: ventana.conectadoAlServidor
+            opacity: enabled ? 1.0 : 0.5
             onClicked: {
                 ventana.mensajeErrorConexion = "";
                 ventana.pantalla = "Salas";
@@ -657,60 +785,93 @@ ApplicationWindow {
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
 
-    Column {
-        // Antes centrado verticalmente en toda la pantalla: en una
-        // landscape corta el contenido quedaba casi pegado a la barra de
-        // arriba (poco margen real entre los dos). Anclado ahora bajo la
-        // propia barra, con un hueco fijo -- separación garantizada pase
-        // lo que pase con el alto de pantalla.
+    // Antes vivía dentro de un Column envolvente y las dos Rectangle de
+    // abajo (aviso de error / caja de salas) anclaban a "filaTabsSalasMovil.bottom"
+    // desde FUERA de ese Column -- Qt Quick solo permite anclar a un padre o
+    // a un hermano directo, nunca a un nieto de un hermano, así que ese
+    // anclaje quedaba indefinido y las dos Rectangle colapsaban arriba del
+    // todo, tapando la barra superior y esta misma fila (confirmado con una
+    // captura real). Ahora esta fila es hermana directa de esas dos
+    // Rectangle -- mismo padre, anclaje válido -- y ya no hace falta el
+    // Column (un único hijo no necesitaba layout).
+    Row {
+        id: filaTabsSalasMovil
         visible: ventana.pantalla === "Salas"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: barraSalasMovil.bottom
         anchors.topMargin: 22 * Tema.escala
-        spacing: 12 * Tema.escala
-        width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
-
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 10 * Tema.escala
-            SelectorPildoras {
-                id: tabsSalas
-                anchors.verticalCenter: parent.verticalCenter
-                opciones: ["Salas públicas", "Partidas guardadas"]
-                onSeleccionadoChanged: {
-                    ventana.viendoGuardadas = seleccionado === 1;
-                    if (ventana.viendoGuardadas)
-                        redcliente.listarGuardadas(ventana.servidorHost, ventana.servidorPuerto);
-                }
-            }
-            BotonContorno {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Crear sala nueva"
-                onClicked: {
-                    ventana.mensajeErrorConexion = "";
-                    ventana.pantalla = "CrearSala";
-                }
+        spacing: 10 * Tema.escala
+        SelectorPildoras {
+            id: tabsSalas
+            anchors.verticalCenter: parent.verticalCenter
+            opciones: ["Salas públicas", "Partidas guardadas"]
+            onSeleccionadoChanged: {
+                ventana.viendoGuardadas = seleccionado === 1;
+                if (ventana.viendoGuardadas)
+                    redcliente.listarGuardadas(ventana.servidorHost, ventana.servidorPuerto);
             }
         }
+        BotonContorno {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Crear sala nueva"
+            onClicked: {
+                ventana.mensajeErrorConexion = "";
+                ventana.pantalla = "CrearSala";
+            }
+        }
+    }
+
+    // Aviso de error como overlay flotante, no como hijo de filaTabsSalasMovil —
+    // antes vivía dentro del Column que envolvía la fila de pestañas, así
+    // que cada vez que aparecía empujaba la caja de salas hacia abajo. En
+    // una pantalla landscape ya
+    // justa de alto (Tema.altoBase = 400, sin margen de sobra), esa línea
+    // de más bastaba para sacar el borde inferior de la caja fuera de la
+    // pantalla (confirmado con una captura real: la caja se veía "abierta"
+    // por abajo, cortada por el borde de la ventana, no de su propio
+    // fondo/borde). Al flotar por encima en vez de desplazar nada, la caja
+    // ya no se mueve nunca pase lo que pase con el mensaje -- a cambio,
+    // mientras el aviso esté visible, tapa un poco la fila superior de la
+    // lista (aceptable: es un mensaje puntual y breve, no un estado
+    // permanente).
+    Rectangle {
+        visible: ventana.mensajeErrorConexion !== "" && ventana.pantalla === "Salas"
+        anchors.top: filaTabsSalasMovil.bottom
+        anchors.topMargin: 10 * Tema.escala
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
+        height: textoErrorSalasMovil.implicitHeight + 12 * Tema.escala
+        radius: 6 * Tema.escala
+        color: Qt.rgba(0, 0, 0, 0.6)
+        border.width: 1
+        border.color: Tema.colorPeligro
 
         Text {
-            visible: ventana.mensajeErrorConexion !== "" && ventana.pantalla === "Salas"
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width
+            id: textoErrorSalasMovil
+            anchors.centerIn: parent
+            width: parent.width - 16 * Tema.escala
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
             text: ventana.mensajeErrorConexion
         }
+    }
 
-        Rectangle {
-            width: parent.width
-            height: 220 * Tema.escala
-            radius: 8 * Tema.escala
-            color: Tema.colorPanel
-            border.width: 1
-            border.color: Tema.colorBorde
+    // Caja de salas/guardadas -- hermana directa de filaTabsSalasMovil (no
+    // anidada dentro de ella ni de ningún Column) para que su posición sea
+    // SIEMPRE la misma, se muestre o no el aviso de error de encima.
+    Rectangle {
+        visible: ventana.pantalla === "Salas"
+        anchors.top: filaTabsSalasMovil.bottom
+        anchors.topMargin: 12 * Tema.escala
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
+        height: 220 * Tema.escala
+        radius: 8 * Tema.escala
+        color: Tema.colorPanel
+        border.width: 1
+        border.color: Tema.colorBorde
 
             Text {
                 anchors.centerIn: parent
@@ -886,7 +1047,6 @@ ApplicationWindow {
                 }
             }
         }
-    }
 
     // ── Pantalla CrearSala ───────────────────────────────────────────────
     BarraSuperior {
@@ -1259,6 +1419,7 @@ ApplicationWindow {
                 text: "Crear sala"
                 onClicked: {
                     if (ventana.nombreJugador === "") { campoNombre.abrir(""); return; }
+                    ventana.creadorDeLaSala = true;
                     redcliente.crearSala(
                         ventana.servidorHost, ventana.servidorPuerto, ventana.nombreJugador,
                         cajaNombreSalaMovil.valor,
@@ -1683,6 +1844,55 @@ ApplicationWindow {
                         onClicked: {
                             redcliente.votarExtension(false);
                             ventana.votoExtensionAbierto = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        // FASE 2: unanimidad conseguida -- el host elige cuántas manos
+        // más, el resto solo ve el mensaje de espera (mismo bloque,
+        // "soyYoQuienElige" decide qué contenido mostrar).
+        Rectangle {
+            visible: ventana.esperandoManosExtra
+            anchors.centerIn: parent
+            width: columnaManosExtraMovil.width + 32 * Tema.escala
+            height: columnaManosExtraMovil.height + 24 * Tema.escala
+            radius: 12 * Tema.escala
+            color: Tema.colorPanel
+            border.width: 1
+            border.color: Tema.colorAccent
+
+            Column {
+                id: columnaManosExtraMovil
+                anchors.centerIn: parent
+                spacing: 10 * Tema.escala
+                width: Math.min(280 * Tema.escala, ventana.width - 80 * Tema.escala)
+                Text {
+                    width: parent.width
+                    text: ventana.manosExtraMensaje
+                    color: Tema.colorAccent
+                    font.bold: true
+                    font.pixelSize: 13 * Tema.escala
+                    wrapMode: Text.WordWrap
+                }
+                Row {
+                    visible: ventana.soyYoQuienElige
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 10 * Tema.escala
+                    SelectorNumerico {
+                        id: selectorManosExtraMovil
+                        anchors.verticalCenter: parent.verticalCenter
+                        valor: 10
+                        minimo: 1
+                        maximo: 500
+                    }
+                    BotonRelleno {
+                        text: "Confirmar"
+                        onClicked: {
+                            redcliente.elegirManosExtra(selectorManosExtraMovil.valor);
+                            ventana.esperandoManosExtra = false;
+                            ventana.soyYoQuienElige = false;
                         }
                     }
                 }
