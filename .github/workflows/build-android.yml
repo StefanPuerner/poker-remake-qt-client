@@ -18,11 +18,17 @@
 # antes de intentar descargar nada. 6.7.3 es la más reciente que el
 # catálogo sí reconoce.
 #
-# El APK sale firmado con el keystore de depuración automático de Gradle
-# (no hay firma de código real todavía, mismo motivo por el que Windows
-# reparte un .zip portable en vez de un instalador — ver ese workflow):
-# instalable y jugable, pero Android lo marcará como "de un desarrollador
-# desconocido" al instalar fuera de una tienda.
+# El APK sale firmado con un keystore de release de verdad (secreto
+# ANDROID_KEYSTORE_BASE64 + alias/contraseñas, ver env de job más abajo) --
+# Android sigue marcándolo "de un desarrollador desconocido" al instalar
+# fuera de una tienda (eso es aparte, normal en cualquier APK repartido
+# fuera de Play Store), pero ya SÍ deja instalar una versión nueva encima
+# de la anterior sin desinstalar primero. Antes se firmaba con el keystore
+# de depuración automático de Gradle -- que GitHub Actions regenera con una
+# clave distinta en cada ejecución (máquina nueva, sin ~/.android
+# persistido), así que cada build quedaba firmada con una clave diferente
+# y Android rechazaba cualquier "actualización" por no reconocer al firmante
+# como el mismo de la versión instalada, obligando a desinstalar siempre.
 
 name: Build Android
 
@@ -37,9 +43,23 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Ver la nota de más arriba -- estas cuatro las lee androiddeployqt al
+    # EMPAQUETAR el APK (target PokerClientMobile_make_apk), no cmake en el
+    # configure, así que van a nivel de job para estar disponibles en todos
+    # los steps. QT_ANDROID_KEYSTORE_PATH es una ruta fija en /tmp (no
+    # ${{ runner.temp }} -- ese contexto no está disponible en env de job).
+    # GitHub enmascara los valores de secrets.* en el log salga donde salga.
+    env:
+      QT_ANDROID_KEYSTORE_PATH: /tmp/release-signing.keystore
+      QT_ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+      QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASS }}
+      QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_KEY_PASS }}
     steps:
       - name: Clonar el repositorio
         uses: actions/checkout@v4
+
+      - name: Decodificar el keystore de release desde el secreto
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$QT_ANDROID_KEYSTORE_PATH"
 
       - name: Configurar JDK (lo necesita Gradle, que empaqueta el APK)
         uses: actions/setup-java@v4
@@ -196,14 +216,15 @@ jobs:
             exit 1
           fi
           NDK_DIR="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
-          # CMAKE_BUILD_TYPE=Debug, no RelWithDebInfo como en los otros
-          # workflows: Qt lo traduce a la variante "release" de Gradle en
-          # Android, y un release SIN keystore de firma configurado
-          # (no tenemos ninguno) produce un APK sin firmar -- exactamente
-          # lo que Android rechaza al instalar. La variante debug la firma
-          # Gradle solo, con un keystore de depuración automático.
+          # RelWithDebInfo (igual que los otros workflows) en vez del
+          # Debug de antes: ahora sí hay un keystore de verdad (variables
+          # QT_ANDROID_KEYSTORE_* a nivel de job, ver arriba) para firmar
+          # la variante "release" de Gradle a la que Qt traduce cualquier
+          # CMAKE_BUILD_TYPE que no sea Debug -- QT_ANDROID_SIGN_APK activa
+          # esa firma.
           "$QT_ROOT_DIR/bin/qt-cmake" -B build \
-            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DQT_ANDROID_SIGN_APK:BOOL=ON \
             -DQT_HOST_PATH="$QT_HOST_DIR" \
             -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
             -DANDROID_NDK_ROOT="$NDK_DIR"
