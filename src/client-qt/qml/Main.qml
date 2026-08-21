@@ -277,6 +277,11 @@ ApplicationWindow {
     property bool rellenarConBotsActual: false
     property bool preguntarExtensionActual: true
     property string turnoNombre: ""
+    // Dealer/ciegas de la mano actual (campos "dealer"/"sb"/"bb" de
+    // GAME_STATE) -- para los marcadores D/SB/BB de Mesa/Asiento.
+    property string dealerNombre: ""
+    property string sbNombre: ""
+    property string bbNombre: ""
     property string rondaActual: ""
     // Jugadores retirados en la mano actual — el servidor no manda esto
     // como estado (GAME_STATE solo da nombre/saldo/apuesta), así que se
@@ -1681,6 +1686,9 @@ ApplicationWindow {
                     miNombreJugador: nombreUsuario.text
                     fraccionTiempo: ventana.fraccionTiempoRestante
                     retirados: ventana.retirados
+                    dealerNombre: ventana.dealerNombre
+                    sbNombre: ventana.sbNombre
+                    bbNombre: ventana.bbNombre
                 }
 
                 PanelLateral {
@@ -2105,10 +2113,14 @@ ApplicationWindow {
                 rellenarConBotsActual = rellenarConBots;
                 preguntarExtensionActual = preguntarExtension;
             }
-            function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs) {
+            function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
+                                             dealer, sb, bb) {
                 rondaActual = ronda;
                 boteActual = bote;
                 turnoNombre = turno;
+                dealerNombre = dealer;
+                sbNombre = sb;
+                bbNombre = bb;
                 // Si el servidor ya dice que el turno es de otro (o de
                 // nadie), asegurar que la fila de acciones se oculte aunque
                 // nunca se haya pulsado un botón — pasa cuando el turno

@@ -10,6 +10,13 @@ Column {
     property bool activo: false
     property real fraccionTiempo: 1.0
     property bool retirado: false
+    // Dealer/ciegas de la mano actual (servidor, ver GAME_STATE). Un mismo
+    // asiento puede ser dealer Y small blind a la vez (heads-up: el dealer
+    // paga la ciega pequeña) -- por eso son propiedades independientes, no
+    // un enum "posicion" de un solo valor.
+    property bool esDealer: false
+    property bool esSb: false
+    property bool esBb: false
     opacity: retirado ? 0.45 : 1.0
     onActivoChanged: anillo.requestPaint()
     onFraccionTiempoChanged: if (activo)
@@ -80,6 +87,56 @@ Column {
                 color: Tema.colorAccent
                 font.pixelSize: 20 * Tema.escala
                 font.family: Tema.fuenteElegante
+            }
+        }
+
+        // Marcadores de dealer/ciegas -- mismo diseño que escritorio (ver
+        // el comentario largo ahí): disco dorado para el dealer, píldora
+        // discreta para SB/BB, en un Row para que quepan los dos a la vez
+        // en heads-up.
+        Row {
+            visible: esDealer || esSb || esBb
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.rightMargin: -2 * Tema.escala
+            anchors.topMargin: -2 * Tema.escala
+            spacing: 2 * Tema.escala
+            z: 10
+
+            Rectangle {
+                visible: esDealer
+                width: 20 * Tema.escala
+                height: 20 * Tema.escala
+                radius: width / 2
+                color: Tema.colorAccent
+                border.width: 1.5
+                border.color: Tema.colorFondo
+                Text {
+                    anchors.centerIn: parent
+                    text: "D"
+                    font.bold: true
+                    font.pixelSize: 11 * Tema.escala
+                    font.family: Tema.fuenteElegante
+                    color: Tema.colorFondo
+                }
+            }
+            Rectangle {
+                visible: esSb || esBb
+                width: textoCiega.implicitWidth + 8 * Tema.escala
+                height: 18 * Tema.escala
+                radius: height / 2
+                color: Tema.colorPanel
+                border.width: 1
+                border.color: Tema.colorBorde
+                Text {
+                    id: textoCiega
+                    anchors.centerIn: parent
+                    text: esSb ? "SB" : "BB"
+                    font.bold: true
+                    font.pixelSize: 9 * Tema.escala
+                    font.family: Tema.fuenteElegante
+                    color: Tema.colorAccent
+                }
             }
         }
     }

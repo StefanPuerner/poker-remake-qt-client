@@ -256,7 +256,8 @@ class NetworkClient : public QObject {
   void partidaIniciada(int manos, int tipoLimite, bool permitirRecompra, bool rellenarConBots,
                        bool preguntarExtension);
   void estadoMesaActualizado(QString ronda, int bote, QString turno,
-                             QString jugadoresStr, int timeoutMs);
+                             QString jugadoresStr, int timeoutMs,
+                             QString dealer, QString sb, QString bb);
   /**
    * @brief Una línea para el historial de partida.
    * @param tipo Categoría para colorear el punto de la entrada en Main.qml:
@@ -896,7 +897,12 @@ class NetworkClient : public QObject {
             // nunca es un valor real (siempre TURNO_TIMEOUT_MS, 30000), así
             // que Main.qml lo trata como "sin temporizador para este turno".
             int timeoutMs = net::jsonGetInt(payload, "timeout_ms");
-            emit estadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs);
+            QString dealer =
+                QString::fromStdString(net::jsonGetStr(payload, "dealer"));
+            QString sb = QString::fromStdString(net::jsonGetStr(payload, "sb"));
+            QString bb = QString::fromStdString(net::jsonGetStr(payload, "bb"));
+            emit estadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
+                                       dealer, sb, bb);
           } else if (tipo == "TU_TURNO") {
             int bote = net::jsonGetInt(payload, "bote");
             int igualar = net::jsonGetInt(payload, "igualar");

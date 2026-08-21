@@ -20,6 +20,12 @@ Item {
     property string miNombreJugador: ""
     property real fraccionTiempo: 1.0
     property var retirados: []
+    // Dealer/ciegas de la mano actual (servidor, campos "dealer"/"sb"/"bb"
+    // de GAME_STATE) -- ver Asiento.qml para el porqué de tres bool
+    // independientes en vez de un enum (heads-up: dealer y SB coinciden).
+    property string dealerNombre: ""
+    property string sbNombre: ""
+    property string bbNombre: ""
 
     // Índice del propio jugador dentro de "jugadores" — se usa para
     // rotar todos los asientos de forma que el propio siempre caiga
@@ -141,6 +147,9 @@ Item {
                 // asiento activo anima su cuenta atrás real.
                 fraccionTiempo: posicionador.nombre === mesa.turnoNombre ? mesa.fraccionTiempo : 1.0
                 retirado: mesa.retirados.indexOf(posicionador.nombre) !== -1
+                esDealer: posicionador.nombre === mesa.dealerNombre
+                esSb: posicionador.nombre === mesa.sbNombre
+                esBb: posicionador.nombre === mesa.bbNombre
             }
         }
     }

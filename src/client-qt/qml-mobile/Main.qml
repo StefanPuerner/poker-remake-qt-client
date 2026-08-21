@@ -192,6 +192,11 @@ ApplicationWindow {
     property string rondaActual: ""
     property int boteActual: 0
     property string turnoNombre: ""
+    // Dealer/ciegas de la mano actual (campos "dealer"/"sb"/"bb" de
+    // GAME_STATE) -- para los marcadores D/SB/BB de Mesa/Asiento.
+    property string dealerNombre: ""
+    property string sbNombre: ""
+    property string bbNombre: ""
     property int manoActual: 0
     property int ciegaActual: 0
     property var cartasMesa: []
@@ -337,10 +342,14 @@ ApplicationWindow {
             rellenarConBotsActual = rellenarConBots;
             preguntarExtensionActual = preguntarExtension;
         }
-        function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs) {
+        function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
+                                         dealer, sb, bb) {
             rondaActual = ronda;
             boteActual = bote;
             turnoNombre = turno;
+            dealerNombre = dealer;
+            sbNombre = sb;
+            bbNombre = bb;
             if (turno !== nombreJugador) tuTurno = false;
             if (timeoutMs > 0) {
                 timeoutMsActual = timeoutMs;
@@ -821,20 +830,15 @@ ApplicationWindow {
         }
     }
 
-    // Aviso de error como overlay flotante, no como hijo de filaTabsSalasMovil —
-    // antes vivía dentro del Column que envolvía la fila de pestañas, así
-    // que cada vez que aparecía empujaba la caja de salas hacia abajo. En
-    // una pantalla landscape ya
-    // justa de alto (Tema.altoBase = 400, sin margen de sobra), esa línea
-    // de más bastaba para sacar el borde inferior de la caja fuera de la
-    // pantalla (confirmado con una captura real: la caja se veía "abierta"
-    // por abajo, cortada por el borde de la ventana, no de su propio
-    // fondo/borde). Al flotar por encima en vez de desplazar nada, la caja
-    // ya no se mueve nunca pase lo que pase con el mensaje -- a cambio,
-    // mientras el aviso esté visible, tapa un poco la fila superior de la
-    // lista (aceptable: es un mensaje puntual y breve, no un estado
-    // permanente).
+    // Aviso de error -- hermano directo de filaTabsSalasMovil (no anidado
+    // en ella ni en ningún Column). La caja de salas de abajo ancla su
+    // borde superior AQUÍ cuando está visible (en vez de a
+    // filaTabsSalasMovil directamente) para que las dos nunca se solapen:
+    // sin error, la caja sube a su sitio de siempre; con error, baja lo
+    // justo para dejarle hueco. Antes flotaba encima de la caja (tapándola
+    // un poco a propósito) -- el usuario prefiere que nunca se solapen.
     Rectangle {
+        id: avisoErrorSalasMovil
         visible: ventana.mensajeErrorConexion !== "" && ventana.pantalla === "Salas"
         anchors.top: filaTabsSalasMovil.bottom
         anchors.topMargin: 10 * Tema.escala
@@ -859,12 +863,13 @@ ApplicationWindow {
     }
 
     // Caja de salas/guardadas -- hermana directa de filaTabsSalasMovil (no
-    // anidada dentro de ella ni de ningún Column) para que su posición sea
-    // SIEMPRE la misma, se muestre o no el aviso de error de encima.
+    // anidada dentro de ella ni de ningún Column). Ancla su borde superior
+    // al aviso de arriba SOLO si está visible -- ver el comentario largo
+    // ahí para el porqué del anclaje condicional.
     Rectangle {
         visible: ventana.pantalla === "Salas"
-        anchors.top: filaTabsSalasMovil.bottom
-        anchors.topMargin: 12 * Tema.escala
+        anchors.top: avisoErrorSalasMovil.visible ? avisoErrorSalasMovil.bottom : filaTabsSalasMovil.bottom
+        anchors.topMargin: avisoErrorSalasMovil.visible ? 10 * Tema.escala : 12 * Tema.escala
         anchors.horizontalCenter: parent.horizontalCenter
         width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
         height: 220 * Tema.escala
@@ -1568,6 +1573,9 @@ ApplicationWindow {
             miNombreJugador: ventana.nombreJugador
             fraccionTiempo: ventana.fraccionTiempoRestante
             retirados: ventana.retirados
+            dealerNombre: ventana.dealerNombre
+            sbNombre: ventana.sbNombre
+            bbNombre: ventana.bbNombre
         }
 
         // Cajón de pestañas al tercio restante — sustituye tanto la barra
