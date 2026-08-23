@@ -29,6 +29,10 @@ const char* msgTypeStr(MsgType t) {
       return "SALAS_LISTA";
     case MsgType::GUARDADAS_LISTA:
       return "GUARDADAS_LISTA";
+    case MsgType::RANKING_LISTA:
+      return "RANKING_LISTA";
+    case MsgType::ESTADISTICAS_CUENTA:
+      return "ESTADISTICAS_CUENTA";
     case MsgType::JOIN_LOBBY:
       return "JOIN_LOBBY";
     case MsgType::CREATE_GAME:
@@ -49,6 +53,22 @@ const char* msgTypeStr(MsgType t) {
       return "BORRAR_GUARDADA";
     case MsgType::CARGAR_PARTIDA:
       return "CARGAR_PARTIDA";
+    case MsgType::REGISTER:
+      return "REGISTER";
+    case MsgType::LOGIN:
+      return "LOGIN";
+    case MsgType::LOGIN_TOKEN:
+      return "LOGIN_TOKEN";
+    case MsgType::LOGOUT:
+      return "LOGOUT";
+    case MsgType::CHANGE_USERNAME:
+      return "CHANGE_USERNAME";
+    case MsgType::CHANGE_PASSWORD:
+      return "CHANGE_PASSWORD";
+    case MsgType::CONSULTAR_RANKING:
+      return "CONSULTAR_RANKING";
+    case MsgType::CONSULTAR_ESTADISTICAS:
+      return "CONSULTAR_ESTADISTICAS";
     default:
       return "UNKNOWN";
   }
@@ -61,6 +81,8 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "TU_TURNO") return MsgType::TU_TURNO;
   if (s == "SALAS_LISTA") return MsgType::SALAS_LISTA;
   if (s == "GUARDADAS_LISTA") return MsgType::GUARDADAS_LISTA;
+  if (s == "RANKING_LISTA") return MsgType::RANKING_LISTA;
+  if (s == "ESTADISTICAS_CUENTA") return MsgType::ESTADISTICAS_CUENTA;
   if (s == "JOIN_LOBBY") return MsgType::JOIN_LOBBY;
   if (s == "CREATE_GAME") return MsgType::CREATE_GAME;
   if (s == "JOIN_GAME") return MsgType::JOIN_GAME;
@@ -71,6 +93,14 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "RENOMBRAR_GUARDADA") return MsgType::RENOMBRAR_GUARDADA;
   if (s == "BORRAR_GUARDADA") return MsgType::BORRAR_GUARDADA;
   if (s == "CARGAR_PARTIDA") return MsgType::CARGAR_PARTIDA;
+  if (s == "REGISTER") return MsgType::REGISTER;
+  if (s == "LOGIN") return MsgType::LOGIN;
+  if (s == "LOGIN_TOKEN") return MsgType::LOGIN_TOKEN;
+  if (s == "LOGOUT") return MsgType::LOGOUT;
+  if (s == "CHANGE_USERNAME") return MsgType::CHANGE_USERNAME;
+  if (s == "CHANGE_PASSWORD") return MsgType::CHANGE_PASSWORD;
+  if (s == "CONSULTAR_RANKING") return MsgType::CONSULTAR_RANKING;
+  if (s == "CONSULTAR_ESTADISTICAS") return MsgType::CONSULTAR_ESTADISTICAS;
   return MsgType::UNKNOWN;
 }
 
@@ -207,6 +237,49 @@ int jsonGetInt(const std::string& json, const std::string& key) {
   } catch (...) {
     return 0;
   }
+}
+
+std::string jsonSetStr(const std::string& json, const std::string& key, const std::string& value) {
+  std::string patron = "\"" + key + "\":\"";
+  auto pos = json.find(patron);
+  if (pos != std::string::npos) {
+    auto inicioValor = pos + patron.size();
+    // Mismo escaneo escape-aware que jsonGetStr() para no cortar el valor
+    // actual en una comilla que forme parte del texto.
+    auto fin = inicioValor;
+    while (fin < json.size()) {
+      if (json[fin] == '\\' && fin + 1 < json.size()) {
+        fin += 2;
+        continue;
+      }
+      if (json[fin] == '"') break;
+      ++fin;
+    }
+    return json.substr(0, inicioValor) + jsonEscape(value) + json.substr(fin);
+  }
+
+  // No existe: se inserta justo antes del '}' final -- JSON plano de un
+  // nivel, misma asunción que ya hace buildMsg().
+  auto cierre = json.rfind('}');
+  if (cierre == std::string::npos) return json;  // JSON malformado: nada seguro que insertar
+  return json.substr(0, cierre) + ",\"" + key + "\":\"" + jsonEscape(value) + "\"" + json.substr(cierre);
+}
+
+std::string jsonSetInt(const std::string& json, const std::string& key, int value) {
+  std::string patron = "\"" + key + "\":";
+  auto pos = json.find(patron);
+  if (pos != std::string::npos) {
+    auto inicioValor = pos + patron.size();
+    auto fin = inicioValor;
+    while (fin < json.size() && json[fin] == ' ') ++fin;  // por si "key": 100
+    if (fin < json.size() && json[fin] == '-') ++fin;
+    while (fin < json.size() && json[fin] >= '0' && json[fin] <= '9') ++fin;
+    return json.substr(0, inicioValor) + std::to_string(value) + json.substr(fin);
+  }
+
+  auto cierre = json.rfind('}');
+  if (cierre == std::string::npos) return json;
+  return json.substr(0, cierre) + ",\"" + key + "\":" + std::to_string(value) + json.substr(cierre);
 }
 
 std::string sanitizarNombre(const std::string& crudo) {

@@ -12,9 +12,22 @@
 // hacer con su propio estado.
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 
 Row {
+    id: panelVoto
     required property bool soyHost
+    // Aproximación local a si ESTA partida ya cruzó el umbral antifarm del
+    // servidor (ver MIN_CUENTAS_REALES_PARA_STATS/MIN_MANOS_PARA_STATS en
+    // NetworkObserver.cpp) -- el cliente no sabe cuántas cuentas reales hay
+    // en la mesa (nunca se le manda), así que quien instancia esto solo
+    // comprueba lo que sí tiene a mano: si el propio jugador es invitado
+    // (nunca cuenta, sea lo que sea el resto) y cuántas manos van jugadas.
+    // Puede sobrar el aviso alguna vez (jugando solo contra bots con ≥5
+    // manos, donde el servidor SÍ lo descartaría por no haber 2 cuentas
+    // reales) pero nunca al revés -- jamás deja pasar un abandono que sí
+    // vaya a contar sin avisar.
+    required property bool contariaComoPerdida
     signal continuar()
     signal abandonar()
     signal guardarYSalir()
@@ -31,8 +44,12 @@ Row {
         text: "Abandonar partida"
         colorBorde: Tema.colorPeligro
         onClicked: {
-            redcliente.abandonar();
-            abandonar();
+            if (panelVoto.contariaComoPerdida) {
+                confirmarAbandono.open();
+            } else {
+                redcliente.abandonar();
+                panelVoto.abandonar();
+            }
         }
     }
     BotonContorno {
@@ -41,6 +58,67 @@ Row {
         onClicked: {
             redcliente.guardarYSalir();
             guardarYSalir();
+        }
+    }
+
+    // Ventana flotante de confirmación -- pedida explícitamente (2026-08-24)
+    // tras añadir que abandonar cuenta como derrota en las estadísticas
+    // (ver registrarDerrotaPorAbandono() en NetworkObserver.cpp): sin
+    // avisar, "Abandonar partida" era un botón mudo que además ahora tiene
+    // una consecuencia real que antes no tenía.
+    Popup {
+        id: confirmarAbandono
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(420 * Tema.escala, (parent ? parent.width : 420) - 60 * Tema.escala)
+        padding: 20 * Tema.escala
+
+        background: Rectangle {
+            color: Tema.colorPanel
+            radius: 12 * Tema.escala
+            border.width: 1
+            border.color: Tema.colorPeligro
+        }
+
+        contentItem: Column {
+            spacing: 16 * Tema.escala
+            Text {
+                width: parent.width
+                text: "¿Abandonar la partida?"
+                color: "white"
+                font.family: Tema.fuenteElegante
+                font.bold: true
+                font.pixelSize: 18 * Tema.escala
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: "Se contará como partida perdida en tus estadísticas si la partida ya lleva manos suficientes jugadas. Tus fichas se reparten entre el resto."
+                color: Tema.colorTextoTenue
+                font.pixelSize: 13 * Tema.escala
+                wrapMode: Text.WordWrap
+            }
+            Row {
+                width: parent.width
+                spacing: 12 * Tema.escala
+                BotonContorno {
+                    width: (parent.width - parent.spacing) / 2
+                    text: "Cancelar"
+                    onClicked: confirmarAbandono.close()
+                }
+                BotonRelleno {
+                    width: (parent.width - parent.spacing) / 2
+                    text: "Abandonar"
+                    colorBorde: Tema.colorPeligro
+                    onClicked: {
+                        redcliente.abandonar();
+                        panelVoto.abandonar();
+                        confirmarAbandono.close();
+                    }
+                }
+            }
         }
     }
 }

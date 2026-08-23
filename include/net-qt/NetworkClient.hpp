@@ -43,7 +43,8 @@ class NetworkClient : public QObject {
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
                             QString nombre) {
     iniciarConexionConMensaje(host, puerto, nombre,
-        net::buildMsg(net::MsgType::JOIN_LOBBY, {{"nombre", nombre.toStdString()}}));
+        net::buildMsg(net::MsgType::JOIN_LOBBY, {{"nombre", nombre.toStdString()},
+                                                  {"token", token_.toStdString()}}));
   }
 
   /// Crea una sala nueva (pantalla "Crear sala") y se conecta a ella —
@@ -74,6 +75,7 @@ class NetworkClient : public QObject {
         {"rellenar_con_bots",  rellenarConBots ? "1" : "0"},
         {"abierta_tras_inicio", abiertaTrasInicio ? "1" : "0"},
         {"preguntar_extension", preguntarExtension ? "1" : "0"},
+        {"token",              token_.toStdString()},
     }));
   }
 
@@ -86,6 +88,7 @@ class NetworkClient : public QObject {
         {"nombre",  nombre.toStdString()},
         {"sala_id", salaId.toStdString()},
         {"codigo",  codigo.toStdString()},
+        {"token",   token_.toStdString()},
     }));
   }
 
@@ -131,6 +134,16 @@ class NetworkClient : public QObject {
         });
   }
 
+  /// Pide el ranking global -- público, sin token. Mismo patrón efímero
+  /// que refrescarSalas()/listarGuardadas().
+  Q_INVOKABLE void consultarRanking(const QString& host, quint16 puerto) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::CONSULTAR_RANKING),
+        [this](const std::string& payload) {
+          emit rankingActualizado(
+              QString::fromStdString(net::jsonGetStr(payload, "ranking")));
+        });
+  }
+
   /// Renombra un archivo .pok existente.
   Q_INVOKABLE void renombrarGuardada(const QString& host, quint16 puerto,
                                      QString archivo, QString nuevoNombre) {
@@ -165,7 +178,123 @@ class NetworkClient : public QObject {
         {"archivo",     archivo.toStdString()},
         {"nombre_sala", nombreSala.toStdString()},
         {"publica",     publica ? "1" : "0"},
+        {"token",       token_.toStdString()},
     }));
+  }
+
+  // ── Cuentas de usuario ────────────────────────────────────────────────────
+  //  Las seis, mismo patrón efímero que refrescarSalas()/listarGuardadas()
+  //  (no tocan socket_, la conexión persistente de la partida) -- token_ se
+  //  guarda internamente en las que dan sesión (registrar/iniciarSesion/
+  //  iniciarSesionConToken), igual que nombre_ ya se actualiza solo con
+  //  NOMBRE_ASIGNADO. A partir de ahí, conectar()/crearSala()/unirseASala()/
+  //  cargarPartidaGuardada() ya mandan este token_ solos.
+
+  Q_INVOKABLE void registrar(const QString& host, quint16 puerto, QString username, QString password) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::REGISTER, {
+        {"username", username.toStdString()},
+        {"password", password.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "REGISTRO_OK") {
+        token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
+        nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
+        emit registroOk(net::jsonGetInt(payload, "account_id"), nombre_, token_);
+      } else {
+        emit registroError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  Q_INVOKABLE void iniciarSesion(const QString& host, quint16 puerto, QString username, QString password) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::LOGIN, {
+        {"username", username.toStdString()},
+        {"password", password.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "LOGIN_OK") {
+        token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
+        nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
+        emit loginOk(net::jsonGetInt(payload, "account_id"), nombre_, token_);
+      } else {
+        emit loginError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  /// Reautenticación silenciosa con el token que el cliente ya tenía
+  /// guardado (Settings) -- se llama al arrancar, antes de mostrar Inicio.
+  Q_INVOKABLE void iniciarSesionConToken(const QString& host, quint16 puerto, QString token) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::LOGIN_TOKEN, {
+        {"token", token.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "LOGIN_OK") {
+        token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
+        nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
+        emit loginOk(net::jsonGetInt(payload, "account_id"), nombre_, token_);
+      } else {
+        emit sesionInvalida(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  /// Cierra sesión: revoca el token en el servidor y lo olvida aquí --
+  /// conectar()/crearSala()/etc. volverán a mandar "token" vacío (invitado)
+  /// hasta el próximo login. No falla nunca de forma visible (ver LOGOUT
+  /// en el servidor): token_ se limpia siempre, haya o no respuesta.
+  Q_INVOKABLE void cerrarSesion(const QString& host, quint16 puerto, QString token) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::LOGOUT, {
+        {"token", token.toStdString()},
+    }), [this](const std::string& /*payload*/) {
+      token_.clear();
+      emit logoutOk();
+    });
+  }
+
+  Q_INVOKABLE void cambiarNombreUsuario(const QString& host, quint16 puerto, QString token,
+                                        QString nuevoUsername) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::CHANGE_USERNAME, {
+        {"token",          token.toStdString()},
+        {"nuevo_username", nuevoUsername.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "USERNAME_CAMBIADO") {
+        nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
+        emit usernameCambiado(nombre_);
+      } else {
+        emit usernameError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  Q_INVOKABLE void cambiarPassword(const QString& host, quint16 puerto, QString token,
+                                   QString passwordActual, QString passwordNueva) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::CHANGE_PASSWORD, {
+        {"token",           token.toStdString()},
+        {"password_actual", passwordActual.toStdString()},
+        {"password_nueva",  passwordNueva.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "PASSWORD_CAMBIADA") {
+        emit passwordCambiada();
+      } else {
+        emit passwordError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  /// Estadísticas propias -- token vacío (invitado) ni se manda, el
+  /// servidor respondería igualmente a cero pero no tiene sentido
+  /// preguntar. Mismo patrón efímero que cambiarPassword() (token explícito
+  /// en vez de token_ interno -- QML ya lo tiene en ventana.tokenSesion).
+  Q_INVOKABLE void consultarEstadisticas(const QString& host, quint16 puerto, QString token) {
+    if (token.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::CONSULTAR_ESTADISTICAS, {{"token", token.toStdString()}}),
+        [this](const std::string& payload) {
+          emit estadisticasActualizadas(
+              net::jsonGetInt(payload, "manos_jugadas"),
+              net::jsonGetInt(payload, "manos_ganadas"),
+              net::jsonGetInt(payload, "partidas_jugadas"),
+              net::jsonGetInt(payload, "partidas_ganadas"),
+              net::jsonGetInt(payload, "fichas_netas"));
+        });
   }
 
   /// @param canal "sala" (se ve en la sala de espera y también en la
@@ -229,6 +358,22 @@ class NetworkClient : public QObject {
   }
 
  signals:
+  // ── Cuentas de usuario ──────────────────────────────────────────────────
+  /// Cuenta creada con éxito -- token_/nombre_ ya están al día
+  /// internamente, listos para el próximo conectar()/crearSala()/etc.
+  void registroOk(int accountId, QString username, QString token);
+  void registroError(QString mensaje);
+  void loginOk(int accountId, QString username, QString token);
+  void loginError(QString mensaje);
+  /// Respuesta a iniciarSesionConToken() con un token caducado/inválido --
+  /// limpiar el token guardado en Settings y quedarse en Inicio/Login.
+  void sesionInvalida(QString mensaje);
+  void logoutOk();
+  void usernameCambiado(QString nuevoUsername);
+  void usernameError(QString mensaje);
+  void passwordCambiada();
+  void passwordError(QString mensaje);
+
   void conectado();
   void error(QString msg);
   void lobbyActualizado(QString jugadoresCsv, int listos, int esperados, QString host,
@@ -339,6 +484,11 @@ class NetworkClient : public QObject {
   void conexionComprobada(bool conectado);
   /// Respuesta a listarGuardadas(): "archivo:fecha:humanos:bots;..." (puede ser "").
   void guardadasActualizadas(QString guardadasCsv);
+  /// Respuesta a consultarRanking(): "partidasJugadas:partidasGanadas:username;..." (puede ser "").
+  void rankingActualizado(QString rankingCsv);
+  /// Respuesta a consultarEstadisticas() -- las propias.
+  void estadisticasActualizadas(int manosJugadas, int manosGanadas,
+                                 int partidasJugadas, int partidasGanadas, int fichasNetas);
   /// Respuesta a renombrarGuardada() — mensaje vacío si fue bien.
   void guardadaRenombrada(QString mensaje);
   /// Respuesta a borrarGuardada() — mensaje vacío si fue bien.
@@ -556,8 +706,13 @@ class NetworkClient : public QObject {
         // el JOIN_LOBBY (ver el bloque que marca esperandoConfirmacionTrasReconectar_
         // más abajo, en el bucle de readyRead).
         esperandoConfirmacionTrasReconectar_ = true;
+        // "token": si somos una cuenta, comprobarReconexiones() en el
+        // servidor ya exige que coincida con la cuenta que tenía asignada
+        // este nombre antes de caerse (ver AccountManager::tokenPerteneceACuenta) --
+        // sin mandarlo aquí, una cuenta real nunca podría reconectar sola.
         enviarMensaje(net::buildMsg(net::MsgType::JOIN_LOBBY,
-                                    {{"nombre", nombre_.toStdString()}}));
+                                    {{"nombre", nombre_.toStdString()},
+                                     {"token", token_.toStdString()}}));
       } else {
         conectadoAlgunaVez_ = true;
         emit conectado();
@@ -714,11 +869,15 @@ class NetworkClient : public QObject {
             } else if (evento == "COMUNITARIAS") {
               QString fase = QString::fromStdString(net::jsonGetStr(payload, "fase"));
               emit eventoJuego("── " + fase + " ──", "separador");
-            } else if (evento == "REPARTO_INICIAL" || evento == "COMBO_UPDATE") {
-              // Puramente técnicos / sin información útil para el
-              // historial del jugador — antes cada uno de estos caía en
-              // el genérico de más abajo y dejaba una línea sin sentido
-              // ("REPARTO_INICIAL", "COMBO_UPDATE"...) en medio del historial.
+            } else if (evento == "REPARTO_INICIAL") {
+              // Puramente técnico / sin información útil para el
+              // historial del jugador — antes caía en el genérico de más
+              // abajo y dejaba una línea sin sentido ("REPARTO_INICIAL")
+              // en medio del historial. "COMBO_UPDATE" ya NO va aquí: caía
+              // en esta rama por delante de la suya propia (más abajo, ver
+              // "BUG corregido") y la dejaba inalcanzable -- por eso la
+              // predicción de mano nunca se refrescaba con las cartas
+              // comunitarias, solo en el propio turno.
             } else if (evento == "SHOWDOWN") {
               // No va al historial de texto (ya queda anunciado de sobra
               // por las líneas de EVALUANDO_BOTE/MUESTRA_CARTAS que le
@@ -868,10 +1027,12 @@ class NetworkClient : public QObject {
               QString archivo = QString::fromStdString(net::jsonGetStr(payload, "archivo"));
               emit partidaGuardada(archivo);
             } else if (evento == "COMBO_UPDATE") {
-              // BUG corregido: esto caía en el "else" de abajo y se
-              // ignoraba sin más — la predicción de mano solo se
-              // actualizaba dentro de esMiTurno(), así que se quedaba
-              // congelada hasta que volvía a tocarte, en cada ronda.
+              // BUG corregido: esta rama quedaba inalcanzable -- un "else
+              // if" anterior (ver "REPARTO_INICIAL" arriba) también
+              // matcheaba "COMBO_UPDATE" y ganaba siempre por ir primero,
+              // así que la predicción de mano solo se actualizaba dentro
+              // de esMiTurno() y se quedaba congelada hasta que volvía a
+              // tocarte, en cada ronda.
               QString actual = QString::fromStdString(net::jsonGetStr(payload, "combo_actual"));
               QString probable = QString::fromStdString(net::jsonGetStr(payload, "combo_probable"));
               QString maxima = QString::fromStdString(net::jsonGetStr(payload, "combo_maxima"));
@@ -934,6 +1095,11 @@ class NetworkClient : public QObject {
   bool senalesConectadas_ = false;  // connect() de socket_ solo se hace una vez, ver iniciarConexionConMensaje()
   net::Message primerMensajePendiente_;
   QString nombre_;
+  /// Token de sesión de la cuenta activa ("" = invitado). Lo fijan
+  /// registrar()/iniciarSesion()/iniciarSesionConToken() al tener éxito y
+  /// lo limpia cerrarSesion() -- conectar()/crearSala()/unirseASala()/
+  /// cargarPartidaGuardada() lo mandan siempre, vacío o no.
+  QString token_;
   QString hostGuardado_;
   quint16 puertoGuardado_ = 0;
   bool conectadoAlgunaVez_ = false;

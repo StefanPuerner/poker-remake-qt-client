@@ -42,6 +42,8 @@ enum class MsgType {
     TU_TURNO,      ///< Es tu turno: opciones disponibles + estado + cartas privadas.
     SALAS_LISTA,   ///< Respuesta a LISTAR_SALAS: salas públicas con hueco libre.
     GUARDADAS_LISTA, ///< Respuesta a LISTAR_GUARDADAS: archivos .pok en el servidor.
+    RANKING_LISTA,      ///< Respuesta a CONSULTAR_RANKING: cuentas con ≥10 partidas jugadas.
+    ESTADISTICAS_CUENTA, ///< Respuesta a CONSULTAR_ESTADISTICAS: player_stats de la cuenta del token.
 
     // Cliente → servidor
     JOIN_LOBBY,    ///< Solicitud de unión al lobby con nombre elegido.
@@ -54,6 +56,18 @@ enum class MsgType {
     RENOMBRAR_GUARDADA, ///< Renombra un archivo .pok existente.
     BORRAR_GUARDADA,    ///< Borra un archivo .pok existente.
     CARGAR_PARTIDA,     ///< Reanudar una partida guardada como sala nueva.
+
+    // Cliente → servidor -- cuentas de usuario (ver AccountManager.hpp).
+    // Mismo patrón "efímero" que LISTAR_SALAS/LISTAR_GUARDADAS: conectar,
+    // mandar uno, recibir GAME_EVENT de respuesta, cerrar.
+    REGISTER,         ///< Crear cuenta nueva (username + password).
+    LOGIN,            ///< Iniciar sesión con username + password.
+    LOGIN_TOKEN,      ///< Reautenticación silenciosa con el token guardado en el cliente.
+    LOGOUT,           ///< Cierra sesión (revoca el token en servidor).
+    CHANGE_USERNAME,  ///< Cambia el username de la cuenta autenticada por el token.
+    CHANGE_PASSWORD,  ///< Cambia la contraseña de la cuenta autenticada por el token.
+    CONSULTAR_RANKING,      ///< Pide el ranking global (sin payload, ni siquiera token -- es público).
+    CONSULTAR_ESTADISTICAS, ///< Pide las estadísticas propias (token de la cuenta autenticada).
 
     UNKNOWN        ///< Tipo desconocido o mensaje malformado.
 };
@@ -129,6 +143,24 @@ std::string jsonGetStr(const std::string& json, const std::string& key);
 
 /// Extrae el valor entero del campo @p key del JSON @p json. Devuelve 0 si no existe.
 int jsonGetInt(const std::string& json, const std::string& key);
+
+/**
+ * @brief Inserta o reemplaza el campo string @p key en @p json con @p value
+ * (escapado), sin reconstruir el resto de campos. Si @p key no existe se
+ * añade justo antes del '}' final -- asume JSON plano de un nivel, misma
+ * asunción que ya hace buildMsg().
+ *
+ * Lo usa el dispatcher para sobrescribir "nombre"/añadir "account_id" en el
+ * payload de CREATE_GAME/JOIN_GAME/etc. cuando el token que manda el
+ * cliente resuelve a una cuenta real, sin tener que reparsear y
+ * reconstruir el resto de campos (config de sala...) que ese payload
+ * pueda traer.
+ */
+std::string jsonSetStr(const std::string& json, const std::string& key, const std::string& value);
+
+/// Igual que jsonSetStr() pero para un entero sin comillas -- usado para
+/// añadir "account_id" al payload reencolado.
+std::string jsonSetInt(const std::string& json, const std::string& key, int value);
 
 /**
  * @brief Limpia un nombre de jugador recibido por red: solo alfanuméricos,

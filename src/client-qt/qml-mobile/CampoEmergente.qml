@@ -25,6 +25,7 @@ Popup {
     id: campoEmergente
     property string etiqueta: ""
     property bool soloNumerico: false
+    property bool esPassword: false
     property int maxLongitud: 32
     signal aceptado(string texto)
     signal cancelado()
@@ -100,6 +101,9 @@ Popup {
                 anchors.fill: parent
                 anchors.margins: 4 * Tema.escala
                 readOnly: campoEmergente.soloNumerico
+                // esPassword: contraseñas (login/registro/cambiar contraseña)
+                // -- nunca en claro, ni siquiera en un popup modal propio.
+                echoMode: campoEmergente.esPassword ? TextInput.Password : TextInput.Normal
                 // ImhNoPredictiveText: sin esto, el IME de Android mantiene
                 // una "región de composición" (texto subrayado a medio
                 // escribir) que se desincroniza del cursor real de QML --

@@ -41,6 +41,11 @@ Rectangle {
     property bool recompraSolicitada: false
     property bool conectado: true
     property string nombreJugador: ""
+    // Ver "Cliente" en el cajón de ajustes (Main.qml) -- con el ajuste
+    // activo, el botón ALL pide un segundo toque antes de mandar la
+    // acción, para evitar un ALL-IN por error. Desactivado por defecto,
+    // mismo criterio que escritorio (ventana.confirmarAllIn ahí).
+    property bool confirmarAllIn: false
     required property var modeloHistorial
     required property var modeloChat
     signal abrirAjustes()
@@ -408,7 +413,7 @@ Rectangle {
                         text: confirmando ? "¿Seguro?" : "ALL"
                         colorBorde: Tema.colorPeligro
                         onClicked: {
-                            if (!confirmando) { confirmando = true; return; }
+                            if (cajon.confirmarAllIn && !confirmando) { confirmando = true; return; }
                             confirmando = false;
                             redcliente.enviarAccion("ALL_IN", cajon.miSaldoActual);
                             cajon.decisionEnviada();

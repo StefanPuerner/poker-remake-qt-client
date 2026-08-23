@@ -50,6 +50,14 @@ ApplicationWindow {
         "Fin": "Salas"
     })
     property bool ajustesAbiertos: false
+    // Refresca las estadísticas propias cada vez que se abre el cajón --
+    // mismo criterio que escritorio (ver Main.qml de qml/). No-op sin
+    // sesión (consultarEstadisticas() descarta un token vacío por su cuenta).
+    onAjustesAbiertosChanged: {
+        if (ajustesAbiertos && ventana.tokenSesion !== "") {
+            redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+    }
 
     // Prioridad compartida por el gesto de atrás real (Android, vía
     // onClosing más abajo) Y por Esc en escritorio (conveniencia de
@@ -97,22 +105,79 @@ ApplicationWindow {
     Settings {
         id: ajustesPersistentesMovil
         category: "PokerRemake"
-        property alias nombreGuardado: ventana.nombreJugador
+        // Reemplaza al viejo "nombreGuardado" (nombre libre persistido) --
+        // ahora la identidad la da la cuenta (o un nombre de invitado
+        // efímero, sin persistir). Property normal de "ventana", nunca un
+        // alias a un singleton (mismo aviso de "tema" un poco más abajo).
+        property alias tokenGuardado: ventana.tokenSesion
         property alias sonido: ventana.sonidoActivado
         property int temaGuardado: 0
     }
-    Component.onCompleted: Tema.temaActual = ajustesPersistentesMovil.temaGuardado
+    Component.onCompleted: {
+        Tema.temaActual = ajustesPersistentesMovil.temaGuardado;
+        // Reautenticación silenciosa: si hay un token guardado de una
+        // sesión anterior, se intenta ANTES de que el usuario vea nada de
+        // Inicio -- si el servidor lo acepta (onLoginOk), se entra directo
+        // a Salas sin pedir contraseña; si no (onSesionInvalida), se
+        // limpia y Inicio se muestra normal.
+        if (tokenSesion !== "") {
+            redcliente.iniciarSesionConToken(servidorHost, servidorPuerto, tokenSesion);
+        }
+    }
     Connections {
         target: Tema
         function onTemaActualChanged() { ajustesPersistentesMovil.temaGuardado = Tema.temaActual; }
     }
-
     // ── Ajustes ──────────────────────────────────────────────────────────
     // Desactivado por defecto (misma decisión que en escritorio).
     property bool sonidoActivado: false
+    // "Confirmar antes de ALL-IN" -- no existía en móvil (el botón ALL
+    // pedía confirmación SIEMPRE, sin ajuste que lo controle). Mismo
+    // criterio que escritorio: desactivado por defecto, sin persistir.
+    property bool confirmarAllIn: false
+    // Pestaña activa del cajón lateral: 0 = Ajustes, 1 = Cuenta. Mismo
+    // criterio que escritorio (ver Main.qml de qml/).
+    property int pestanaAjustesActual: 0
 
     // ── Sesión / red ─────────────────────────────────────────────────────
     property string nombreJugador: ""
+    // Token de sesión de la cuenta activa ("" = invitado o sin sesión) --
+    // persistido vía Settings.tokenGuardado (alias de arriba).
+    property string tokenSesion: ""
+    // Evita una carrera real en dispositivo (no se ve en el PC de prueba,
+    // donde todo es local e instantáneo): la reautenticación silenciosa de
+    // Component.onCompleted puede tardar en responder, y "Entrar como
+    // invitado" se habilita en cuanto conectadoAlServidor lo hace (una
+    // sonda de red aparte, normalmente más rápida). Si el usuario pulsa
+    // invitado antes de que la reautenticación responda, un onLoginOk
+    // tardío volvía a rellenar tokenSesion segundos después -- la sección
+    // Cuenta del cajón de Ajustes reaparecía sola aun jugando de invitado
+    // (bug real reportado). true en cuanto la identidad de esta sesión
+    // queda decidida (invitado explícito, o login/registro con éxito);
+    // onLoginOk/onRegistroOk ignoran cualquier respuesta que llegue
+    // después de eso.
+    property bool decisionInicioTomada: false
+    // Compartido por las pantallas Login y Registro, y por la sección
+    // Cuenta del cajón de ajustes -- se limpia al entrar en cualquiera de
+    // ellas o al reintentar, para no dejar visible el error de un intento
+    // anterior.
+    property string mensajeErrorLogin: ""
+    // cambiarNombreUsuario()/cambiarPassword() pueden fallar por el mismo
+    // motivo que un token caducado en iniciarSesionConToken() -- mismo
+    // mensaje exacto que manda AccountManager::resolverToken() al fallar
+    // (ver AccountManager.cpp). Sin esto, el usuario se quedaba con una
+    // sesión rota reintentando la misma acción sin que nada le dijera que
+    // el problema real es "vuelve a iniciar sesión".
+    function tratarErrorCuenta(mensaje) {
+        mensajeErrorLogin = mensaje;
+        if (mensaje.indexOf("Sesión caducada") === 0) {
+            tokenSesion = "";
+            nombreJugador = "";
+            decisionInicioTomada = false;
+            ajustesAbiertos = false;
+            pantalla = "Inicio";
+        }
+    }
     property string servidorHost: SERVER_HOST_DEFAULT
     property int servidorPuerto: SERVER_PORT_DEFAULT
     // Estado de conectividad mostrado en Inicio -- mismo mecanismo que
@@ -137,6 +202,16 @@ ApplicationWindow {
     // (refrescarSalas/unirseASala/cargarPartidaGuardada) y un fallo puede
     // llegar estando en cualquiera de las dos.
     property string mensajeErrorConexion: ""
+    // Mismo criterio que escritorio (ver Main.qml de qml/): se autolimpia
+    // a los 5s en vez de quedarse hasta la próxima acción que lo reasigne.
+    onMensajeErrorConexionChanged: {
+        if (mensajeErrorConexion !== "") timerErrorConexion.restart();
+    }
+    Timer {
+        id: timerErrorConexion
+        interval: 5000
+        onTriggered: mensajeErrorConexion = ""
+    }
     // Reconexión automática (60s, mismo mecanismo que ncurses/escritorio)
     // — más importante aún en móvil, donde cambiar de wifi o mandar la
     // app a segundo plano corta la conexión con mucha más frecuencia
@@ -158,6 +233,31 @@ ApplicationWindow {
     property string archivoARenombrar: ""
     ListModel { id: salasDisponibles }
     ListModel { id: guardadasDisponibles }
+
+    // ── Ranking global -- mismo criterio que escritorio (ver Main.qml de
+    // qml/): rankingCrudo sin ordenar, reordenarRanking() reconstruye
+    // rankingModel según la pestaña elegida sin volver a preguntar al
+    // servidor.
+    property var rankingCrudo: []
+    property int ordenRankingActual: 0  // 0 = más victorias, 1 = mejor ratio
+    ListModel { id: rankingModel }
+    function reordenarRanking() {
+        var filas = rankingCrudo.slice();
+        if (ordenRankingActual === 0) {
+            filas.sort((a, b) => b.partidasGanadas - a.partidasGanadas);
+        } else {
+            filas.sort((a, b) => (b.partidasGanadas / b.partidasJugadas) -
+                                  (a.partidasGanadas / a.partidasJugadas));
+        }
+        rankingModel.clear();
+        for (var i = 0; i < filas.length; i++) rankingModel.append(filas[i]);
+    }
+    // ── Estadísticas propias (pestaña Cuenta del cajón) ─────────────────
+    property int statsManosJugadas: 0
+    property int statsManosGanadas: 0
+    property int statsPartidasJugadas: 0
+    property int statsPartidasGanadas: 0
+    property int statsFichasNetas: 0
 
     // ── Lobby ────────────────────────────────────────────────────────────
     property string codigoSalaPropia: ""
@@ -295,6 +395,67 @@ ApplicationWindow {
 
     Connections {
         target: redcliente
+        // ── Cuentas de usuario ──────────────────────────────────────────
+        // registroOk/loginOk comparten handler -- en los dos casos el
+        // destino es el mismo (Salas, como ya hacía "Entrar como
+        // invitado"), tanto si viene de las pantallas Login/Registro como
+        // del intento silencioso al arrancar (iniciarSesionConToken, ver
+        // Component.onCompleted).
+        function onRegistroOk(accountId, username, token) {
+            if (decisionInicioTomada) return;
+            decisionInicioTomada = true;
+            nombreJugador = username;
+            tokenSesion = token;
+            mensajeErrorLogin = "";
+            pantalla = "Salas";
+            redcliente.refrescarSalas(servidorHost, servidorPuerto);
+        }
+        function onRegistroError(mensaje) {
+            mensajeErrorLogin = mensaje;
+        }
+        function onLoginOk(accountId, username, token) {
+            // Ver decisionInicioTomada más arriba -- si el usuario ya
+            // eligió "Entrar como invitado" mientras esto viajaba, se
+            // ignora: llega tarde y no debe suplantar esa elección.
+            if (decisionInicioTomada) return;
+            decisionInicioTomada = true;
+            nombreJugador = username;
+            tokenSesion = token;
+            mensajeErrorLogin = "";
+            pantalla = "Salas";
+            redcliente.refrescarSalas(servidorHost, servidorPuerto);
+        }
+        function onLoginError(mensaje) {
+            mensajeErrorLogin = mensaje;
+        }
+        function onSesionInvalida(mensaje) {
+            // Token caducado/revocado -- se olvida y se deja Inicio tal
+            // cual (ya es la pantalla por defecto al arrancar, antes de
+            // que esto pueda llegar).
+            tokenSesion = "";
+        }
+        function onLogoutOk() {
+            tokenSesion = "";
+            nombreJugador = "";
+            decisionInicioTomada = false;
+            pantalla = "Inicio";
+        }
+        function onUsernameCambiado(nuevoUsername) {
+            nombreJugador = nuevoUsername;
+            mensajeErrorLogin = "";
+            cajaNuevoUsernameMovil.valor = "";
+        }
+        function onUsernameError(mensaje) {
+            tratarErrorCuenta(mensaje);
+        }
+        function onPasswordCambiada() {
+            mensajeErrorLogin = "";
+            cajaPasswordActualMovil.valor = "";
+            cajaPasswordNuevaMovil.valor = "";
+        }
+        function onPasswordError(mensaje) {
+            tratarErrorCuenta(mensaje);
+        }
         function onConectado() {
             pantalla = "Lobby";
             chatActive = true;
@@ -649,6 +810,29 @@ ApplicationWindow {
                 });
             }
         }
+        function onRankingActualizado(rankingCsv) {
+            var filas = [];
+            if (rankingCsv.length > 0) {
+                var partes = rankingCsv.split(";");
+                for (var i = 0; i < partes.length; i++) {
+                    var campos = partes[i].split(":");
+                    filas.push({
+                        partidasJugadas: parseInt(campos[0]),
+                        partidasGanadas: parseInt(campos[1]),
+                        username: campos.slice(2).join(":")
+                    });
+                }
+            }
+            ventana.rankingCrudo = filas;
+            ventana.reordenarRanking();
+        }
+        function onEstadisticasActualizadas(manosJugadas, manosGanadas, partidasJugadas, partidasGanadas, fichasNetas) {
+            ventana.statsManosJugadas = manosJugadas;
+            ventana.statsManosGanadas = manosGanadas;
+            ventana.statsPartidasJugadas = partidasJugadas;
+            ventana.statsPartidasGanadas = partidasGanadas;
+            ventana.statsFichasNetas = fichasNetas;
+        }
         function onGuardadaRenombrada(mensaje) {
             if (mensaje.length > 0) mensajeErrorConexion = mensaje;
             redcliente.listarGuardadas(servidorHost, servidorPuerto);
@@ -706,34 +890,10 @@ ApplicationWindow {
             font.letterSpacing: 2
         }
 
-        // Campo "de mentira": solo abre CampoEmergente al tocarlo (punto 2
-        // del plan de diseño móvil) — nunca activa el teclado del sistema
-        // directamente desde la pantalla de Inicio.
-        Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: 240 * Tema.escala
-            height: Tema.tamanoMinTactil
-            radius: 8 * Tema.escala
-            color: Tema.colorPanel
-            border.width: 1
-            border.color: areaNombre.pressed ? Tema.colorAccent : Tema.colorBorde
-            Text {
-                anchors.centerIn: parent
-                text: ventana.nombreJugador !== "" ? ventana.nombreJugador : "Toca para tu nombre"
-                color: ventana.nombreJugador !== "" ? "white" : Tema.colorTextoMuyTenue
-                font.pixelSize: 15 * Tema.escala
-            }
-            MouseArea {
-                id: areaNombre
-                anchors.fill: parent
-                onClicked: campoNombre.abrir(ventana.nombreJugador)
-            }
-        }
-
         // Indicador de conectividad: sin esto, la única señal de "no hay
         // servidor" era el error que salía DESPUÉS de intentar entrar a
-        // Salas — ahora se ve de antemano, en Inicio, y el botón ni
-        // siquiera deja pasar mientras no haya servidor confirmado.
+        // Salas — ahora se ve de antemano, en Inicio, y los botones ni
+        // siquiera dejan pasar mientras no haya servidor confirmado.
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 6 * Tema.escala
@@ -752,13 +912,51 @@ ApplicationWindow {
                       : (ventana.conectadoAlServidor ? "Conectado al servidor" : "Sin conexión con el servidor")
             }
         }
-        BotonRelleno {
+        // Ya no hay campo de nombre libre: la identidad viene de una
+        // cuenta (login/registro) o de un nombre de invitado generado
+        // aquí mismo, sin persistencia. Iniciar sesión/Crear cuenta en la
+        // misma fila -- una pantalla landscape corta de alto no sobra
+        // espacio para apilar tres botones más el de invitado y salir.
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Salas disponibles"
+            spacing: 10 * Tema.escala
+            BotonRelleno {
+                text: "Iniciar sesión"
+                radioBorde: 999
+                enabled: ventana.conectadoAlServidor
+                opacity: enabled ? 1.0 : 0.5
+                onClicked: {
+                    ventana.mensajeErrorLogin = "";
+                    ventana.pantalla = "Login";
+                }
+            }
+            BotonContorno {
+                text: "Crear cuenta"
+                radioBorde: 999
+                enabled: ventana.conectadoAlServidor
+                opacity: enabled ? 1.0 : 0.5
+                onClicked: {
+                    ventana.mensajeErrorLogin = "";
+                    ventana.pantalla = "Registro";
+                }
+            }
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Entrar como invitado"
             radioBorde: 999
             enabled: ventana.conectadoAlServidor
             opacity: enabled ? 1.0 : 0.5
             onClicked: {
+                // tokenSesion se limpia explícitamente aquí, no se asume
+                // vacío: puede quedar relleno por una sesión guardada de
+                // antes, o por una reautenticación silenciosa todavía en
+                // vuelo (ver decisionInicioTomada más arriba) -- sin esto,
+                // conectar()/crearSala()/etc. podían mandar un token real
+                // aun "jugando de invitado".
+                ventana.decisionInicioTomada = true;
+                ventana.tokenSesion = "";
+                ventana.nombreJugador = "Invitado" + Math.floor(Math.random() * 100000);
                 ventana.mensajeErrorConexion = "";
                 ventana.pantalla = "Salas";
                 redcliente.refrescarSalas(ventana.servidorHost, ventana.servidorPuerto);
@@ -786,12 +984,360 @@ ApplicationWindow {
         }
     }
 
+    // ── Pantalla Login ───────────────────────────────────────────────────
+    BarraSuperior {
+        id: barraLoginMovil
+        visible: ventana.pantalla === "Login"
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Iniciar sesión"
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    // Área bajo la barra -- el Column de campos se centra AQUÍ, no en toda
+    // la ventana. Con anchors.centerIn: parent (versión anterior) el campo
+    // Usuario quedaba tapado por la barra en pantallas reales de poca
+    // altura (landscape de un móvil): el escritorio nunca lo mostraba
+    // porque su ventana de prueba es mucho más alta que un teléfono real.
+    Item {
+        id: areaContenidoLogin
+        visible: ventana.pantalla === "Login"
+        anchors.top: barraLoginMovil.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+    }
+    Column {
+        visible: ventana.pantalla === "Login"
+        anchors.centerIn: areaContenidoLogin
+        spacing: 12 * Tema.escala
+        width: Math.min(280 * Tema.escala, ventana.width - 60 * Tema.escala)
+
+        // Campos "de mentira" -- mismo patrón que "Nombre de la sala" en
+        // CrearSala, cada uno con su propio CampoEmergente embebido.
+        Rectangle {
+            id: cajaUsuarioLogin
+            width: parent.width
+            height: Tema.tamanoMinTactil
+            radius: 6 * Tema.escala
+            color: Tema.colorFondo
+            border.width: 1
+            border.color: areaUsuarioLogin.pressed ? Tema.colorAccent : Tema.colorBorde
+            property string valor: ""
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10 * Tema.escala
+                anchors.verticalCenter: parent.verticalCenter
+                text: cajaUsuarioLogin.valor !== "" ? cajaUsuarioLogin.valor : "Usuario"
+                color: cajaUsuarioLogin.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                font.pixelSize: 14 * Tema.escala
+            }
+            MouseArea {
+                id: areaUsuarioLogin
+                anchors.fill: parent
+                onClicked: campoUsuarioLogin.abrir(cajaUsuarioLogin.valor)
+            }
+            CampoEmergente {
+                id: campoUsuarioLogin
+                parent: Overlay.overlay
+                etiqueta: "Usuario"
+                onAceptado: (texto) => cajaUsuarioLogin.valor = texto
+            }
+        }
+        Rectangle {
+            id: cajaPasswordLogin
+            width: parent.width
+            height: Tema.tamanoMinTactil
+            radius: 6 * Tema.escala
+            color: Tema.colorFondo
+            border.width: 1
+            border.color: areaPasswordLogin.pressed ? Tema.colorAccent : Tema.colorBorde
+            property string valor: ""
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10 * Tema.escala
+                anchors.verticalCenter: parent.verticalCenter
+                // Nunca el texto real ni su longitud real -- un número fijo
+                // de puntos, solo para confirmar visualmente que hay algo
+                // escrito (ver el mismo criterio en la sección Cuenta del
+                // cajón de ajustes, más abajo).
+                text: cajaPasswordLogin.valor !== "" ? "••••••••" : "Contraseña"
+                color: cajaPasswordLogin.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                font.pixelSize: 14 * Tema.escala
+            }
+            MouseArea {
+                id: areaPasswordLogin
+                anchors.fill: parent
+                onClicked: campoPasswordLogin.abrir(cajaPasswordLogin.valor)
+            }
+            CampoEmergente {
+                id: campoPasswordLogin
+                parent: Overlay.overlay
+                etiqueta: "Contraseña"
+                esPassword: true
+                onAceptado: (texto) => cajaPasswordLogin.valor = texto
+            }
+        }
+        BotonRelleno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Entrar"
+            radioBorde: 999
+            // Siempre pulsable -- un botón atenuado y mudo no distingue
+            // "te falta algo" de "esto está roto" (ver el mismo criterio
+            // en el Main.qml de escritorio).
+            onClicked: {
+                if (cajaUsuarioLogin.valor.length === 0) {
+                    ventana.mensajeErrorLogin = "Escribe tu nombre de usuario.";
+                    return;
+                }
+                if (cajaPasswordLogin.valor.length === 0) {
+                    ventana.mensajeErrorLogin = "Escribe tu contraseña.";
+                    return;
+                }
+                ventana.mensajeErrorLogin = "";
+                redcliente.iniciarSesion(ventana.servidorHost, ventana.servidorPuerto,
+                                         cajaUsuarioLogin.valor, cajaPasswordLogin.valor);
+            }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "¿No tienes cuenta? Crear una"
+            color: Tema.colorAccent
+            font.pixelSize: 12 * Tema.escala
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    ventana.mensajeErrorLogin = "";
+                    cajaPasswordLogin.valor = "";
+                    ventana.pantalla = "Registro";
+                }
+            }
+        }
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            color: Tema.colorPeligro
+            font.pixelSize: 11 * Tema.escala
+            text: ventana.mensajeErrorLogin
+            visible: ventana.mensajeErrorLogin !== ""
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Volver"
+            radioBorde: 999
+            onClicked: {
+                cajaPasswordLogin.valor = "";
+                ventana.pantalla = "Inicio";
+            }
+        }
+    }
+
+    // ── Pantalla Registro ────────────────────────────────────────────────
+    BarraSuperior {
+        id: barraRegistroMovil
+        visible: ventana.pantalla === "Registro"
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Crear cuenta"
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    // Mismo motivo que areaContenidoLogin más arriba: Registro tiene aún
+    // más campos, así que se solaparía incluso peor con centerIn: parent.
+    Item {
+        id: areaContenidoRegistro
+        visible: ventana.pantalla === "Registro"
+        anchors.top: barraRegistroMovil.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+    }
+    Column {
+        visible: ventana.pantalla === "Registro"
+        anchors.centerIn: areaContenidoRegistro
+        spacing: 12 * Tema.escala
+        width: Math.min(280 * Tema.escala, ventana.width - 60 * Tema.escala)
+
+        Rectangle {
+            id: cajaUsuarioRegistro
+            width: parent.width
+            height: Tema.tamanoMinTactil
+            radius: 6 * Tema.escala
+            color: Tema.colorFondo
+            border.width: 1
+            border.color: areaUsuarioRegistro.pressed ? Tema.colorAccent : Tema.colorBorde
+            property string valor: ""
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10 * Tema.escala
+                anchors.verticalCenter: parent.verticalCenter
+                text: cajaUsuarioRegistro.valor !== "" ? cajaUsuarioRegistro.valor : "Usuario (mín. 3 caracteres)"
+                color: cajaUsuarioRegistro.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                font.pixelSize: 13 * Tema.escala
+                elide: Text.ElideRight
+                width: parent.width - 20 * Tema.escala
+            }
+            MouseArea {
+                id: areaUsuarioRegistro
+                anchors.fill: parent
+                onClicked: campoUsuarioRegistro.abrir(cajaUsuarioRegistro.valor)
+            }
+            CampoEmergente {
+                id: campoUsuarioRegistro
+                parent: Overlay.overlay
+                etiqueta: "Usuario"
+                onAceptado: (texto) => cajaUsuarioRegistro.valor = texto
+            }
+        }
+        Rectangle {
+            id: cajaPasswordRegistro
+            width: parent.width
+            height: Tema.tamanoMinTactil
+            radius: 6 * Tema.escala
+            color: Tema.colorFondo
+            border.width: 1
+            border.color: areaPasswordRegistro.pressed ? Tema.colorAccent : Tema.colorBorde
+            property string valor: ""
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10 * Tema.escala
+                anchors.verticalCenter: parent.verticalCenter
+                text: cajaPasswordRegistro.valor !== "" ? "••••••••" : "Contraseña (8+ caracteres)"
+                color: cajaPasswordRegistro.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                font.pixelSize: 13 * Tema.escala
+            }
+            MouseArea {
+                id: areaPasswordRegistro
+                anchors.fill: parent
+                onClicked: campoPasswordRegistro.abrir(cajaPasswordRegistro.valor)
+            }
+            CampoEmergente {
+                id: campoPasswordRegistro
+                parent: Overlay.overlay
+                etiqueta: "Contraseña"
+                esPassword: true
+                onAceptado: (texto) => cajaPasswordRegistro.valor = texto
+            }
+        }
+        Rectangle {
+            id: cajaPasswordRegistroConfirmar
+            width: parent.width
+            height: Tema.tamanoMinTactil
+            radius: 6 * Tema.escala
+            color: Tema.colorFondo
+            border.width: 1
+            border.color: areaPasswordRegistroConfirmar.pressed ? Tema.colorAccent : Tema.colorBorde
+            property string valor: ""
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10 * Tema.escala
+                anchors.verticalCenter: parent.verticalCenter
+                text: cajaPasswordRegistroConfirmar.valor !== "" ? "••••••••" : "Repite la contraseña"
+                color: cajaPasswordRegistroConfirmar.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                font.pixelSize: 13 * Tema.escala
+            }
+            MouseArea {
+                id: areaPasswordRegistroConfirmar
+                anchors.fill: parent
+                onClicked: campoPasswordRegistroConfirmar.abrir(cajaPasswordRegistroConfirmar.valor)
+            }
+            CampoEmergente {
+                id: campoPasswordRegistroConfirmar
+                parent: Overlay.overlay
+                etiqueta: "Repite la contraseña"
+                esPassword: true
+                onAceptado: (texto) => cajaPasswordRegistroConfirmar.valor = texto
+            }
+        }
+        BotonRelleno {
+            id: botonCrearCuentaMovil
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Crear cuenta"
+            radioBorde: 999
+            // Siempre pulsable -- las mismas reglas mínimas que ya exige
+            // el servidor (username >= 3, password >= 8, ver
+            // AccountManager, la única autoridad real) se repiten aquí
+            // solo para dar el mensaje al instante, no para silenciar el
+            // botón: uno atenuado y mudo no distingue "te falta algo" de
+            // "esto está roto" (mismo criterio que en escritorio).
+            onClicked: {
+                if (cajaUsuarioRegistro.valor.length < 3) {
+                    ventana.mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
+                    return;
+                }
+                if (cajaPasswordRegistro.valor.length < 8) {
+                    ventana.mensajeErrorLogin = "La contraseña debe tener al menos 8 caracteres.";
+                    return;
+                }
+                if (cajaPasswordRegistro.valor !== cajaPasswordRegistroConfirmar.valor) {
+                    ventana.mensajeErrorLogin = "Las contraseñas no coinciden.";
+                    return;
+                }
+                ventana.mensajeErrorLogin = "";
+                redcliente.registrar(ventana.servidorHost, ventana.servidorPuerto,
+                                     cajaUsuarioRegistro.valor, cajaPasswordRegistro.valor);
+            }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "¿Ya tienes cuenta? Iniciar sesión"
+            color: Tema.colorAccent
+            font.pixelSize: 12 * Tema.escala
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    ventana.mensajeErrorLogin = "";
+                    ventana.pantalla = "Login";
+                }
+            }
+        }
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            color: Tema.colorPeligro
+            font.pixelSize: 11 * Tema.escala
+            text: ventana.mensajeErrorLogin
+            visible: ventana.mensajeErrorLogin !== ""
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Volver"
+            radioBorde: 999
+            onClicked: {
+                cajaPasswordRegistro.valor = "";
+                cajaPasswordRegistroConfirmar.valor = "";
+                ventana.pantalla = "Inicio";
+            }
+        }
+    }
+
+    // ── Riel de navegación (Salas/Ranking/Torneos/Social) ──────────────────
+    // Instancia única, visible solo en las 4 pantallas "hub" -- ver
+    // RielNavegacion.qml. Las demás pantallas (Inicio/Login/Registro/
+    // CrearSala/Lobby/Partida/Fin) no lo llevan.
+    RielNavegacion {
+        id: rielNavegacionMovil
+        visible: ["Salas", "Ranking", "Torneos", "Social"].indexOf(ventana.pantalla) !== -1
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        pantallaActual: ventana.pantalla
+        onSeccionElegida: (nombre) => {
+            ventana.pantalla = nombre;
+            if (nombre === "Ranking") redcliente.consultarRanking(ventana.servidorHost, ventana.servidorPuerto);
+        }
+    }
+
     // ── Pantalla Salas ───────────────────────────────────────────────────
     BarraSuperior {
         id: barraSalasMovil
         visible: ventana.pantalla === "Salas"
         anchors.top: parent.top
-        anchors.left: parent.left
+        anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
         anchors.margins: 16 * Tema.escala
         textoCentro: "Salas disponibles"
@@ -811,6 +1357,11 @@ ApplicationWindow {
         id: filaTabsSalasMovil
         visible: ventana.pantalla === "Salas"
         anchors.horizontalCenter: parent.horizontalCenter
+        // El riel de navegación le come ancho por la izquierda -- sin
+        // este desplazamiento, "centrado en parent" quedaría descentrado
+        // respecto al hueco real disponible (mismo motivo que en el
+        // Column de Salas de escritorio, ver Main.qml de qml/).
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         anchors.top: barraSalasMovil.bottom
         anchors.topMargin: 22 * Tema.escala
         spacing: 10 * Tema.escala
@@ -848,6 +1399,7 @@ ApplicationWindow {
         anchors.top: filaTabsSalasMovil.bottom
         anchors.topMargin: 10 * Tema.escala
         anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
         height: textoErrorSalasMovil.implicitHeight + 12 * Tema.escala
         radius: 6 * Tema.escala
@@ -876,6 +1428,7 @@ ApplicationWindow {
         anchors.top: avisoErrorSalasMovil.visible ? avisoErrorSalasMovil.bottom : filaTabsSalasMovil.bottom
         anchors.topMargin: avisoErrorSalasMovil.visible ? 10 * Tema.escala : 12 * Tema.escala
         anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
         height: 220 * Tema.escala
         radius: 8 * Tema.escala
@@ -1105,6 +1658,194 @@ ApplicationWindow {
                 }
             }
         }
+
+    // ── Pantalla Ranking: ranking global de verdad (ver AccountManager::
+    // obtenerRanking() en el servidor -- solo cuentas con ≥10 partidas
+    // jugadas). Torneos/Social sí siguen siendo placeholder, ver más abajo.
+    BarraSuperior {
+        id: barraRankingMovil
+        visible: ventana.pantalla === "Ranking"
+        anchors.top: parent.top
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Ranking global"
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    Row {
+        id: filaTabsRankingMovil
+        visible: ventana.pantalla === "Ranking"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
+        anchors.top: barraRankingMovil.bottom
+        anchors.topMargin: 12 * Tema.escala
+        SelectorPildoras {
+            id: tabsRankingMovil
+            opciones: ["Más victorias", "Mejor ratio"]
+            seleccionado: ventana.ordenRankingActual
+            onSeleccionadoChanged: {
+                ventana.ordenRankingActual = seleccionado;
+                ventana.reordenarRanking();
+            }
+        }
+    }
+    Rectangle {
+        visible: ventana.pantalla === "Ranking"
+        anchors.top: filaTabsRankingMovil.bottom
+        anchors.topMargin: 12 * Tema.escala
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16 * Tema.escala
+        radius: 8 * Tema.escala
+        color: Tema.colorPanel
+        border.width: 1
+        border.color: Tema.colorBorde
+
+        Text {
+            anchors.centerIn: parent
+            width: parent.width - 40 * Tema.escala
+            visible: rankingModel.count === 0
+            text: "Todavía no hay cuentas con partidas suficientes para aparecer en el ranking."
+            color: Tema.colorTextoTenue
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            font.pixelSize: 12 * Tema.escala
+        }
+
+        ListView {
+            visible: rankingModel.count > 0
+            anchors.fill: parent
+            anchors.margins: 12 * Tema.escala
+            clip: true
+            spacing: 6 * Tema.escala
+            model: rankingModel
+            header: Row {
+                width: parent ? parent.width : 0
+                height: 20 * Tema.escala
+                Text {
+                    width: 28 * Tema.escala
+                    text: "#"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 9 * Tema.escala
+                }
+                Text {
+                    width: parent.width - 28 * Tema.escala - 160 * Tema.escala
+                    text: "JUGADOR"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 9 * Tema.escala
+                }
+                Text {
+                    width: 80 * Tema.escala
+                    horizontalAlignment: Text.AlignRight
+                    text: "GANADAS"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 9 * Tema.escala
+                }
+                Text {
+                    width: 80 * Tema.escala
+                    horizontalAlignment: Text.AlignRight
+                    text: "RATIO"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 9 * Tema.escala
+                }
+            }
+            delegate: Rectangle {
+                id: filaRankingMovil
+                required property string username
+                required property int partidasJugadas
+                required property int partidasGanadas
+                required property int index
+                readonly property bool esUsuarioPropio:
+                    username.toLowerCase() === ventana.nombreJugador.toLowerCase()
+                width: ListView.view.width
+                height: Tema.tamanoMinTactil
+                radius: 6 * Tema.escala
+                color: esUsuarioPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.1) : Tema.colorFondo
+                border.width: esUsuarioPropio ? 1.5 : 1
+                border.color: esUsuarioPropio ? Tema.colorAccent : Tema.colorBorde
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10 * Tema.escala
+                    anchors.rightMargin: 10 * Tema.escala
+                    Text {
+                        width: 28 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (filaRankingMovil.index + 1) + ""
+                        font.family: Tema.fuenteElegante
+                        color: filaRankingMovil.index < 3 ? Tema.colorAccent : Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
+                    }
+                    Text {
+                        width: filaRankingMovil.width - 28 * Tema.escala - 160 * Tema.escala - 20 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: filaRankingMovil.username + (filaRankingMovil.esUsuarioPropio ? " (tú)" : "")
+                        font.bold: filaRankingMovil.esUsuarioPropio
+                        color: "white"
+                        elide: Text.ElideRight
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    Text {
+                        width: 80 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignRight
+                        text: filaRankingMovil.partidasGanadas + ""
+                        color: "white"
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    Text {
+                        width: 80 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignRight
+                        text: Math.round(100 * filaRankingMovil.partidasGanadas / filaRankingMovil.partidasJugadas) + "%"
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                }
+            }
+        }
+    }
+
+    BarraSuperior {
+        id: barraTorneosMovil
+        visible: ventana.pantalla === "Torneos"
+        anchors.top: parent.top
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Torneos"
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    Proximamente {
+        visible: ventana.pantalla === "Torneos"
+        anchors.top: barraTorneosMovil.bottom
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        titulo: "Torneos"
+        descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
+    }
+
+    BarraSuperior {
+        id: barraSocialMovil
+        visible: ventana.pantalla === "Social"
+        anchors.top: parent.top
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Social"
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    Proximamente {
+        visible: ventana.pantalla === "Social"
+        anchors.top: barraSocialMovil.bottom
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        titulo: "Social"
+        descripcion: "Añade amigos y ve quién está conectado antes de crear una sala."
+    }
 
     // ── Pantalla CrearSala ───────────────────────────────────────────────
     BarraSuperior {
@@ -1663,6 +2404,7 @@ ApplicationWindow {
             recompraSolicitada: ventana.recompraSolicitada
             conectado: !ventana.reconectandoAhora
             nombreJugador: ventana.nombreJugador
+            confirmarAllIn: ventana.confirmarAllIn
             modeloHistorial: historialMovil
             modeloChat: mensajesChatPartida
             onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
@@ -1807,6 +2549,8 @@ ApplicationWindow {
                         PanelVoto {
                             anchors.horizontalCenter: parent.horizontalCenter
                             soyHost: ventana.soyHost
+                            // 5 = MIN_MANOS_PARA_STATS en NetworkObserver.cpp (servidor) -- si cambia ahí, cambiar aquí también.
+                            contariaComoPerdida: ventana.tokenSesion !== "" && ventana.manoActual >= 5
                             onContinuar: { ventana.votoAbierto = false; ventana.mensajeVoto = ""; }
                             onAbandonar: ventana.votoAbierto = false
                             onGuardarYSalir: ventana.votoAbierto = false
@@ -2164,17 +2908,21 @@ ApplicationWindow {
                 width: cajonAjustesMovil.width - 36 * Tema.escala
                 spacing: 20 * Tema.escala
 
-                Text {
-                    text: "Ajustes"
-                    color: "white"
-                    font.family: Tema.fuenteElegante
-                    font.pixelSize: 18 * Tema.escala
+                // Mismo criterio que escritorio: dos pestañas en vez de un
+                // único título, con SelectorSegmentado en vez de
+                // SelectorPildoras -- ver Main.qml de qml/.
+                SelectorSegmentado {
+                    width: parent.width
+                    opciones: ["Ajustes", "Cuenta"]
+                    seleccionado: ventana.pestanaAjustesActual
+                    onSeleccionadoChanged: ventana.pestanaAjustesActual = seleccionado
                 }
 
                 // ── Tema de color ────────────────────────────────────────
                 Column {
                     width: parent.width
                     spacing: 8 * Tema.escala
+                    visible: ventana.pestanaAjustesActual === 0
                     Text {
                         text: "TEMA DE COLOR"
                         color: Tema.colorTextoMuyTenue
@@ -2226,7 +2974,7 @@ ApplicationWindow {
                 // ── Mesa actual (solo lectura, solo en Partida) ───────────
                 Column {
                     width: parent.width
-                    visible: ventana.pantalla === "Partida"
+                    visible: ventana.pestanaAjustesActual === 0 && ventana.pantalla === "Partida"
                     spacing: 8 * Tema.escala
                     Text {
                         text: "MESA ACTUAL"
@@ -2265,10 +3013,257 @@ ApplicationWindow {
                     }
                 }
 
+                // ── Cuenta: invitados ven un aviso + acceso a login/
+                // registro en vez de la gestión de cuenta. ──────────────
+                Column {
+                    width: parent.width
+                    visible: ventana.pestanaAjustesActual === 1 && ventana.tokenSesion === ""
+                    spacing: 12 * Tema.escala
+
+                    Text {
+                        text: "CUENTA"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 10 * Tema.escala
+                        font.letterSpacing: 1
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Estás jugando como invitado. Inicia sesión o crea una cuenta para poder cambiar tu nombre de usuario o tu contraseña."
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
+                    }
+                    BotonRelleno {
+                        text: "Iniciar sesión"
+                        onClicked: {
+                            ventana.ajustesAbiertos = false;
+                            ventana.mensajeErrorLogin = "";
+                            ventana.pantalla = "Login";
+                        }
+                    }
+                    BotonContorno {
+                        text: "Crear cuenta"
+                        onClicked: {
+                            ventana.ajustesAbiertos = false;
+                            ventana.mensajeErrorLogin = "";
+                            ventana.pantalla = "Registro";
+                        }
+                    }
+                }
+
+                // ── Cuenta: con sesión activa, gestión real. ──────────────
+                Column {
+                    width: parent.width
+                    visible: ventana.pestanaAjustesActual === 1 && ventana.tokenSesion !== ""
+                    spacing: 8 * Tema.escala
+
+                    Text {
+                        text: "CUENTA"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 10 * Tema.escala
+                        font.letterSpacing: 1
+                    }
+                    Row {
+                        width: parent.width
+                        Text {
+                            width: parent.width - 80 * Tema.escala
+                            text: "Usuario"
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 11 * Tema.escala
+                        }
+                        Text {
+                            text: ventana.nombreJugador
+                            color: "white"
+                            font.pixelSize: 11 * Tema.escala
+                            font.bold: true
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+
+                    // ── Estadísticas propias -- mismo criterio que
+                    // escritorio (ver Main.qml de qml/): ocultas hasta la
+                    // primera partida contada.
+                    Column {
+                        width: parent.width
+                        visible: ventana.statsPartidasJugadas > 0
+                        spacing: 6 * Tema.escala
+                        Repeater {
+                            model: [
+                                { etiqueta: "Partidas jugadas", valor: ventana.statsPartidasJugadas + "" },
+                                { etiqueta: "Partidas ganadas", valor: ventana.statsPartidasGanadas + "" },
+                                { etiqueta: "Ratio de victorias", valor: Math.round(100 * ventana.statsPartidasGanadas / ventana.statsPartidasJugadas) + "%" },
+                                { etiqueta: "Manos jugadas", valor: ventana.statsManosJugadas + "" },
+                                { etiqueta: "Fichas netas", valor: (ventana.statsFichasNetas >= 0 ? "+" : "") + ventana.statsFichasNetas }
+                            ]
+                            delegate: Row {
+                                required property var modelData
+                                width: parent.width
+                                Text {
+                                    width: parent.width - 80 * Tema.escala
+                                    text: modelData.etiqueta
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Text {
+                                    text: modelData.valor
+                                    color: modelData.etiqueta === "Fichas netas"
+                                           ? (ventana.statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
+                                           : "white"
+                                    font.pixelSize: 11 * Tema.escala
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: cajaNuevoUsernameMovil
+                        width: parent.width
+                        height: Tema.tamanoMinTactil
+                        radius: 6 * Tema.escala
+                        color: Tema.colorFondo
+                        border.width: 1
+                        border.color: areaNuevoUsernameMovil.pressed ? Tema.colorAccent : Tema.colorBorde
+                        property string valor: ""
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cajaNuevoUsernameMovil.valor !== "" ? cajaNuevoUsernameMovil.valor : "Nuevo nombre de usuario"
+                            color: cajaNuevoUsernameMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            font.pixelSize: 12 * Tema.escala
+                            elide: Text.ElideRight
+                            width: parent.width - 20 * Tema.escala
+                        }
+                        MouseArea {
+                            id: areaNuevoUsernameMovil
+                            anchors.fill: parent
+                            onClicked: campoNuevoUsernameMovil.abrir(cajaNuevoUsernameMovil.valor)
+                        }
+                        CampoEmergente {
+                            id: campoNuevoUsernameMovil
+                            parent: Overlay.overlay
+                            etiqueta: "Nuevo nombre de usuario"
+                            onAceptado: (texto) => cajaNuevoUsernameMovil.valor = texto
+                        }
+                    }
+                    BotonContorno {
+                        text: "Cambiar nombre de usuario"
+                        onClicked: {
+                            if (cajaNuevoUsernameMovil.valor.length < 3) {
+                                ventana.mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
+                                return;
+                            }
+                            ventana.mensajeErrorLogin = "";
+                            redcliente.cambiarNombreUsuario(ventana.servidorHost, ventana.servidorPuerto,
+                                                            ventana.tokenSesion, cajaNuevoUsernameMovil.valor);
+                        }
+                    }
+
+                    Rectangle {
+                        id: cajaPasswordActualMovil
+                        width: parent.width
+                        height: Tema.tamanoMinTactil
+                        radius: 6 * Tema.escala
+                        color: Tema.colorFondo
+                        border.width: 1
+                        border.color: areaPasswordActualMovil.pressed ? Tema.colorAccent : Tema.colorBorde
+                        property string valor: ""
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cajaPasswordActualMovil.valor !== "" ? "••••••••" : "Contraseña actual"
+                            color: cajaPasswordActualMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            font.pixelSize: 12 * Tema.escala
+                        }
+                        MouseArea {
+                            id: areaPasswordActualMovil
+                            anchors.fill: parent
+                            onClicked: campoPasswordActualMovil.abrir(cajaPasswordActualMovil.valor)
+                        }
+                        CampoEmergente {
+                            id: campoPasswordActualMovil
+                            parent: Overlay.overlay
+                            etiqueta: "Contraseña actual"
+                            esPassword: true
+                            onAceptado: (texto) => cajaPasswordActualMovil.valor = texto
+                        }
+                    }
+                    Rectangle {
+                        id: cajaPasswordNuevaMovil
+                        width: parent.width
+                        height: Tema.tamanoMinTactil
+                        radius: 6 * Tema.escala
+                        color: Tema.colorFondo
+                        border.width: 1
+                        border.color: areaPasswordNuevaMovil.pressed ? Tema.colorAccent : Tema.colorBorde
+                        property string valor: ""
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cajaPasswordNuevaMovil.valor !== "" ? "••••••••" : "Contraseña nueva (8+ caracteres)"
+                            color: cajaPasswordNuevaMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            font.pixelSize: 12 * Tema.escala
+                            elide: Text.ElideRight
+                            width: parent.width - 20 * Tema.escala
+                        }
+                        MouseArea {
+                            id: areaPasswordNuevaMovil
+                            anchors.fill: parent
+                            onClicked: campoPasswordNuevaMovil.abrir(cajaPasswordNuevaMovil.valor)
+                        }
+                        CampoEmergente {
+                            id: campoPasswordNuevaMovil
+                            parent: Overlay.overlay
+                            etiqueta: "Contraseña nueva"
+                            esPassword: true
+                            onAceptado: (texto) => cajaPasswordNuevaMovil.valor = texto
+                        }
+                    }
+                    BotonContorno {
+                        text: "Cambiar contraseña"
+                        onClicked: {
+                            if (cajaPasswordActualMovil.valor.length === 0) {
+                                ventana.mensajeErrorLogin = "Escribe tu contraseña actual.";
+                                return;
+                            }
+                            if (cajaPasswordNuevaMovil.valor.length < 8) {
+                                ventana.mensajeErrorLogin = "La contraseña nueva debe tener al menos 8 caracteres.";
+                                return;
+                            }
+                            ventana.mensajeErrorLogin = "";
+                            redcliente.cambiarPassword(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                       cajaPasswordActualMovil.valor, cajaPasswordNuevaMovil.valor);
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorPeligro
+                        font.pixelSize: 11 * Tema.escala
+                        text: ventana.mensajeErrorLogin
+                        visible: ventana.mensajeErrorLogin !== ""
+                    }
+
+                    BotonContorno {
+                        text: "Cerrar sesión"
+                        colorBorde: Tema.colorPeligro
+                        onClicked: {
+                            ventana.ajustesAbiertos = false;
+                            redcliente.cerrarSesion(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                        }
+                    }
+                }
+
                 // ── Cliente ────────────────────────────────────────────────
                 Column {
                     width: parent.width
                     spacing: 12 * Tema.escala
+                    visible: ventana.pestanaAjustesActual === 0
                     Text {
                         text: "CLIENTE"
                         color: Tema.colorTextoMuyTenue
@@ -2289,6 +3284,22 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             activo: ventana.sonidoActivado
                             onAlternado: ventana.sonidoActivado = !ventana.sonidoActivado
+                        }
+                    }
+                    Row {
+                        width: parent.width
+                        Text {
+                            width: parent.width - 46 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Confirmar antes de ALL-IN"
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        Interruptor {
+                            anchors.verticalCenter: parent.verticalCenter
+                            activo: ventana.confirmarAllIn
+                            onAlternado: ventana.confirmarAllIn = !ventana.confirmarAllIn
                         }
                     }
                     BotonContorno {

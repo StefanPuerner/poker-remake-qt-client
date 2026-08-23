@@ -56,6 +56,7 @@ qt_add_qml_module(PokerClientQt
         src/client-qt/qml/Mesa.qml
         src/client-qt/qml/Interruptor.qml
         src/client-qt/qml/SelectorPildoras.qml
+        src/client-qt/qml/SelectorSegmentado.qml
         src/client-qt/qml/BotonContorno.qml
         src/client-qt/qml/BotonRelleno.qml
         src/client-qt/qml/PanelVoto.qml
@@ -63,6 +64,8 @@ qt_add_qml_module(PokerClientQt
         src/client-qt/qml/BarraSuperior.qml
         src/client-qt/qml/ChatBox.qml
         src/client-qt/qml/PanelLateral.qml
+        src/client-qt/qml/RielNavegacion.qml
+        src/client-qt/qml/Proximamente.qml
     RESOURCES
         # EB Garamond (SIL Open Font License) empaquetada con el binario —
         # los nombres de fuente del sistema no son fiables entre plataformas.
@@ -148,6 +151,7 @@ qt_add_qml_module(PokerClientMobile
         src/client-qt/qml-mobile/SelectorNumerico.qml
         src/client-qt/qml-mobile/Interruptor.qml
         src/client-qt/qml-mobile/SelectorPildoras.qml
+        src/client-qt/qml-mobile/SelectorSegmentado.qml
         src/client-qt/qml-mobile/BarraSuperior.qml
         src/client-qt/qml-mobile/IconoAjustes.qml
         src/client-qt/qml-mobile/CabeceraPullRefrescar.qml
@@ -160,6 +164,8 @@ qt_add_qml_module(PokerClientMobile
         src/client-qt/qml-mobile/PanelVoto.qml
         src/client-qt/qml-mobile/TarjetaReveal.qml
         src/client-qt/qml-mobile/ChuletaFlotante.qml
+        src/client-qt/qml-mobile/RielNavegacion.qml
+        src/client-qt/qml-mobile/Proximamente.qml
     RESOURCES
         assets/fonts/EBGaramond.ttf
 )
