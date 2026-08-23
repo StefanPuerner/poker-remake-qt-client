@@ -60,6 +60,18 @@ QtObject {
         return "#" + c.toString().slice(-6);
     }
 
+    // Umbrales de partidas_ganadas para el marco de avatar permanente (ver
+    // Avatar.qml) -- provisionales, sin datos de uso real todavía que los
+    // calibren. Un único sitio para los dos: Asiento (cualquier jugador
+    // sentado, vía GAME_STATE) y la fila de Ranking (vía CONSULTAR_RANKING).
+    function marcoPorPartidasGanadas(n) {
+        if (n >= 100) return "platino";
+        if (n >= 50) return "oro";
+        if (n >= 25) return "plata";
+        if (n >= 10) return "bronce";
+        return "ninguno";
+    }
+
     // ── Fuente empaquetada ───────────────────────────────────────────────
     // Mismo patrón que escritorio: Main.qml la fija vía Binding una vez el
     // FontLoader resuelve el .ttf; vacío mientras tanto = fuente de sistema.

@@ -112,6 +112,7 @@ Item {
             id: posicionador
             required property string nombre
             required property string saldo
+            required property int partidasGanadas
             required property int index
 
             // Ángulo de este asiento en radianes. 2*PI repartido entre
@@ -139,6 +140,7 @@ Item {
                 id: asientoReal
                 nombre: posicionador.nombre
                 saldo: posicionador.saldo
+                partidasGanadas: posicionador.partidasGanadas
                 activo: posicionador.nombre === mesa.turnoNombre
                 // Antes solo se animaba el aro en el propio asiento
                 // (era la única aproximación posible sin timeout_ms real

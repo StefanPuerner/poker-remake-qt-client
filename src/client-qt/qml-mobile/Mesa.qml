@@ -80,6 +80,7 @@ Item {
             id: posicionador
             required property string nombre
             required property string saldo
+            required property int partidasGanadas
             required property int index
 
             property int indiceRelativo: (index - mesa.miIndice + mesa.jugadores.count) % mesa.jugadores.count
@@ -102,6 +103,7 @@ Item {
                 id: asientoReal
                 nombre: posicionador.nombre
                 saldo: posicionador.saldo
+                partidasGanadas: posicionador.partidasGanadas
                 activo: posicionador.nombre === mesa.turnoNombre
                 fraccionTiempo: posicionador.nombre === mesa.turnoNombre ? mesa.fraccionTiempo : 1.0
                 retirado: mesa.retirados.indexOf(posicionador.nombre) !== -1

@@ -59,10 +59,25 @@ Rectangle {
             width: ListView.view.width
             height: columnaBurbuja.height
 
+            // Medidor invisible, sin wrap ni restricción de ancho -- ver
+            // columnaBurbuja.width. Da el ancho de una sola línea de
+            // verdad, sin la dependencia circular de antes (el ancho de
+            // la burbuja salía de textoBurbuja.implicitWidth, pero el
+            // propio textoBurbuja tomaba su ancho DE la burbuja vía
+            // anchors.fill -- con wrap activo eso es un bucle que Qt no
+            // siempre resuelve bien, y el texto se salía por fuera en
+            // mensajes largos/multilínea).
+            Text {
+                id: medidor
+                visible: false
+                text: mensaje
+                font.pixelSize: 13 * Tema.escala
+            }
+
             Column {
                 id: columnaBurbuja
                 x: esPropio ? parent.width - width : 0
-                width: Math.min(textoBurbuja.implicitWidth + 24 * Tema.escala, parent.width * 0.8)
+                width: Math.min(medidor.implicitWidth + 24 * Tema.escala, parent.width * 0.8)
                 spacing: 2 * Tema.escala
 
                 Text {

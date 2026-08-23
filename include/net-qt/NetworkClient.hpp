@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QVariantMap>
 
 #include "../net/Protocol.hpp"
 #include "QtEndian"  // qToBigEndian
@@ -31,6 +32,10 @@ class NetworkClient : public QObject {
   Q_PROPERTY(QString mejorManoFinal READ mejorManoFinal NOTIFY estadisticasFinCambiaron)
   Q_PROPERTY(QString mejorManoJugadorFinal READ mejorManoJugadorFinal NOTIFY estadisticasFinCambiaron)
   Q_PROPERTY(QString eliminacionesFinalCsv READ eliminacionesFinalCsv NOTIFY estadisticasFinCambiaron)
+  // Ver el comentario de consultarEstadisticas() más abajo -- mismo motivo
+  // que las cuatro propiedades de arriba (bug de Android con señales de
+  // muchos parámetros), un único QVariantMap en vez de veinte campos sueltos.
+  Q_PROPERTY(QVariantMap estadisticasCuenta READ estadisticasCuenta NOTIFY estadisticasCuentaCambiaron)
 
  public:
   using QObject::QObject;
@@ -39,6 +44,7 @@ class NetworkClient : public QObject {
   QString mejorManoFinal() const { return mejorManoFinal_; }
   QString mejorManoJugadorFinal() const { return mejorManoJugadorFinal_; }
   QString eliminacionesFinalCsv() const { return eliminacionesFinalCsv_; }
+  QVariantMap estadisticasCuenta() const { return estadisticasCuenta_; }
 
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
                             QString nombre) {
@@ -124,10 +130,13 @@ class NetworkClient : public QObject {
         });
   }
 
-  /// Pide la lista de partidas guardadas (.pok) del servidor — mismo
-  /// patrón efímero que refrescarSalas().
+  /// Pide la lista de partidas guardadas (.pok) del servidor -- mismo
+  /// patrón efímero que refrescarSalas(). token_ interno (no explícito):
+  /// el servidor ahora restringe la lista a las guardadas donde jugó la
+  /// cuenta del token (invitado, sin token, no ve ninguna).
   Q_INVOKABLE void listarGuardadas(const QString& host, quint16 puerto) {
-    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::LISTAR_GUARDADAS),
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_GUARDADAS, {{"token", token_.toStdString()}}),
         [this](const std::string& payload) {
           emit guardadasActualizadas(
               QString::fromStdString(net::jsonGetStr(payload, "guardadas")));
@@ -144,13 +153,15 @@ class NetworkClient : public QObject {
         });
   }
 
-  /// Renombra un archivo .pok existente.
+  /// Renombra un archivo .pok existente -- token_ interno, el servidor
+  /// rechaza la operación si esa cuenta no jugó en el guardado.
   Q_INVOKABLE void renombrarGuardada(const QString& host, quint16 puerto,
                                      QString archivo, QString nuevoNombre) {
     enviarPeticionEfimera(host, puerto,
         net::buildMsg(net::MsgType::RENOMBRAR_GUARDADA, {
             {"archivo",      archivo.toStdString()},
             {"nuevo_nombre", nuevoNombre.toStdString()},
+            {"token",        token_.toStdString()},
         }),
         [this](const std::string& payload) {
           emit guardadaRenombrada(
@@ -158,10 +169,14 @@ class NetworkClient : public QObject {
         });
   }
 
-  /// Borra un archivo .pok existente.
+  /// Borra un archivo .pok existente -- mismo criterio que
+  /// renombrarGuardada() (token_ interno, propiedad comprobada en servidor).
   Q_INVOKABLE void borrarGuardada(const QString& host, quint16 puerto, QString archivo) {
     enviarPeticionEfimera(host, puerto,
-        net::buildMsg(net::MsgType::BORRAR_GUARDADA, {{"archivo", archivo.toStdString()}}),
+        net::buildMsg(net::MsgType::BORRAR_GUARDADA, {
+            {"archivo", archivo.toStdString()},
+            {"token",   token_.toStdString()},
+        }),
         [this](const std::string& payload) {
           emit guardadaBorrada(
               QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
@@ -283,17 +298,42 @@ class NetworkClient : public QObject {
   /// servidor respondería igualmente a cero pero no tiene sentido
   /// preguntar. Mismo patrón efímero que cambiarPassword() (token explícito
   /// en vez de token_ interno -- QML ya lo tiene en ventana.tokenSesion).
+  //
+  // QVariantMap vía Q_PROPERTY en vez de veinte parámetros en la señal --
+  // MISMO motivo que estadisticasFinCambiaron/manosDisputadasFinal arriba
+  // (bug real de Android: una señal con demasiados parámetros conectada
+  // desde QML pierde los últimos SOLO en el APK, nunca en escritorio).
+  // Aquí ni siquiera hacen falta propiedades sueltas por campo -- un único
+  // QVariantMap ya evita el problema (una señal de UN parámetro) y QML lo
+  // desestructura por nombre de campo, no por posición.
   Q_INVOKABLE void consultarEstadisticas(const QString& host, quint16 puerto, QString token) {
     if (token.isEmpty()) return;
     enviarPeticionEfimera(host, puerto,
         net::buildMsg(net::MsgType::CONSULTAR_ESTADISTICAS, {{"token", token.toStdString()}}),
         [this](const std::string& payload) {
-          emit estadisticasActualizadas(
-              net::jsonGetInt(payload, "manos_jugadas"),
-              net::jsonGetInt(payload, "manos_ganadas"),
-              net::jsonGetInt(payload, "partidas_jugadas"),
-              net::jsonGetInt(payload, "partidas_ganadas"),
-              net::jsonGetInt(payload, "fichas_netas"));
+          QVariantMap m;
+          m["manosJugadas"] = net::jsonGetInt(payload, "manos_jugadas");
+          m["manosGanadas"] = net::jsonGetInt(payload, "manos_ganadas");
+          m["partidasJugadas"] = net::jsonGetInt(payload, "partidas_jugadas");
+          m["partidasGanadas"] = net::jsonGetInt(payload, "partidas_ganadas");
+          m["fichasNetas"] = net::jsonGetInt(payload, "fichas_netas");
+          m["rachaActual"] = net::jsonGetInt(payload, "racha_actual");
+          m["rachaMaxima"] = net::jsonGetInt(payload, "racha_maxima");
+          m["mayorBote"] = net::jsonGetInt(payload, "mayor_bote");
+          m["mejorManoNombre"] = QString::fromStdString(net::jsonGetStr(payload, "mejor_mano_nombre"));
+          m["mejorManoFecha"] = net::jsonGetInt(payload, "mejor_mano_fecha");
+          m["vecesCartaAlta"] = net::jsonGetInt(payload, "veces_carta_alta");
+          m["vecesPareja"] = net::jsonGetInt(payload, "veces_pareja");
+          m["vecesDoblePareja"] = net::jsonGetInt(payload, "veces_doble_pareja");
+          m["vecesTrio"] = net::jsonGetInt(payload, "veces_trio");
+          m["vecesEscalera"] = net::jsonGetInt(payload, "veces_escalera");
+          m["vecesColor"] = net::jsonGetInt(payload, "veces_color");
+          m["vecesFullHouse"] = net::jsonGetInt(payload, "veces_full_house");
+          m["vecesPoker"] = net::jsonGetInt(payload, "veces_poker");
+          m["vecesEscaleraColor"] = net::jsonGetInt(payload, "veces_escalera_color");
+          m["vecesEscaleraReal"] = net::jsonGetInt(payload, "veces_escalera_real");
+          estadisticasCuenta_ = m;
+          emit estadisticasCuentaCambiaron();
         });
   }
 
@@ -486,9 +526,11 @@ class NetworkClient : public QObject {
   void guardadasActualizadas(QString guardadasCsv);
   /// Respuesta a consultarRanking(): "partidasJugadas:partidasGanadas:username;..." (puede ser "").
   void rankingActualizado(QString rankingCsv);
-  /// Respuesta a consultarEstadisticas() -- las propias.
-  void estadisticasActualizadas(int manosJugadas, int manosGanadas,
-                                 int partidasJugadas, int partidasGanadas, int fichasNetas);
+  /// Avisa de que la propiedad estadisticasCuenta ya está al día --
+  /// respuesta a consultarEstadisticas() (las propias). Ver el comentario
+  /// largo junto a consultarEstadisticas() para el porqué de un
+  /// QVariantMap en vez de parámetros sueltos.
+  void estadisticasCuentaCambiaron();
   /// Respuesta a renombrarGuardada() — mensaje vacío si fue bien.
   void guardadaRenombrada(QString mensaje);
   /// Respuesta a borrarGuardada() — mensaje vacío si fue bien.
@@ -1118,4 +1160,5 @@ class NetworkClient : public QObject {
   QString mejorManoFinal_;
   QString mejorManoJugadorFinal_;
   QString eliminacionesFinalCsv_;
+  QVariantMap estadisticasCuenta_;
 };

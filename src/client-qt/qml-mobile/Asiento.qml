@@ -7,6 +7,10 @@ import PokerQuickMobile
 Column {
     property string saldo
     property string nombre
+    // Para el marco de avatar permanente (ver Tema.marcoPorPartidasGanadas
+    // y Avatar.qml) -- viene de GAME_STATE, así que funciona para
+    // CUALQUIER jugador sentado, no solo el propio.
+    property int partidasGanadas: 0
     property bool activo: false
     property real fraccionTiempo: 1.0
     property bool retirado: false
@@ -67,27 +71,12 @@ Column {
             }
         }
 
-        Rectangle {
+        Avatar {
             anchors.centerIn: parent
-            width: 46 * Tema.escala
-            height: 46 * Tema.escala
-            radius: width / 2
-            border.width: 2
-            border.color: activo ? Tema.colorAccent : Tema.colorBorde
-            Behavior on border.color {
-                ColorAnimation { duration: 150 }
-            }
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.6) }
-                GradientStop { position: 1.0; color: Tema.colorPanel }
-            }
-            Text {
-                anchors.centerIn: parent
-                text: nombre.charAt(0)
-                color: Tema.colorAccent
-                font.pixelSize: 20 * Tema.escala
-                font.family: Tema.fuenteElegante
-            }
+            letra: nombre.charAt(0)
+            tamano: 46 * Tema.escala
+            marco: Tema.marcoPorPartidasGanadas(partidasGanadas)
+            colorBorde: activo ? Tema.colorAccent : Tema.colorBorde
         }
 
         // Marcadores de dealer/ciegas -- mismo diseño que escritorio (ver

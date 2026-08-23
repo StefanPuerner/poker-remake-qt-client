@@ -269,6 +269,21 @@ ApplicationWindow {
     property int statsPartidasJugadas: 0
     property int statsPartidasGanadas: 0
     property int statsFichasNetas: 0
+    property int statsRachaActual: 0
+    property int statsRachaMaxima: 0
+    property int statsMayorBote: 0
+    property string statsMejorManoNombre: ""
+    property int statsMejorManoFecha: 0  // unix timestamp, 0 = todavía ninguna
+    property int statsVecesCartaAlta: 0
+    property int statsVecesPareja: 0
+    property int statsVecesDoblePareja: 0
+    property int statsVecesTrio: 0
+    property int statsVecesEscalera: 0
+    property int statsVecesColor: 0
+    property int statsVecesFullHouse: 0
+    property int statsVecesPoker: 0
+    property int statsVecesEscaleraColor: 0
+    property int statsVecesEscaleraReal: 0
     // Toggle de la pantalla "Salas": públicas en curso vs. partidas
     // guardadas que se pueden reanudar como sala nueva.
     property bool viendoGuardadas: false
@@ -1377,21 +1392,12 @@ ApplicationWindow {
                                 width: filaRanking.width - 34 * Tema.escala - 220 * Tema.escala - 24 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 10 * Tema.escala
-                                Rectangle {
-                                    width: 28 * Tema.escala
-                                    height: 28 * Tema.escala
-                                    radius: width / 2
+                                Avatar {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    color: Tema.colorPanel
-                                    border.width: 1
-                                    border.color: filaRanking.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: filaRanking.username.length > 0 ? filaRanking.username.charAt(0).toUpperCase() : "?"
-                                        font.family: Tema.fuenteElegante
-                                        color: filaRanking.esUsuarioPropio ? Tema.colorAccent : "white"
-                                        font.pixelSize: 13 * Tema.escala
-                                    }
+                                    letra: filaRanking.username.length > 0 ? filaRanking.username.charAt(0).toUpperCase() : "?"
+                                    tamano: 28 * Tema.escala
+                                    marco: Tema.marcoPorPartidasGanadas(filaRanking.partidasGanadas)
+                                    colorBorde: filaRanking.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
@@ -2768,12 +2774,32 @@ ApplicationWindow {
                 rankingCrudo = filas;
                 reordenarRanking();
             }
-            function onEstadisticasActualizadas(manosJugadas, manosGanadas, partidasJugadas, partidasGanadas, fichasNetas) {
-                statsManosJugadas = manosJugadas;
-                statsManosGanadas = manosGanadas;
-                statsPartidasJugadas = partidasJugadas;
-                statsPartidasGanadas = partidasGanadas;
-                statsFichasNetas = fichasNetas;
+            // redcliente.estadisticasCuenta es una Q_PROPERTY (QVariantMap),
+            // no parámetros de la señal -- ver el comentario largo junto a
+            // consultarEstadisticas() en NetworkClient.hpp (bug real de
+            // Android con señales de muchos parámetros).
+            function onEstadisticasCuentaCambiaron() {
+                var m = redcliente.estadisticasCuenta;
+                statsManosJugadas = m.manosJugadas;
+                statsManosGanadas = m.manosGanadas;
+                statsPartidasJugadas = m.partidasJugadas;
+                statsPartidasGanadas = m.partidasGanadas;
+                statsFichasNetas = m.fichasNetas;
+                statsRachaActual = m.rachaActual;
+                statsRachaMaxima = m.rachaMaxima;
+                statsMayorBote = m.mayorBote;
+                statsMejorManoNombre = m.mejorManoNombre;
+                statsMejorManoFecha = m.mejorManoFecha;
+                statsVecesCartaAlta = m.vecesCartaAlta;
+                statsVecesPareja = m.vecesPareja;
+                statsVecesDoblePareja = m.vecesDoblePareja;
+                statsVecesTrio = m.vecesTrio;
+                statsVecesEscalera = m.vecesEscalera;
+                statsVecesColor = m.vecesColor;
+                statsVecesFullHouse = m.vecesFullHouse;
+                statsVecesPoker = m.vecesPoker;
+                statsVecesEscaleraColor = m.vecesEscaleraColor;
+                statsVecesEscaleraReal = m.vecesEscaleraReal;
             }
             function onGuardadaRenombrada(mensaje) {
                 // mensaje vacío = fue bien; en los dos casos se refresca
@@ -2873,7 +2899,8 @@ ApplicationWindow {
                     jugadoresPartida.append({
                         nombre: campos[0],
                         saldo: campos[1],
-                        apuesta: campos[2]
+                        apuesta: campos[2],
+                        partidasGanadas: campos.length > 3 ? parseInt(campos[3]) : 0
                     });
                     if (campos[0] === nombreUsuario.text) {
                         // BUG real encontrado en vivo: miSaldoActual (el de
@@ -3772,6 +3799,16 @@ ApplicationWindow {
                     font.letterSpacing: 1
                 }
 
+                // Mismo marco que verás en tu Asiento y en el Ranking --
+                // así el jugador ve de un vistazo qué está desbloqueado,
+                // sin tener que ir a buscar una partida o abrir el Ranking.
+                Avatar {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
+                    tamano: 64 * Tema.escala
+                    marco: Tema.marcoPorPartidasGanadas(statsPartidasGanadas)
+                }
+
                 Row {
                     width: parent.width
                     Text {
@@ -3805,19 +3842,27 @@ ApplicationWindow {
                             { etiqueta: "Partidas jugadas", valor: statsPartidasJugadas + "" },
                             { etiqueta: "Partidas ganadas", valor: statsPartidasGanadas + "" },
                             { etiqueta: "Ratio de victorias", valor: Math.round(100 * statsPartidasGanadas / statsPartidasJugadas) + "%" },
+                            { etiqueta: "Racha actual", valor: statsRachaActual + "" },
+                            { etiqueta: "Mejor racha", valor: statsRachaMaxima + "" },
                             { etiqueta: "Manos jugadas", valor: statsManosJugadas + "" },
+                            { etiqueta: "Manos ganadas", valor: statsManosGanadas + "" },
+                            { etiqueta: "Mayor bote ganado", valor: statsMayorBote + "" },
+                            { etiqueta: "Mejor mano", valor: statsMejorManoFecha > 0
+                                  ? statsMejorManoNombre + " (" + new Date(statsMejorManoFecha * 1000).toLocaleDateString() + ")"
+                                  : "—" },
                             { etiqueta: "Fichas netas", valor: (statsFichasNetas >= 0 ? "+" : "") + statsFichasNetas }
                         ]
                         delegate: Row {
                             required property var modelData
                             width: parent.width
                             Text {
-                                width: parent.width - 80 * Tema.escala
+                                width: parent.width - 160 * Tema.escala
                                 text: modelData.etiqueta
                                 color: Tema.colorTextoTenue
                                 font.pixelSize: 12 * Tema.escala
                             }
                             Text {
+                                width: 160 * Tema.escala
                                 text: modelData.valor
                                 color: modelData.etiqueta === "Fichas netas"
                                        ? (statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
@@ -3825,6 +3870,60 @@ ApplicationWindow {
                                 font.pixelSize: 12 * Tema.escala
                                 font.bold: true
                                 horizontalAlignment: Text.AlignRight
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    // Combinaciones mostradas alguna vez en un showdown --
+                    // TODAS cuentan (pedido explícito: "small or large
+                    // games, with or without other real persons"), sin
+                    // umbral antifarm -- no es gameable, la carta que te
+                    // toca es solo suerte. Rejilla de 2 columnas para no
+                    // alargar tanto el cajón con 10 filas sueltas.
+                    Text {
+                        text: "COMBINACIONES MOSTRADAS"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 10 * Tema.escala
+                        font.letterSpacing: 1
+                        topPadding: 6 * Tema.escala
+                    }
+                    Grid {
+                        width: parent.width
+                        columns: 2
+                        columnSpacing: 12 * Tema.escala
+                        rowSpacing: 4 * Tema.escala
+                        Repeater {
+                            model: [
+                                { etiqueta: "Carta alta", valor: statsVecesCartaAlta },
+                                { etiqueta: "Pareja", valor: statsVecesPareja },
+                                { etiqueta: "Doble pareja", valor: statsVecesDoblePareja },
+                                { etiqueta: "Trío", valor: statsVecesTrio },
+                                { etiqueta: "Escalera", valor: statsVecesEscalera },
+                                { etiqueta: "Color", valor: statsVecesColor },
+                                { etiqueta: "Full House", valor: statsVecesFullHouse },
+                                { etiqueta: "Póker", valor: statsVecesPoker },
+                                { etiqueta: "Escalera de color", valor: statsVecesEscaleraColor },
+                                { etiqueta: "Escalera real", valor: statsVecesEscaleraReal }
+                            ]
+                            delegate: Row {
+                                required property var modelData
+                                width: (parent.width - 12 * Tema.escala) / 2
+                                Text {
+                                    width: parent.width - 30 * Tema.escala
+                                    text: modelData.etiqueta
+                                    color: modelData.valor > 0 ? Tema.colorTextoTenue : Tema.colorTextoMuyTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: 30 * Tema.escala
+                                    text: modelData.valor + ""
+                                    color: modelData.valor > 0 ? Tema.colorAccent : Tema.colorTextoMuyTenue
+                                    font.bold: modelData.valor > 0
+                                    font.pixelSize: 11 * Tema.escala
+                                    horizontalAlignment: Text.AlignRight
+                                }
                             }
                         }
                     }

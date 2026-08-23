@@ -258,6 +258,21 @@ ApplicationWindow {
     property int statsPartidasJugadas: 0
     property int statsPartidasGanadas: 0
     property int statsFichasNetas: 0
+    property int statsRachaActual: 0
+    property int statsRachaMaxima: 0
+    property int statsMayorBote: 0
+    property string statsMejorManoNombre: ""
+    property int statsMejorManoFecha: 0
+    property int statsVecesCartaAlta: 0
+    property int statsVecesPareja: 0
+    property int statsVecesDoblePareja: 0
+    property int statsVecesTrio: 0
+    property int statsVecesEscalera: 0
+    property int statsVecesColor: 0
+    property int statsVecesFullHouse: 0
+    property int statsVecesPoker: 0
+    property int statsVecesEscaleraColor: 0
+    property int statsVecesEscaleraReal: 0
 
     // ── Lobby ────────────────────────────────────────────────────────────
     property string codigoSalaPropia: ""
@@ -528,7 +543,8 @@ ApplicationWindow {
                 jugadoresPartida.append({
                     nombre: campos[0],
                     saldo: campos[1],
-                    apuesta: campos[2]
+                    apuesta: campos[2],
+                    partidasGanadas: campos.length > 3 ? parseInt(campos[3]) : 0
                 });
                 if (campos[0] === nombreJugador) {
                     // Mismo bug que en escritorio: miSaldoActual solo se
@@ -826,12 +842,32 @@ ApplicationWindow {
             ventana.rankingCrudo = filas;
             ventana.reordenarRanking();
         }
-        function onEstadisticasActualizadas(manosJugadas, manosGanadas, partidasJugadas, partidasGanadas, fichasNetas) {
-            ventana.statsManosJugadas = manosJugadas;
-            ventana.statsManosGanadas = manosGanadas;
-            ventana.statsPartidasJugadas = partidasJugadas;
-            ventana.statsPartidasGanadas = partidasGanadas;
-            ventana.statsFichasNetas = fichasNetas;
+        // redcliente.estadisticasCuenta es una Q_PROPERTY (QVariantMap), no
+        // parámetros de la señal -- ver el comentario largo junto a
+        // consultarEstadisticas() en NetworkClient.hpp (bug real de Android
+        // con señales de muchos parámetros).
+        function onEstadisticasCuentaCambiaron() {
+            var m = redcliente.estadisticasCuenta;
+            ventana.statsManosJugadas = m.manosJugadas;
+            ventana.statsManosGanadas = m.manosGanadas;
+            ventana.statsPartidasJugadas = m.partidasJugadas;
+            ventana.statsPartidasGanadas = m.partidasGanadas;
+            ventana.statsFichasNetas = m.fichasNetas;
+            ventana.statsRachaActual = m.rachaActual;
+            ventana.statsRachaMaxima = m.rachaMaxima;
+            ventana.statsMayorBote = m.mayorBote;
+            ventana.statsMejorManoNombre = m.mejorManoNombre;
+            ventana.statsMejorManoFecha = m.mejorManoFecha;
+            ventana.statsVecesCartaAlta = m.vecesCartaAlta;
+            ventana.statsVecesPareja = m.vecesPareja;
+            ventana.statsVecesDoblePareja = m.vecesDoblePareja;
+            ventana.statsVecesTrio = m.vecesTrio;
+            ventana.statsVecesEscalera = m.vecesEscalera;
+            ventana.statsVecesColor = m.vecesColor;
+            ventana.statsVecesFullHouse = m.vecesFullHouse;
+            ventana.statsVecesPoker = m.vecesPoker;
+            ventana.statsVecesEscaleraColor = m.vecesEscaleraColor;
+            ventana.statsVecesEscaleraReal = m.vecesEscaleraReal;
         }
         function onGuardadaRenombrada(mensaje) {
             if (mensaje.length > 0) mensajeErrorConexion = mensaje;
@@ -3063,6 +3099,16 @@ ApplicationWindow {
                         font.pixelSize: 10 * Tema.escala
                         font.letterSpacing: 1
                     }
+
+                    // Mismo marco que verás en tu Asiento y en el Ranking --
+                    // así el jugador ve de un vistazo qué está desbloqueado.
+                    Avatar {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                        tamano: 58 * Tema.escala
+                        marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas)
+                    }
+
                     Row {
                         width: parent.width
                         Text {
@@ -3092,19 +3138,27 @@ ApplicationWindow {
                                 { etiqueta: "Partidas jugadas", valor: ventana.statsPartidasJugadas + "" },
                                 { etiqueta: "Partidas ganadas", valor: ventana.statsPartidasGanadas + "" },
                                 { etiqueta: "Ratio de victorias", valor: Math.round(100 * ventana.statsPartidasGanadas / ventana.statsPartidasJugadas) + "%" },
+                                { etiqueta: "Racha actual", valor: ventana.statsRachaActual + "" },
+                                { etiqueta: "Mejor racha", valor: ventana.statsRachaMaxima + "" },
                                 { etiqueta: "Manos jugadas", valor: ventana.statsManosJugadas + "" },
+                                { etiqueta: "Manos ganadas", valor: ventana.statsManosGanadas + "" },
+                                { etiqueta: "Mayor bote ganado", valor: ventana.statsMayorBote + "" },
+                                { etiqueta: "Mejor mano", valor: ventana.statsMejorManoFecha > 0
+                                      ? ventana.statsMejorManoNombre + " (" + new Date(ventana.statsMejorManoFecha * 1000).toLocaleDateString() + ")"
+                                      : "—" },
                                 { etiqueta: "Fichas netas", valor: (ventana.statsFichasNetas >= 0 ? "+" : "") + ventana.statsFichasNetas }
                             ]
                             delegate: Row {
                                 required property var modelData
                                 width: parent.width
                                 Text {
-                                    width: parent.width - 80 * Tema.escala
+                                    width: parent.width - 150 * Tema.escala
                                     text: modelData.etiqueta
                                     color: Tema.colorTextoTenue
                                     font.pixelSize: 11 * Tema.escala
                                 }
                                 Text {
+                                    width: 150 * Tema.escala
                                     text: modelData.valor
                                     color: modelData.etiqueta === "Fichas netas"
                                            ? (ventana.statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
@@ -3112,6 +3166,54 @@ ApplicationWindow {
                                     font.pixelSize: 11 * Tema.escala
                                     font.bold: true
                                     horizontalAlignment: Text.AlignRight
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: "COMBINACIONES MOSTRADAS"
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 9 * Tema.escala
+                            font.letterSpacing: 1
+                            topPadding: 6 * Tema.escala
+                        }
+                        Grid {
+                            width: parent.width
+                            columns: 2
+                            columnSpacing: 10 * Tema.escala
+                            rowSpacing: 4 * Tema.escala
+                            Repeater {
+                                model: [
+                                    { etiqueta: "Carta alta", valor: ventana.statsVecesCartaAlta },
+                                    { etiqueta: "Pareja", valor: ventana.statsVecesPareja },
+                                    { etiqueta: "Doble pareja", valor: ventana.statsVecesDoblePareja },
+                                    { etiqueta: "Trío", valor: ventana.statsVecesTrio },
+                                    { etiqueta: "Escalera", valor: ventana.statsVecesEscalera },
+                                    { etiqueta: "Color", valor: ventana.statsVecesColor },
+                                    { etiqueta: "Full House", valor: ventana.statsVecesFullHouse },
+                                    { etiqueta: "Póker", valor: ventana.statsVecesPoker },
+                                    { etiqueta: "Escalera de color", valor: ventana.statsVecesEscaleraColor },
+                                    { etiqueta: "Escalera real", valor: ventana.statsVecesEscaleraReal }
+                                ]
+                                delegate: Row {
+                                    required property var modelData
+                                    width: (parent.width - 10 * Tema.escala) / 2
+                                    Text {
+                                        width: parent.width - 26 * Tema.escala
+                                        text: modelData.etiqueta
+                                        color: modelData.valor > 0 ? Tema.colorTextoTenue : Tema.colorTextoMuyTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: 26 * Tema.escala
+                                        text: modelData.valor + ""
+                                        color: modelData.valor > 0 ? Tema.colorAccent : Tema.colorTextoMuyTenue
+                                        font.bold: modelData.valor > 0
+                                        font.pixelSize: 10 * Tema.escala
+                                        horizontalAlignment: Text.AlignRight
+                                    }
                                 }
                             }
                         }

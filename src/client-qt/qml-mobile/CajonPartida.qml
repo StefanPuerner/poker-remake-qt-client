@@ -499,10 +499,27 @@ Rectangle {
                         width: ListView.view.width
                         height: columnaBurbujaCajon.height
 
+                        // Medidor invisible, sin wrap ni restricción de
+                        // ancho -- ver columnaBurbujaCajon.width. Mismo
+                        // motivo que en ChatBox.qml: sin esto, el ancho de
+                        // la burbuja salía del implicitWidth de un Text
+                        // que a su vez tomaba su propio ancho DE la
+                        // burbuja (vía anchors.fill) -- con wrap activo
+                        // eso es una dependencia circular que Qt no
+                        // siempre resuelve bien, y el texto se salía por
+                        // fuera en mensajes largos/multilínea (el bug
+                        // reportado en el móvil).
+                        Text {
+                            id: medidorCajon
+                            visible: false
+                            text: mensaje
+                            font.pixelSize: 11 * Tema.escala
+                        }
+
                         Column {
                             id: columnaBurbujaCajon
                             x: esPropio ? parent.width - width : 0
-                            width: Math.min(textoBurbujaCajon.implicitWidth + 20, parent.width * 0.85)
+                            width: Math.min(medidorCajon.implicitWidth + 20, parent.width * 0.85)
                             spacing: 1
                             Text {
                                 text: esPropio ? "Tú" : autor
