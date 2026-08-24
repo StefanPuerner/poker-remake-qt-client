@@ -3,14 +3,20 @@
 #include <functional>
 #include <memory>
 
+#include <QCryptographicHash>
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QList>
 #include <QObject>
-#include <QTcpSocket>
+#include <QSslCertificate>
+#include <QSslError>
+#include <QSslKey>
+#include <QSslSocket>
 #include <QTimer>
 #include <QVariantMap>
 
 #include "../net/Protocol.hpp"
+#include "../net/ServerConfig.hpp"
 #include "QtEndian"  // qToBigEndian
 
 class NetworkClient : public QObject {
@@ -563,6 +569,39 @@ class NetworkClient : public QObject {
   }
 
   /**
+   * @brief *Pinning* de certificado -- se conecta a sslErrors() de
+   * cualquier QSslSocket (persistente o efímero) para decidir si vale la
+   * pena ignorar sus errores.
+   *
+   * El servidor usa un certificado autofirmado (no hay CA pública para
+   * un servidor propio, ver scripts/generar_cert_tls.sh) -- sin esto, Qt
+   * aborta SIEMPRE la conexión por "certificado autofirmado". PERO
+   * ignorarlo a ciegas (sslErrors conectado a ignoreSslErrors() sin
+   * condición) es exactamente el patrón "TrustManager inseguro" que el
+   * escáner de Google Play Console marca en el pre-launch report --
+   * aceptaría CUALQUIER certificado, no solo el nuestro.
+   *
+   * Por eso: solo se ignora si el ÚNICO error reportado es
+   * "certificado autofirmado" Y la clave pública del certificado
+   * recibido coincide EXACTAMENTE (SHA-256) con
+   * net::SERVER_CERT_PIN_SHA256 (ver ServerConfig.hpp, calculado por el
+   * script al generar el certificado). Cualquier otro caso -- hash
+   * distinto, o cualquier error que no sea ese -- se deja sin ignorar:
+   * Qt aborta la conexión sola, y errorOccurred()/el timeout de
+   * enviarPeticionEfimera() ya manejan ese fallo como cualquier otro.
+   */
+  static void gestionarErroresSsl(QSslSocket* sock, const QList<QSslError>& errores) {
+    if (errores.size() != 1 || errores.first().error() != QSslError::SelfSignedCertificate) {
+      return;
+    }
+    QByteArray huella = QCryptographicHash::hash(
+        errores.first().certificate().publicKey().toDer(), QCryptographicHash::Sha256).toHex();
+    if (huella == QByteArray(net::SERVER_CERT_PIN_SHA256)) {
+      sock->ignoreSslErrors();
+    }
+  }
+
+  /**
    * @brief Socket efímero: manda @p msgSaliente, espera UNA respuesta y
    * cierra — mismo patrón que ya usaba refrescarSalas() a mano, extraído
    * aquí porque ahora lo reutilizan cuatro operaciones distintas (listar/
@@ -575,17 +614,23 @@ class NetworkClient : public QObject {
   void enviarPeticionEfimera(const QString& host, quint16 puerto,
                              const net::Message& msgSaliente,
                              std::function<void(const std::string&)> alRecibir) {
-    auto* sock = new QTcpSocket(this);
+    auto* sock = new QSslSocket(this);
     auto buffer = std::make_shared<QByteArray>();
     // Evita que alRecibir() se dispare dos veces (p. ej. el timeout de
     // abajo Y un errorOccurred casi simultáneo al hacer sock->abort()).
     auto respondido = std::make_shared<bool>(false);
-    connect(sock, &QTcpSocket::connected, sock, [sock, msgSaliente]() {
+    connect(sock, &QSslSocket::sslErrors, sock, [sock](const QList<QSslError>& errores) {
+      gestionarErroresSsl(sock, errores);
+    });
+    // encrypted(), no connected(): connected() solo confirma el TCP
+    // crudo -- mandar el mensaje ahí sería mandarlo antes de que el
+    // *handshake* TLS termine.
+    connect(sock, &QSslSocket::encrypted, sock, [sock, msgSaliente]() {
       uint32_t len = qToBigEndian<uint32_t>(static_cast<uint32_t>(msgSaliente.payload.size()));
       sock->write(reinterpret_cast<const char*>(&len), 4);
       sock->write(msgSaliente.payload.data(), static_cast<qint64>(msgSaliente.payload.size()));
     });
-    connect(sock, &QTcpSocket::readyRead, sock, [sock, buffer, alRecibir, respondido]() {
+    connect(sock, &QSslSocket::readyRead, sock, [sock, buffer, alRecibir, respondido]() {
       *buffer += sock->readAll();
       if (buffer->size() < 4) return;
       uint32_t n = qFromBigEndian<uint32_t>(
@@ -595,11 +640,11 @@ class NetworkClient : public QObject {
       if (!*respondido) { *respondido = true; alRecibir(payload); }
       sock->disconnectFromHost();
     });
-    connect(sock, &QTcpSocket::errorOccurred, sock, [sock, alRecibir, respondido]() {
+    connect(sock, &QSslSocket::errorOccurred, sock, [sock, alRecibir, respondido]() {
       if (!*respondido) { *respondido = true; alRecibir(""); }  // fallo silencioso: quien llama decide qué mostrar con un payload vacío
       sock->deleteLater();
     });
-    connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
+    connect(sock, &QSslSocket::disconnected, sock, &QObject::deleteLater);
     // Timeout explícito -- sin esto, connectToHost() contra una IP
     // inalcanzable de verdad (p. ej. la IP de Tailscale tras apagar la
     // VPN, sin RST ni ICMP de vuelta) se queda colgado lo que tarde el
@@ -615,7 +660,7 @@ class NetworkClient : public QObject {
       alRecibir("");
       sock->abort();
     });
-    sock->connectToHost(host, puerto);
+    sock->connectToHostEncrypted(host, puerto);
   }
 
   /// Arranca (o reinicia) la ventana de reintentos de 60s tras perder la conexión.
@@ -689,7 +734,7 @@ class NetworkClient : public QObject {
       return;
     }
     socket_.abort();
-    socket_.connectToHost(hostGuardado_, puertoGuardado_);
+    socket_.connectToHostEncrypted(hostGuardado_, puertoGuardado_);
   }
 
  private:
@@ -724,12 +769,18 @@ class NetworkClient : public QObject {
       // connecting/connected" y se queda sin hacer nada. abort() lo
       // resetea a UnconnectedState de forma segura antes de reintentar.
       socket_.abort();
-      socket_.connectToHost(host, puerto);
+      socket_.connectToHostEncrypted(host, puerto);
       return;
     }
     senalesConectadas_ = true;
 
-    connect(&socket_, &QTcpSocket::connected, this, [this]() {
+    connect(&socket_, &QSslSocket::sslErrors, this,
+            [this](const QList<QSslError>& errores) { gestionarErroresSsl(&socket_, errores); });
+
+    // encrypted(), no connected(): connected() solo confirma el TCP
+    // crudo -- el resto de este bloque (reconexión, primer mensaje...)
+    // no debe correr hasta que el *handshake* TLS termine de verdad.
+    connect(&socket_, &QSslSocket::encrypted, this, [this]() {
       buffer_.clear();
       esperandoHeader_ = true;
       if (reconectando_) {
@@ -762,7 +813,7 @@ class NetworkClient : public QObject {
       }
     });
 
-    connect(&socket_, &QTcpSocket::errorOccurred, this, [this]() {
+    connect(&socket_, &QSslSocket::errorOccurred, this, [this]() {
       if (reconectando_) {
         // Este intento concreto (con o sin TCP ya establecido) acaba de
         // fallar -- limpiar el flag de "esperando confirmación" para que
@@ -787,7 +838,7 @@ class NetworkClient : public QObject {
     timerReintento_.setInterval(2000);
     connect(&timerReintento_, &QTimer::timeout, this,
             [this]() { intentarReconexionAhora(); });
-    connect(&socket_, &QTcpSocket::readyRead, this, [this]() {
+    connect(&socket_, &QSslSocket::readyRead, this, [this]() {
       buffer_ += socket_.readAll();  // todo lo que ha llegado se ACUMULA aquí
 
       while (true) {
@@ -1131,7 +1182,7 @@ class NetworkClient : public QObject {
         }
       }
     });
-    socket_.connectToHost(host, puerto);
+    socket_.connectToHostEncrypted(host, puerto);
   }
 
   bool senalesConectadas_ = false;  // connect() de socket_ solo se hace una vez, ver iniciarConexionConMensaje()
@@ -1154,7 +1205,7 @@ class NetworkClient : public QObject {
   QByteArray buffer_;
   bool esperandoHeader_ = true;
   uint32_t longitudEsperada_ = 0;
-  QTcpSocket socket_;
+  QSslSocket socket_;
 
   int manosDisputadasFinal_ = 0;
   QString mejorManoFinal_;
