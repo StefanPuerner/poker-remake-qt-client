@@ -26,9 +26,10 @@ trae, listos para usar (sin compilar nada):
 | Linux | `PokerRemake-x86_64.AppImage` — dar permiso de ejecución y lanzar |
 | Android | `PokerRemake-Android-arm64.zip` — descomprimir e instalar el `.apk` (`PokerClientMobile`, orígenes desconocidos) |
 
-El APK sale firmado con el keystore de depuración de Gradle (sin firma de
-código real todavía) — Android avisará de "aplicación de un desarrollador
-desconocido" al instalarlo, es normal.
+El APK sale firmado con un keystore de release de verdad — Android seguirá
+avisando de "aplicación de un desarrollador desconocido" al instalarlo
+(normal para cualquier APK repartido fuera de Play Store), pero ya deja
+instalar una versión nueva encima de la anterior sin desinstalar primero.
 
 ## Requisitos (para compilar desde el código)
 
@@ -39,19 +40,36 @@ desconocido" al instalarlo, es normal.
   para Android; la forma más simple de conseguir un APK es lanzar el
   workflow `Build Android` desde la pestaña Actions de GitHub (o esperar
   al siguiente Release) en vez de montar ese entorno en local.
+- Nada de OpenSSL que instalar a mano: en escritorio, `QSslSocket` usa el
+  backend TLS que ya trae Qt; en Android, `CMakeLists.txt` descarga solo
+  (vía `FetchContent`, necesita internet la primera vez) las `.so` de
+  OpenSSL prebuilt que hacen falta empaquetar dentro del APK.
 
 ## Conectar a un servidor
 
-La IP y el puerto por defecto están en un único sitio,
+La conexión va cifrada (TLS 1.2+) con el certificado del servidor
+*pinneado* del lado del cliente — no vale con apuntar a cualquier
+servidor, hace falta que su certificado coincida con el *pin* compilado
+en el binario. Todo eso está en un único sitio,
 [`include/net/ServerConfig.hpp`](include/net/ServerConfig.hpp):
 
 ```cpp
 constexpr uint16_t    SERVER_PORT = 7777;
-constexpr const char* SERVER_HOST = "100.83.246.15";
+constexpr const char* SERVER_HOST = "labandadehalcones.duckdns.org";
+constexpr const char* SERVER_CERT_PIN_SHA256 = "...";  // huella del certificado del servidor
 ```
 
-Edita `SERVER_HOST` con la IP del servidor al que te vas a conectar (por
-ejemplo, una IP [Tailscale](https://tailscale.com/)) antes de compilar.
+Antes de compilar: edita `SERVER_HOST` con la dirección del servidor (IP,
+[Tailscale](https://tailscale.com/), o un dominio como el de arriba — ya
+no hace falta estar en la misma red que el servidor, solo que el puerto
+esté alcanzable) y `SERVER_CERT_PIN_SHA256` con el *pin* de SU
+certificado — lo genera `scripts/generar_cert_tls.sh` del lado servidor
+(repo [poker-remake](https://github.com/StefanPuerner/poker-remake)) y lo
+imprime al final. Si el certificado del servidor cambia, hay que repetir
+esto y recompilar — el cliente rechaza a propósito cualquier certificado
+que no coincida exactamente (ver el comentario de `sslErrors()` en
+`NetworkClient.hpp`), así que un *pin* desactualizado no "casi funciona":
+simplemente no conecta.
 
 ## Compilar
 
@@ -83,11 +101,11 @@ src/client-qt/main.cpp, main-mobile.cpp
                                   — arranque de cada cliente: QGuiApplication + motor QML
 src/client-qt/android/           — manifest de referencia + iconos adaptativos (Android)
 include/net-qt/NetworkClient.hpp
-                                  — puente C++/Qt hacia el protocolo de red (QTcpSocket),
-                                    compartido por los dos clientes
+                                  — puente C++/Qt hacia el protocolo de red (QSslSocket,
+                                    con pinning de certificado), compartido por los dos clientes
 include/net/Protocol.hpp, src/net/Protocol.cpp
                                   — protocolo TCP/JSON compartido con el servidor
-include/net/ServerConfig.hpp     — host/puerto por defecto (ver arriba)
+include/net/ServerConfig.hpp     — host/puerto/pin del certificado TLS por defecto (ver arriba)
 assets/fonts/                    — EB Garamond (SIL Open Font License)
 docs/guia/                       — guía de Qt Quick/QML usada para construir este cliente
 ```
