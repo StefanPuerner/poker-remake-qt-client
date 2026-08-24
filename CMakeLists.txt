@@ -181,4 +181,30 @@ else()
     target_compile_options(PokerClientMobile PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# ── OpenSSL para Android (TLS del servidor) ─────────────────────────────────
+#  QSslSocket (usado por NetworkClient.hpp para el TLS del servidor)
+#  necesita un backend OpenSSL de verdad -- en Android, a diferencia de
+#  escritorio, no basta con que esté instalado en el sistema (las apps no
+#  pueden cargar el libssl.so privado del propio Android desde hace varias
+#  versiones): hay que empaquetar las .so de OpenSSL DENTRO del APK.
+#  android_openssl (KDAB, Apache-2.0) es el paquete de libs prebuilt +
+#  integración CMake estándar para esto (se baja solo la primera vez, vía
+#  FetchContent). add_android_openssl_libraries() añade las .so a
+#  QT_ANDROID_EXTRA_LIBS (para que androiddeployqt las meta en el APK) y
+#  enlaza OpenSSL::SSL/OpenSSL::Crypto -- no significa que este target
+#  llame a la API de OpenSSL directamente (no lo hace, QSslSocket es la
+#  única interfaz), solo que el plugin TLS de Qt encuentre las .so en
+#  tiempo de ejecución dentro del APK.
+if(ANDROID)
+    include(FetchContent)
+    FetchContent_Declare(
+        android_openssl
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+        URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
+    )
+    FetchContent_MakeAvailable(android_openssl)
+    include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
+    add_android_openssl_libraries(PokerClientMobile)
+endif()
+
 message(STATUS "Configuración de PokerRemakeQtClient completada con éxito.")
