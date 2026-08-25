@@ -9,13 +9,30 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include <QTcpSocket>
+#include <QSslSocket>
 #include <QDebug>
 
 #include "../../include/net-qt/NetworkClient.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_WIN
+  // Windows no trae OpenSSL instalado por defecto (a diferencia de Linux)
+  // ni se empaqueta aquí (a diferencia de Android, ver
+  // CMakeLists.txt::add_android_openssl_libraries) -- sin esto, QSslSocket
+  // intenta el backend OpenSSL por defecto, no encuentra sus .dll y el
+  // *handshake* TLS del servidor nunca llega a completarse (confirmado en
+  // real: el build de Windows no conectaba). Schannel es el backend TLS
+  // NATIVO de Windows -- viene con el sistema operativo, cero .dll que
+  // empaquetar. Tiene que fijarse ANTES de cualquier uso real de
+  // QSslSocket (la primera conexión ocurre bastante después, desde QML,
+  // pero fijarlo aquí, lo primero de main(), es lo más seguro).
+  if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
+    qWarning() << "No se pudo activar el backend TLS Schannel -- las "
+                  "conexiones al servidor probablemente fallarán.";
+  }
+#endif
+
   // Sin esto, Qt REDONDEA el factor de escala fraccional que reporta el
   // compositor (habitual en GNOME/Wayland con paneles de más resolución:
   // 125%, 150%...) al entero más cercano antes de decidir cuántos píxeles

@@ -9,7 +9,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include <QTcpSocket>
+#include <QSslSocket>
 #include <QDebug>
 
 #include "../../include/net-qt/NetworkClient.hpp"
@@ -96,6 +96,17 @@ void extenderBajoElRecorte() {
 #endif
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_WIN
+  // Solo relevante cuando PokerClientMobile se compila como binario de
+  // escritorio normal en Windows (ver el comentario en CMakeLists.txt) --
+  // mismo motivo que en src/client-qt/main.cpp: Schannel es el backend
+  // TLS nativo de Windows, sin .dll que empaquetar.
+  if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
+    qWarning() << "No se pudo activar el backend TLS Schannel -- las "
+                  "conexiones al servidor probablemente fallarán.";
+  }
+#endif
+
   QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
       Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
