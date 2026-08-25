@@ -498,7 +498,7 @@ ApplicationWindow {
                 }
                 Text {
                     text: "PokerRemake"
-                    color: "white"
+                    color: Tema.colorTexto
                     font.family: Tema.fuenteElegante
                     font.pixelSize: 32 * Tema.escala
                     // Mismo ajuste que en la barra superior: el trébol y el
@@ -619,7 +619,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 16 * Tema.escala
                 placeholderText: (activeFocus || text.length > 0) ? "" : "Usuario"
                 placeholderTextColor: Tema.colorTextoMuyTenue
@@ -639,7 +639,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 16 * Tema.escala
                 echoMode: TextInput.Password
                 placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña"
@@ -739,7 +739,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 16 * Tema.escala
                 placeholderText: (activeFocus || text.length > 0) ? "" : "Usuario (mín. 3 caracteres)"
                 placeholderTextColor: Tema.colorTextoMuyTenue
@@ -759,7 +759,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 16 * Tema.escala
                 echoMode: TextInput.Password
                 placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña (8+ caracteres)"
@@ -780,7 +780,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 16 * Tema.escala
                 echoMode: TextInput.Password
                 placeholderText: (activeFocus || text.length > 0) ? "" : "Repite la contraseña"
@@ -910,7 +910,7 @@ ApplicationWindow {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: viendoGuardadas ? "Partidas guardadas" : "Salas disponibles"
-                color: "white"
+                color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
             }
@@ -1023,7 +1023,7 @@ ApplicationWindow {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaSala.nombre !== "" ? filaSala.nombre : filaSala.id
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                             }
                             Text {
@@ -1082,7 +1082,7 @@ ApplicationWindow {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaGuardada.archivo
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                             }
                             Text {
@@ -1109,7 +1109,7 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 160 * Tema.escala
                                 text: filaGuardada.archivo.replace(/\.pok$/, "")
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                                 background: Rectangle {
                                     color: Tema.colorPanel
@@ -1202,7 +1202,7 @@ ApplicationWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 160 * Tema.escala
                     placeholderText: (activeFocus || text.length > 0) ? "" : "Código de sala privada"
-                    color: "white"
+                    color: Tema.colorTexto
                     font.pixelSize: 13 * Tema.escala
                     placeholderTextColor: Tema.colorTextoMuyTenue
                     // Mismo campo "subrayado" sin caja que Login/Registro/el
@@ -1280,7 +1280,7 @@ ApplicationWindow {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Ranking global"
-                color: "white"
+                color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
             }
@@ -1403,7 +1403,7 @@ ApplicationWindow {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: filaRanking.username + (filaRanking.esUsuarioPropio ? " (tú)" : "")
                                     font.bold: filaRanking.esUsuarioPropio
-                                    color: "white"
+                                    color: Tema.colorTexto
                                     elide: Text.ElideRight
                                     font.pixelSize: 13 * Tema.escala
                                 }
@@ -1413,7 +1413,7 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 horizontalAlignment: Text.AlignRight
                                 text: filaRanking.partidasGanadas + ""
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                             }
                             Text {
@@ -1522,7 +1522,7 @@ ApplicationWindow {
                 id: tituloCrearSala
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Crear sala"
-                color: "white"
+                color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
             }
@@ -1574,7 +1574,7 @@ ApplicationWindow {
                             id: campoNombreSala
                             width: parent.width
                             placeholderText: (activeFocus || text.length > 0) ? "" : "Nombre de la sala"
-                            color: "white"
+                            color: Tema.colorTexto
                             font.pixelSize: 13 * Tema.escala
                             placeholderTextColor: Tema.colorTextoMuyTenue
                             background: Rectangle {
@@ -1618,7 +1618,7 @@ ApplicationWindow {
                                 id: campoTamanoSala
                                 width: 60 * Tema.escala
                                 text: "6"
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 2; top: 9 }
@@ -1745,7 +1745,7 @@ ApplicationWindow {
                                 id: campoMonteFijo
                                 width: 80 * Tema.escala
                                 text: "40"
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 1; top: 10000 }
@@ -1821,7 +1821,7 @@ ApplicationWindow {
                                 id: campoNumManos
                                 width: 80 * Tema.escala
                                 text: "20"
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 1; top: 200 }
@@ -1867,7 +1867,7 @@ ApplicationWindow {
                                 id: campoCiegaGrande
                                 width: 80 * Tema.escala
                                 text: "20"
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 2; top: 1000 }
@@ -1895,7 +1895,7 @@ ApplicationWindow {
                                 id: campoSaldoInicial
                                 width: 80 * Tema.escala
                                 text: "1000"
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 13 * Tema.escala
                                 horizontalAlignment: Text.AlignHCenter
                                 validator: IntValidator { bottom: 100; top: 100000 }
@@ -2017,7 +2017,7 @@ ApplicationWindow {
                         visible: !partidaGuardada
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: ganadorFinal
-                        color: "white"
+                        color: Tema.colorTexto
                         font.family: Tema.fuenteElegante
                         font.pixelSize: 26 * Tema.escala
                         font.bold: true
@@ -2089,7 +2089,7 @@ ApplicationWindow {
                                 Text {
                                     width: parent.width - textoManoEliminacion.width
                                     text: modelData.nombre
-                                    color: modelData.nombre === ganadorFinal ? Tema.colorAccent : "white"
+                                    color: modelData.nombre === ganadorFinal ? Tema.colorAccent : Tema.colorTexto
                                     font.bold: modelData.nombre === ganadorFinal
                                     font.pixelSize: 11 * Tema.escala
                                     elide: Text.ElideRight
@@ -2166,7 +2166,7 @@ ApplicationWindow {
                     spacing: 2 * Tema.escala
                     Text {
                         text: "Sala de " + (hostActual !== "" ? hostActual : "espera")
-                        color: "white"
+                        color: Tema.colorTexto
                         font.family: Tema.fuenteElegante
                         font.pixelSize: 22 * Tema.escala
                         font.bold: true
@@ -2253,6 +2253,22 @@ ApplicationWindow {
                     text: "Empezar ahora"
                     radioBorde: 999
                     onClicked: redcliente.empezarPartida()
+                }
+
+                BotonContorno {
+                    text: "Abandonar sala"
+                    radioBorde: 999
+                    onClicked: {
+                        // abandonar() ya manda LEAVE y marca
+                        // desconexionEsperada_ = true del lado C++ (evita
+                        // que el cierre del socket que sigue dispare el
+                        // overlay de "reconectando") -- optimista, sin
+                        // esperar confirmación del servidor: el LEAVE ya
+                        // está manejado del lado servidor desde siempre,
+                        // esto solo le faltaba un botón.
+                        redcliente.abandonar();
+                        ventana.pantalla = "Salas";
+                    }
                 }
 
                 Text {
@@ -2405,7 +2421,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: comboActual
-                            color: "white"
+                            color: Tema.colorTexto
                             font.bold: true
                             font.pixelSize: 13 * Tema.escala
                             font.family: Tema.fuenteElegante
@@ -2420,7 +2436,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: comboProbable
-                            color: "#C7CFC9"
+                            color: Tema.colorTextoTenue
                             font.pixelSize: 13 * Tema.escala
                             font.family: Tema.fuenteElegante
                         }
@@ -2512,7 +2528,7 @@ ApplicationWindow {
                         // defecto) — se baja a mano. Ajusta este número si
                         // no queda perfecto a simple vista.
                         y: 6 * Tema.escala
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 14 * Tema.escala
                         selectionColor: Tema.colorAccent
                         horizontalAlignment: Text.AlignHCenter
@@ -3272,7 +3288,7 @@ ApplicationWindow {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             text: "La ventana es demasiado pequeña para mostrar la partida correctamente.\nAgrándala para continuar."
-            color: "white"
+            color: Tema.colorTextoSobreOscuro
             font.pixelSize: 16 * Tema.escala
         }
     }
@@ -3294,14 +3310,14 @@ ApplicationWindow {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Conexión perdida — reconectando..."
-                color: "white"
+                color: Tema.colorTextoSobreOscuro
                 font.pixelSize: 18 * Tema.escala
                 font.bold: true
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: segundosReconexion + "s restantes"
-                color: Tema.colorTextoTenue
+                color: Tema.colorTextoTenueSobreOscuro
                 font.pixelSize: 13 * Tema.escala
             }
         }
@@ -3352,7 +3368,7 @@ ApplicationWindow {
                 visible: resumenBotes.length <= 1
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Bote: " + boteTotalShowdown()
-                color: Tema.colorTextoTenue
+                color: Tema.colorTextoTenueSobreOscuro
                 font.pixelSize: 13 * Tema.escala
                 font.family: Tema.fuenteElegante
             }
@@ -3378,7 +3394,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         font.pixelSize: 12 * Tema.escala
                         font.family: Tema.fuenteElegante
-                        color: Tema.colorTextoTenue
+                        color: Tema.colorTextoTenueSobreOscuro
                         text: {
                             var etiqueta = modelData.numBote === 0
                                     ? "Bote principal" : "Side pot " + modelData.numBote;
@@ -3545,7 +3561,7 @@ ApplicationWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 80 * Tema.escala
                         text: "10"
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 13 * Tema.escala
                         horizontalAlignment: Text.AlignHCenter
                         validator: IntValidator { bottom: 1; top: 500 }
@@ -3685,7 +3701,7 @@ ApplicationWindow {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: filaTema.modelData.nombre
-                                color: Tema.temaActual === filaTema.index ? "white" : Tema.colorTextoTenue
+                                color: Tema.temaActual === filaTema.index ? Tema.colorTexto : Tema.colorTextoTenue
                                 font.bold: Tema.temaActual === filaTema.index
                                 font.pixelSize: 13 * Tema.escala
                             }
@@ -3738,7 +3754,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: modelData.valor
-                            color: "white"
+                            color: Tema.colorTexto
                             font.pixelSize: 12 * Tema.escala
                             font.bold: true
                             horizontalAlignment: Text.AlignRight
@@ -3819,7 +3835,7 @@ ApplicationWindow {
                     }
                     Text {
                         text: nombreUsuario.text
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 12 * Tema.escala
                         font.bold: true
                         horizontalAlignment: Text.AlignRight
@@ -3866,7 +3882,7 @@ ApplicationWindow {
                                 text: modelData.valor
                                 color: modelData.etiqueta === "Fichas netas"
                                        ? (statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
-                                       : "white"
+                                       : Tema.colorTexto
                                 font.pixelSize: 12 * Tema.escala
                                 font.bold: true
                                 horizontalAlignment: Text.AlignRight
@@ -3932,7 +3948,7 @@ ApplicationWindow {
                 TextField {
                     id: campoNuevoUsername
                     width: parent.width
-                    color: "white"
+                    color: Tema.colorTexto
                     font.pixelSize: 13 * Tema.escala
                     placeholderText: (activeFocus || text.length > 0) ? "" : "Nuevo nombre de usuario"
                     placeholderTextColor: Tema.colorTextoMuyTenue
@@ -3964,7 +3980,7 @@ ApplicationWindow {
                 TextField {
                     id: campoPasswordActualCuenta
                     width: parent.width
-                    color: "white"
+                    color: Tema.colorTexto
                     font.pixelSize: 13 * Tema.escala
                     echoMode: TextInput.Password
                     placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña actual"
@@ -3983,7 +3999,7 @@ ApplicationWindow {
                 TextField {
                     id: campoPasswordNuevaCuenta
                     width: parent.width
-                    color: "white"
+                    color: Tema.colorTexto
                     font.pixelSize: 13 * Tema.escala
                     echoMode: TextInput.Password
                     placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña nueva (8+ caracteres)"

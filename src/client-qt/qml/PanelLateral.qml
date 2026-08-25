@@ -136,7 +136,7 @@ Rectangle {
                                  "\"><b>" + panelLateral.escapeHtml(jugador) + "</b></font>"
                            : "") +
                       panelLateral.escapeHtml(linea)
-                color: "white"
+                color: Tema.colorTexto
                 wrapMode: Text.WordWrap
             }
             Text {
@@ -220,7 +220,7 @@ Rectangle {
                             anchors.fill: parent
                             anchors.margins: 8 * Tema.escala
                             text: mensaje
-                            color: "white"
+                            color: Tema.colorTexto
                             font.pixelSize: 13 * Tema.escala
                             wrapMode: Text.WordWrap
                         }
@@ -237,7 +237,7 @@ Rectangle {
                 id: campoChatPanel
                 width: parent.width - botonEnviarPanel.width - parent.spacing
                 height: 44 * Tema.escala
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 13 * Tema.escala
                 // Ver el comentario largo en "textoChat" (ChatBox):
                 // el placeholder de Material flota hacia arriba al

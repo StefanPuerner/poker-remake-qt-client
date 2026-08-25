@@ -40,7 +40,7 @@ Item {
             }
             Text {
                 text: "PokerRemake"
-                color: "white"
+                color: Tema.colorTexto
                 font.bold: true
                 font.pixelSize: 16 * Tema.escala
                 font.family: Tema.fuenteElegante

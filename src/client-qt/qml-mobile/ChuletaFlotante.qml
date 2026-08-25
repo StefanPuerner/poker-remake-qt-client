@@ -41,7 +41,7 @@ Popup {
             Text {
                 width: parent.width - botonCerrarChuleta.width
                 text: "Ranking de manos"
-                color: "white"
+                color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 16 * Tema.escala
             }

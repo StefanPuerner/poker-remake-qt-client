@@ -61,7 +61,7 @@ Row {
             anchors.centerIn: parent
             text: selectorNumerico.valor.toString()
             font.pixelSize: 15 * Tema.escala
-            color: "white"
+            color: Tema.colorTexto
         }
         MouseArea {
             anchors.fill: parent

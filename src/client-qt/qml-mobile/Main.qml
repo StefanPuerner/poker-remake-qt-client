@@ -911,7 +911,7 @@ ApplicationWindow {
             }
             Text {
                 text: "PokerRemake"
-                color: "white"
+                color: Tema.colorTexto
                 font.bold: true
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 24 * Tema.escala
@@ -1066,7 +1066,7 @@ ApplicationWindow {
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
                 text: cajaUsuarioLogin.valor !== "" ? cajaUsuarioLogin.valor : "Usuario"
-                color: cajaUsuarioLogin.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                color: cajaUsuarioLogin.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 14 * Tema.escala
             }
             MouseArea {
@@ -1099,7 +1099,7 @@ ApplicationWindow {
                 // escrito (ver el mismo criterio en la sección Cuenta del
                 // cajón de ajustes, más abajo).
                 text: cajaPasswordLogin.valor !== "" ? "••••••••" : "Contraseña"
-                color: cajaPasswordLogin.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                color: cajaPasswordLogin.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 14 * Tema.escala
             }
             MouseArea {
@@ -1211,7 +1211,7 @@ ApplicationWindow {
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
                 text: cajaUsuarioRegistro.valor !== "" ? cajaUsuarioRegistro.valor : "Usuario (mín. 3 caracteres)"
-                color: cajaUsuarioRegistro.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                color: cajaUsuarioRegistro.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 13 * Tema.escala
                 elide: Text.ElideRight
                 width: parent.width - 20 * Tema.escala
@@ -1242,7 +1242,7 @@ ApplicationWindow {
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
                 text: cajaPasswordRegistro.valor !== "" ? "••••••••" : "Contraseña (8+ caracteres)"
-                color: cajaPasswordRegistro.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                color: cajaPasswordRegistro.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 13 * Tema.escala
             }
             MouseArea {
@@ -1272,7 +1272,7 @@ ApplicationWindow {
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
                 text: cajaPasswordRegistroConfirmar.valor !== "" ? "••••••••" : "Repite la contraseña"
-                color: cajaPasswordRegistroConfirmar.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                color: cajaPasswordRegistroConfirmar.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 13 * Tema.escala
             }
             MouseArea {
@@ -1532,7 +1532,7 @@ ApplicationWindow {
                             width: parent.width
                             elide: Text.ElideRight
                             text: filaSalaMovil.nombre !== "" ? filaSalaMovil.nombre : filaSalaMovil.id
-                            color: "white"
+                            color: Tema.colorTexto
                             font.pixelSize: 14 * Tema.escala
                         }
                         Text {
@@ -1594,7 +1594,7 @@ ApplicationWindow {
                             width: parent.width
                             elide: Text.ElideRight
                             text: filaGuardadaMovil.archivo
-                            color: "white"
+                            color: Tema.colorTexto
                             font.pixelSize: 13 * Tema.escala
                         }
                         Text {
@@ -1669,7 +1669,7 @@ ApplicationWindow {
                     Text {
                         anchors.centerIn: parent
                         text: cajaCodigoPrivadoMovil.valor !== "" ? cajaCodigoPrivadoMovil.valor : "Código de sala privada"
-                        color: cajaCodigoPrivadoMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                        color: cajaCodigoPrivadoMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                         font.pixelSize: 14 * Tema.escala
                     }
                     MouseArea {
@@ -1818,7 +1818,7 @@ ApplicationWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         text: filaRankingMovil.username + (filaRankingMovil.esUsuarioPropio ? " (tú)" : "")
                         font.bold: filaRankingMovil.esUsuarioPropio
-                        color: "white"
+                        color: Tema.colorTexto
                         elide: Text.ElideRight
                         font.pixelSize: 12 * Tema.escala
                     }
@@ -1827,7 +1827,7 @@ ApplicationWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         horizontalAlignment: Text.AlignRight
                         text: filaRankingMovil.partidasGanadas + ""
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 12 * Tema.escala
                     }
                     Text {
@@ -1957,7 +1957,7 @@ ApplicationWindow {
                             anchors.leftMargin: 10 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
                             text: cajaNombreSalaMovil.valor !== "" ? cajaNombreSalaMovil.valor : "Nombre de la sala"
-                            color: cajaNombreSalaMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            color: cajaNombreSalaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                             font.pixelSize: 13 * Tema.escala
                         }
                         MouseArea {
@@ -2291,7 +2291,7 @@ ApplicationWindow {
             spacing: 3 * Tema.escala
             Text {
                 text: "Sala de " + (ventana.hostActual !== "" ? ventana.hostActual : "espera")
-                color: "white"
+                color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.bold: true
                 font.pixelSize: 20 * Tema.escala
@@ -2340,6 +2340,19 @@ ApplicationWindow {
             text: "Empezar ahora"
             radioBorde: 999
             onClicked: redcliente.empezarPartida()
+        }
+
+        BotonContorno {
+            text: "Abandonar sala"
+            radioBorde: 999
+            onClicked: {
+                // Mismo mecanismo que en el cliente de escritorio (ver
+                // qml/Main.qml): abandonar() ya manda LEAVE y evita el
+                // overlay de "reconectando" del lado C++, esto solo le
+                // faltaba un botón.
+                redcliente.abandonar();
+                ventana.pantalla = "Salas";
+            }
         }
 
         // Roster de quién está esperando a sentarse a mitad de partida
@@ -2501,7 +2514,7 @@ ApplicationWindow {
                         visible: ventana.resumenBotes.length <= 1
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "Bote: " + ventana.boteTotalShowdown()
-                        color: Tema.colorTextoTenue
+                        color: Tema.colorTextoTenueSobreOscuro
                         font.pixelSize: 12 * Tema.escala
                         font.family: Tema.fuenteElegante
                     }
@@ -2521,7 +2534,7 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 11 * Tema.escala
                                 font.family: Tema.fuenteElegante
-                                color: Tema.colorTextoTenue
+                                color: Tema.colorTextoTenueSobreOscuro
                                 text: {
                                     var etiqueta = modelData.numBote === 0
                                             ? "Bote principal" : "Side pot " + modelData.numBote;
@@ -2624,7 +2637,7 @@ ApplicationWindow {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 6 * Tema.escala
                     text: "más abajo"
-                    color: Tema.colorTextoTenue
+                    color: Tema.colorTextoTenueSobreOscuro
                     font.pixelSize: 10 * Tema.escala
 
                     // "transform", no animar anchors.bottomMargin directo:
@@ -2795,7 +2808,7 @@ ApplicationWindow {
                     visible: !ventana.partidaGuardada
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: ventana.ganadorFinal
-                    color: "white"
+                    color: Tema.colorTexto
                     font.family: Tema.fuenteElegante
                     font.pixelSize: 22 * Tema.escala
                     font.bold: true
@@ -2864,7 +2877,7 @@ ApplicationWindow {
                             Text {
                                 width: parent.width - textoManoEliminacionMovil.width
                                 text: modelData.nombre
-                                color: modelData.nombre === ventana.ganadorFinal ? Tema.colorAccent : "white"
+                                color: modelData.nombre === ventana.ganadorFinal ? Tema.colorAccent : Tema.colorTexto
                                 font.bold: modelData.nombre === ventana.ganadorFinal
                                 font.pixelSize: 10 * Tema.escala
                                 elide: Text.ElideRight
@@ -2994,7 +3007,7 @@ ApplicationWindow {
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: filaTemaMovil.modelData.nombre
-                                    color: Tema.temaActual === filaTemaMovil.index ? "white" : Tema.colorTextoTenue
+                                    color: Tema.temaActual === filaTemaMovil.index ? Tema.colorTexto : Tema.colorTextoTenue
                                     font.bold: Tema.temaActual === filaTemaMovil.index
                                     font.pixelSize: 13 * Tema.escala
                                 }
@@ -3040,7 +3053,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: modelData.valor
-                                color: "white"
+                                color: Tema.colorTexto
                                 font.pixelSize: 11 * Tema.escala
                                 font.bold: true
                                 horizontalAlignment: Text.AlignRight
@@ -3119,7 +3132,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: ventana.nombreJugador
-                            color: "white"
+                            color: Tema.colorTexto
                             font.pixelSize: 11 * Tema.escala
                             font.bold: true
                             horizontalAlignment: Text.AlignRight
@@ -3162,7 +3175,7 @@ ApplicationWindow {
                                     text: modelData.valor
                                     color: modelData.etiqueta === "Fichas netas"
                                            ? (ventana.statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
-                                           : "white"
+                                           : Tema.colorTexto
                                     font.pixelSize: 11 * Tema.escala
                                     font.bold: true
                                     horizontalAlignment: Text.AlignRight
@@ -3233,7 +3246,7 @@ ApplicationWindow {
                             anchors.leftMargin: 10 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
                             text: cajaNuevoUsernameMovil.valor !== "" ? cajaNuevoUsernameMovil.valor : "Nuevo nombre de usuario"
-                            color: cajaNuevoUsernameMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            color: cajaNuevoUsernameMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                             font.pixelSize: 12 * Tema.escala
                             elide: Text.ElideRight
                             width: parent.width - 20 * Tema.escala
@@ -3277,7 +3290,7 @@ ApplicationWindow {
                             anchors.leftMargin: 10 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
                             text: cajaPasswordActualMovil.valor !== "" ? "••••••••" : "Contraseña actual"
-                            color: cajaPasswordActualMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            color: cajaPasswordActualMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                             font.pixelSize: 12 * Tema.escala
                         }
                         MouseArea {
@@ -3307,7 +3320,7 @@ ApplicationWindow {
                             anchors.leftMargin: 10 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
                             text: cajaPasswordNuevaMovil.valor !== "" ? "••••••••" : "Contraseña nueva (8+ caracteres)"
-                            color: cajaPasswordNuevaMovil.valor !== "" ? "white" : Tema.colorTextoMuyTenue
+                            color: cajaPasswordNuevaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                             font.pixelSize: 12 * Tema.escala
                             elide: Text.ElideRight
                             width: parent.width - 20 * Tema.escala
@@ -3427,14 +3440,14 @@ ApplicationWindow {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Conexión perdida — reconectando..."
-                color: "white"
+                color: Tema.colorTextoSobreOscuro
                 font.pixelSize: 16 * Tema.escala
                 font.bold: true
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: ventana.segundosReconexion + "s restantes"
-                color: Tema.colorTextoTenue
+                color: Tema.colorTextoTenueSobreOscuro
                 font.pixelSize: 12 * Tema.escala
             }
         }

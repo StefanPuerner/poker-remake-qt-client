@@ -120,7 +120,7 @@ Rectangle {
                 }
                 Text {
                     text: "PokerRemake"
-                    color: "white"
+                    color: Tema.colorTexto
                     font.bold: true
                     font.pixelSize: 12 * Tema.escala
                     font.family: Tema.fuenteElegante
@@ -241,8 +241,8 @@ Rectangle {
                 spacing: 12 * Tema.escala
                 Repeater {
                     model: [
-                        { etq: "Actual", val: cajon.comboActual, color: "white" },
-                        { etq: "Probable", val: cajon.comboProbable, color: "#C7CFC9" },
+                        { etq: "Actual", val: cajon.comboActual, color: Tema.colorTexto },
+                        { etq: "Probable", val: cajon.comboProbable, color: Tema.colorTextoTenue },
                         { etq: "Máxima", val: cajon.comboMaxima, color: Tema.colorAccent }
                     ]
                     delegate: Column {
@@ -343,7 +343,7 @@ Rectangle {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: cajon.turnoNombre !== "" ? "Turno de " + cajon.turnoNombre : "—"
-                        color: "white"
+                        color: Tema.colorTexto
                         font.bold: true
                         font.family: Tema.fuenteElegante
                         font.pixelSize: 14 * Tema.escala
@@ -465,7 +465,7 @@ Rectangle {
                         textFormat: Text.RichText
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11 * Tema.escala
-                        color: "white"
+                        color: Tema.colorTexto
                         text: "<font color=\"" + colorTipoHistCajon(tipo) + "\">●</font> " +
                               (jugador.length > 0
                                    ? "<font color=\"" + colorNombreHistCajon(jugador) + "\"><b>" +
@@ -536,7 +536,7 @@ Rectangle {
                                     anchors.fill: parent
                                     anchors.margins: 6 * Tema.escala
                                     text: mensaje
-                                    color: "white"
+                                    color: Tema.colorTexto
                                     font.pixelSize: 11 * Tema.escala
                                     wrapMode: Text.WordWrap
                                 }
@@ -555,7 +555,7 @@ Rectangle {
                         id: textoChatCajon
                         width: parent.width - botonEnviarCajon.width - parent.spacing
                         height: Tema.tamanoMinTactil
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 11 * Tema.escala
                         // Ver CampoEmergente.qml: sin esto, borrar una
                         // letra solo retrocedía el cursor sin borrarla.

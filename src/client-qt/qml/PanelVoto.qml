@@ -87,7 +87,7 @@ Row {
             Text {
                 width: parent.width
                 text: "¿Abandonar la partida?"
-                color: "white"
+                color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.bold: true
                 font.pixelSize: 18 * Tema.escala

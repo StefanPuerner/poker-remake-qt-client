@@ -46,7 +46,7 @@ Grid {
             Text {
                 anchors.centerIn: parent
                 text: tecla.modelData
-                color: area.pressed ? Tema.colorPanel : "white"
+                color: area.pressed ? Tema.colorPanel : Tema.colorTexto
                 font.pixelSize: 17 * Tema.escala
             }
 

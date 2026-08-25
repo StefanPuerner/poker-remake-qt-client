@@ -163,9 +163,10 @@ Column {
     }
     Rectangle {
         x: (parent.width - width) / 2
-        color: "black"
+        color: Tema.colorPanel
         opacity: 0.70
         border.width: 2
+        border.color: Tema.colorBorde
         width: infoAsiento.width * 1.2
         height: infoAsiento.height * 1.
         radius: width / 10
@@ -174,7 +175,7 @@ Column {
             anchors.centerIn: parent
             Text {
                 text: nombre
-                color: "white"
+                color: Tema.colorTexto
                 font.pixelSize: 13 * Tema.escala
                 font.family: Tema.fuenteElegante
             }

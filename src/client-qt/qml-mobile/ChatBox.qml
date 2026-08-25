@@ -97,7 +97,7 @@ Rectangle {
                         anchors.fill: parent
                         anchors.margins: 8 * Tema.escala
                         text: mensaje
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
@@ -118,7 +118,7 @@ Rectangle {
             id: textoChat
             width: parent.width - botonEnviar.width - parent.spacing
             height: Tema.tamanoMinTactil
-            color: "white"
+            color: Tema.colorTexto
             font.pixelSize: 13 * Tema.escala
             // Ver CampoEmergente.qml: sin esto, borrar una letra solo
             // retrocedía el cursor sin borrarla de verdad.

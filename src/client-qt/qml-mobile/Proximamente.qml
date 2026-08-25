@@ -43,7 +43,7 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: raiz.titulo
-            color: "white"
+            color: Tema.colorTexto
             font.family: Tema.fuenteElegante
             font.pixelSize: 18 * Tema.escala
         }

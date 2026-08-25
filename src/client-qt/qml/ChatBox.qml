@@ -99,7 +99,7 @@ Rectangle {
                         anchors.fill: parent
                         anchors.margins: 8 * Tema.escala
                         text: mensaje
-                        color: "white"
+                        color: Tema.colorTexto
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
@@ -120,7 +120,7 @@ Rectangle {
             id: textoChat
             width: parent.width - botonEnviar.width - parent.spacing
             height: 44 * Tema.escala
-            color: "white"
+            color: Tema.colorTexto
             font.pixelSize: 13 * Tema.escala
             // El estilo Material anima el placeholder hacia una
             // "etiqueta flotante" arriba del campo al enfocar/escribir

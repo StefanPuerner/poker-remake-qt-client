@@ -25,7 +25,7 @@ Rectangle {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: tarjetaReveal.datos.nombre
-            color: tarjetaReveal.datos.esGanador ? Tema.colorAccent : "white"
+            color: tarjetaReveal.datos.esGanador ? Tema.colorAccent : Tema.colorTextoSobreOscuro
             font.bold: tarjetaReveal.datos.esGanador
             font.pixelSize: 14 * Tema.escala
             font.family: Tema.fuenteElegante
@@ -44,7 +44,7 @@ Rectangle {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: tarjetaReveal.datos.combo
-            color: Tema.colorTextoTenue
+            color: Tema.colorTextoTenueSobreOscuro
             font.pixelSize: 11 * Tema.escala
         }
         Rectangle {

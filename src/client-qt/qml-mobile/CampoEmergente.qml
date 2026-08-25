@@ -115,7 +115,7 @@ Popup {
                 inputMethodHints: (campoEmergente.soloNumerico ? Qt.ImhDigitsOnly : Qt.ImhNone) | Qt.ImhNoPredictiveText
                 maximumLength: campoEmergente.maxLongitud
                 font.pixelSize: 20 * Tema.escala
-                color: "white"
+                color: Tema.colorTexto
                 background: null
                 onAccepted: campoEmergente.confirmar()
             }

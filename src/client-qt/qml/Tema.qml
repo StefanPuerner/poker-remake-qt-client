@@ -24,33 +24,49 @@ QtObject {
         {
             nombre: "Verde clásico",
             fondo: "#0B1A14", tapete: "#1B4332", panel: "#0F2419", borde: "#2A5A44",
-            accent: "#C08F3E", textoTenue: "#9AA79D", textoMuyTenue: "#6B8577", nombreAjeno: "#7FBFA8"
+            accent: "#C08F3E", texto: "#FFFFFF", textoTenue: "#9AA79D", textoMuyTenue: "#6B8577", nombreAjeno: "#7FBFA8"
         },
         {
             nombre: "Azul medianoche",
             fondo: "#0A141F", tapete: "#173250", panel: "#0D1B29", borde: "#2A4A63",
-            accent: "#B8C4CE", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
+            accent: "#B8C4CE", texto: "#FFFFFF", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
         },
         {
             nombre: "Burdeos",
             fondo: "#1A0B0E", tapete: "#4D1B26", panel: "#240F14", borde: "#632A38",
-            accent: "#D4A24E", textoTenue: "#B89AA0", textoMuyTenue: "#8C6B70", nombreAjeno: "#BF7F8F"
+            accent: "#D4A24E", texto: "#FFFFFF", textoTenue: "#B89AA0", textoMuyTenue: "#8C6B70", nombreAjeno: "#BF7F8F"
         },
         {
             nombre: "Grafito",
             fondo: "#101214", tapete: "#2B2E33", panel: "#17191C", borde: "#44484E",
-            accent: "#C77B4E", textoTenue: "#A3A8AE", textoMuyTenue: "#6E7378", nombreAjeno: "#8FA3AE"
+            accent: "#C77B4E", texto: "#FFFFFF", textoTenue: "#A3A8AE", textoMuyTenue: "#6E7378", nombreAjeno: "#8FA3AE"
+        },
+        {
+            nombre: "Porcelana dorada",
+            fondo: "#FAF5EC", tapete: "#CBA968", panel: "#FFFDF9", borde: "#D9C69C",
+            accent: "#AD7F2E", texto: "#2A2419", textoTenue: "#7A6E5A", textoMuyTenue: "#9C907A", nombreAjeno: "#7C8CA0"
         }
     ]
     property int temaActual: 0
 
-    readonly property color colorFondo: temas[temaActual].fondo // fondo general de la ventana, el más oscuro de los tres
-    readonly property color colorTapete: temas[temaActual].tapete // paño de la mesa, el más claro/saturado
+    readonly property color colorFondo: temas[temaActual].fondo // fondo general de la ventana
+    readonly property color colorTapete: temas[temaActual].tapete // paño de la mesa, el más saturado de los tres
     readonly property color colorPanel: temas[temaActual].panel // paneles (chat/historial, avatares, cartas comunitarias de fondo)
     readonly property color colorBorde: temas[temaActual].borde // línea sutil entre paños/paneles
     readonly property color colorAccent: temas[temaActual].accent // color "temático" de la paleta activa
     readonly property color colorPeligro: "#C0524A" // rojo — retirarse/abandonar/all-in/tiempo agotándose (constante, ver arriba)
-    readonly property color colorTextoTenue: temas[temaActual].textoTenue // texto secundario sobre fondo oscuro
+    // Los overlays de pantalla completa (showdown, reconectando, ventana
+    // demasiado pequeña) van siempre sobre "#0A140F" fijo, no sobre
+    // Tema.colorFondo -- son un "apagón" deliberado por encima de toda la
+    // interfaz, no un panel más del tema (ver Main.qml, los tres
+    // Rectangle "anchors.fill: parent" con ese color literal). El texto
+    // de ahí dentro necesita su propio par constante en vez de
+    // colorTexto/colorTextoTenue: con Porcelana dorada esos dos son
+    // oscuros (pensados para fondo claro) y se leerían negro sobre negro.
+    readonly property color colorTextoSobreOscuro: "#FFFFFF"
+    readonly property color colorTextoTenueSobreOscuro: "#A8AFAB"
+    readonly property color colorTexto: temas[temaActual].texto // texto principal — "white" a fuego en todo el cliente antes de que existiera un tema claro (Porcelana dorada)
+    readonly property color colorTextoTenue: temas[temaActual].textoTenue // texto secundario
     readonly property color colorTextoMuyTenue: temas[temaActual].textoMuyTenue // texto terciario (horas, etiquetas pequeñas)
     readonly property color colorNombreAjeno: temas[temaActual].nombreAjeno // nombre de OTRO jugador en el historial (el propio va en colorAccent)
 
