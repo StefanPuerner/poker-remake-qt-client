@@ -138,6 +138,9 @@ ApplicationWindow {
     // Pestaña activa del cajón lateral: 0 = Ajustes, 1 = Cuenta. Mismo
     // criterio que escritorio (ver Main.qml de qml/).
     property int pestanaAjustesActual: 0
+    // Pestaña activa de la pantalla Social: 0=Amigos, 1=Buscar jugadores,
+    // 2=Jugadores Recientes, 3=Solicitudes. Mismo criterio que escritorio.
+    property int pestanaSocialActual: 0
 
     // ── Sesión / red ─────────────────────────────────────────────────────
     property string nombreJugador: ""
@@ -252,6 +255,25 @@ ApplicationWindow {
         rankingModel.clear();
         for (var i = 0; i < filas.length; i++) rankingModel.append(filas[i]);
     }
+    // ── Social -- mismo criterio que escritorio (ver Main.qml de qml/) ──
+    ListModel { id: modeloAmigos }
+    ListModel { id: modeloBusqueda }
+    ListModel { id: modeloRecientes }
+    ListModel { id: modeloSolicitudes }
+    property string pendienteSolicitudUsername: ""
+    property string mensajeErrorSocial: ""
+    // El estado "pendiente" viene del SERVIDOR (ver el comentario largo en
+    // Main.qml de qml/) -- esta función solo hace la actualización
+    // optimista de la fila recién mandada, sin esperar a la próxima
+    // búsqueda.
+    function marcarPendienteEnModelos(username) {
+        for (var i = 0; i < modeloBusqueda.count; i++) {
+            if (modeloBusqueda.get(i).username === username) modeloBusqueda.setProperty(i, "pendiente", 1);
+        }
+        for (var j = 0; j < modeloRecientes.count; j++) {
+            if (modeloRecientes.get(j).username === username) modeloRecientes.setProperty(j, "pendiente", 1);
+        }
+    }
     // ── Estadísticas propias (pestaña Cuenta del cajón) ─────────────────
     property int statsManosJugadas: 0
     property int statsManosGanadas: 0
@@ -277,14 +299,14 @@ ApplicationWindow {
     property string codigoSalaPropia: ""
     property string nombresEsperadosLobby: ""
     property string hostActual: ""
-    // Mismo bug que en el cliente de escritorio (ver Main.qml de qml/):
-    // hostActual pasa por sanitizarNombre() en el servidor, nombreJugador
-    // es el texto crudo -- un nombre con tilde/ñ deja de coincidir para
-    // siempre y "Guardar y salir" desaparece para el host real. Se
-    // recuerda directamente si este cliente creó la sala en vez de
-    // comparar nombres.
-    property bool creadorDeLaSala: false
-    property bool soyHost: creadorDeLaSala
+    // soyHost es SIEMPRE verdad de servidor (ver Main.qml de qml/, mismo
+    // criterio): se recalcula comparando el "host" que manda
+    // LOBBY_UPDATE/PARTIDA_INICIADA contra nombreJugador, ya corregido al
+    // nombre real vía onNombreAsignado(). El flag local optimista de
+    // antes (creadorDeLaSala) hacía que cualquiera que pulsase "Reanudar"
+    // en una partida guardada se creyera host, aunque el servidor hubiera
+    // asignado el puesto a otro -- bug real reportado en playtest.
+    property bool soyHost: false
     property string textoListos: ""
     property bool chatActive: false
     // Chat de sala (Lobby + quien espera a sentarse a mitad de partida) y
@@ -380,12 +402,16 @@ ApplicationWindow {
     // vacío que el servidor tendría que autogenerar.
     function unirse(salaId, codigo) {
         if (nombreJugador === "") { campoNombre.abrir(""); return; }
-        creadorDeLaSala = false;
         redcliente.unirseASala(servidorHost, servidorPuerto, nombreJugador, salaId, codigo);
     }
     function reanudar(archivo) {
         if (nombreJugador === "") { campoNombre.abrir(""); return; }
-        creadorDeLaSala = true;
+        // El "false" de público/privado que sigue aquí abajo ya NO decide
+        // nada -- el servidor usa el público/privado guardado de verdad en
+        // el snapshot para CARGAR_PARTIDA (ver server/main.cpp), no lo que
+        // mande el cliente. Antes SÍ mandaba a fuego "privada" en cada
+        // recarga, así que cualquier sala pública se volvía privada con
+        // código nuevo sin que nadie lo pidiera (bug real reportado).
         redcliente.cargarPartidaGuardada(servidorHost, servidorPuerto, nombreJugador, archivo, "", false);
     }
 
@@ -436,6 +462,7 @@ ApplicationWindow {
             mensajeErrorLogin = "";
             pantalla = "Salas";
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
+            redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
         function onRegistroError(mensaje) {
             mensajeErrorLogin = mensaje;
@@ -465,6 +492,7 @@ ApplicationWindow {
             } else {
                 pantalla = "Salas";
                 redcliente.refrescarSalas(servidorHost, servidorPuerto);
+                redcliente.conectarPresencia(servidorHost, servidorPuerto);
             }
         }
         function onLoginError(mensaje) {
@@ -498,6 +526,39 @@ ApplicationWindow {
         function onPasswordError(mensaje) {
             tratarErrorCuenta(mensaje);
         }
+        // ── Social ────────────────────────────────────────────────────────
+        function onJugadoresBusquedaActualizados(jugadores) {
+            modeloBusqueda.clear();
+            for (var i = 0; i < jugadores.length; i++) modeloBusqueda.append(jugadores[i]);
+        }
+        function onAmigosActualizados(amigos) {
+            modeloAmigos.clear();
+            for (var i = 0; i < amigos.length; i++) modeloAmigos.append(amigos[i]);
+        }
+        function onSolicitudesActualizadas(solicitudes) {
+            modeloSolicitudes.clear();
+            for (var i = 0; i < solicitudes.length; i++) modeloSolicitudes.append(solicitudes[i]);
+        }
+        function onJugadoresRecientesActualizados(recientes) {
+            modeloRecientes.clear();
+            for (var i = 0; i < recientes.length; i++) modeloRecientes.append(recientes[i]);
+        }
+        function onSolicitudAmistadEnviada() {
+            mensajeErrorSocial = "";
+            if (pendienteSolicitudUsername !== "") marcarPendienteEnModelos(pendienteSolicitudUsername);
+            pendienteSolicitudUsername = "";
+        }
+        function onSolicitudAmistadError(mensaje) {
+            pendienteSolicitudUsername = "";
+            mensajeErrorSocial = mensaje;
+        }
+        function onSolicitudRespondida() {
+            redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
+            if (pestanaSocialActual === 0) redcliente.listarAmigos(servidorHost, servidorPuerto);
+        }
+        function onSolicitudRespondidaError(mensaje) {
+            mensajeErrorSocial = mensaje;
+        }
         function onConectado() {
             pantalla = "Lobby";
             chatActive = true;
@@ -523,6 +584,7 @@ ApplicationWindow {
             }
             textoListos = listos + " / " + esperados + " listos";
             hostActual = host;
+            soyHost = (host === nombreJugador);
             nombresEsperadosLobby = esperadosNombresCsv;
         }
         function onChatRecibido(de, texto, canal) {
@@ -539,7 +601,7 @@ ApplicationWindow {
         function onSalaEsperandoActualizada(nombres) {
             listaEsperando = nombres;
         }
-        function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots, preguntarExtension) {
+        function onPartidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots, preguntarExtension, host) {
             pantalla = "Partida";
             chatActive = false;
             mensajeEnEspera = "";
@@ -548,6 +610,7 @@ ApplicationWindow {
             permitirRecompraActual = permitirRecompra;
             rellenarConBotsActual = rellenarConBots;
             preguntarExtensionActual = preguntarExtension;
+            soyHost = (host === nombreJugador);
         }
         function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
                                          dealer, sb, bb) {
@@ -720,6 +783,21 @@ ApplicationWindow {
             tuTurno = false;
             turnoNombre = "";
         }
+        function onVotoConfirmado() {
+            // Ack real del servidor a votar() -- ver el comentario largo
+            // en Main.qml de qml/: el panel ya no se cierra al pulsar
+            // "Continuar" de forma optimista, evita el softlock real
+            // reportado (showdown abierto sin panel, tras una
+            // reconexión fallida).
+            votoAbierto = false;
+            mensajeVoto = "";
+        }
+        function onHostCambiado(host) {
+            // El host efectivo cambió a mitad de partida -- mismo
+            // recálculo que onLobbyActualizado/onPartidaIniciada.
+            hostActual = host;
+            soyHost = (host === nombreJugador);
+        }
         function onEsperandoVotoExtension(mensaje) {
             votoExtensionMensaje = mensaje;
             votoExtensionAbierto = true;
@@ -779,6 +857,7 @@ ApplicationWindow {
             esperandoManosExtra = false;
             soyYoQuienElige = false;
             pantalla = "Fin";
+            if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
         function onPartidaGuardada(archivo) {
             // BUG corregido (visto en vivo: "Guardar y salir" desde dentro
@@ -802,8 +881,12 @@ ApplicationWindow {
             votoExtensionAbierto = false;
             esperandoManosExtra = false;
             soyYoQuienElige = false;
+            // Bug real reportado: sin esto, soyHost se quedaba en true
+            // para siempre tras abandonar -- ver Main.qml de qml/.
+            soyHost = false;
             pantalla = "Salas";
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
+            if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
         function onError(mensaje) {
             mensajeErrorConexion = "Error: " + mensaje;
@@ -819,6 +902,7 @@ ApplicationWindow {
         function onErrorSala(mensaje) {
             pantalla = "Salas";
             mensajeErrorConexion = mensaje;
+            if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
         function onNombreAsignado(nombre) {
             nombreJugador = nombre;
@@ -916,8 +1000,21 @@ ApplicationWindow {
         }
         function onReconexionFallida() {
             reconectandoAhora = false;
+            // Mismo motivo que onAbandonaste/onFinDePartida/
+            // onPartidaGuardada: sin esto, un showdown/voto que seguía
+            // abierto cuando se cayó la conexión se quedaba tapando la
+            // pantalla de Inicio para siempre (bug real reportado, parte
+            // del softlock de reconexión) -- incluye el arranque en frío
+            // (intentarRecuperarSesion) que puede caer aquí sin haber
+            // tenido nunca noticia del estado real de la mano.
+            showdownAbierto = false;
+            votoAbierto = false;
+            votoExtensionAbierto = false;
+            esperandoManosExtra = false;
+            soyYoQuienElige = false;
             pantalla = "Inicio";
             mensajeErrorConexion = "Se perdió la conexión con el servidor.";
+            if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
     }
 
@@ -1391,6 +1488,11 @@ ApplicationWindow {
         onSeccionElegida: (nombre) => {
             ventana.pantalla = nombre;
             if (nombre === "Ranking") redcliente.consultarRanking(ventana.servidorHost, ventana.servidorPuerto);
+            if (nombre === "Social" && ventana.tokenSesion !== "") {
+                ventana.pestanaSocialActual = 0;
+                ventana.mensajeErrorSocial = "";
+                redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto);
+            }
         }
     }
 
@@ -1977,14 +2079,435 @@ ApplicationWindow {
         textoCentro: "Social"
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
-    Proximamente {
-        visible: ventana.pantalla === "Social"
+    // ── Social: invitados ven un aviso + acceso a login/registro, mismo
+    // criterio que la pestaña Cuenta del cajón lateral.
+    Column {
+        visible: ventana.pantalla === "Social" && ventana.tokenSesion === ""
+        anchors.centerIn: parent
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
+        spacing: 12 * Tema.escala
+        width: Math.min(340 * Tema.escala, ventana.width - rielNavegacionMovil.width - 60 * Tema.escala)
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: "Estás jugando como invitado. Inicia sesión o crea una cuenta para añadir amigos y ver quién está conectado."
+            color: Tema.colorTextoTenue
+            font.pixelSize: 13 * Tema.escala
+        }
+        BotonRelleno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Iniciar sesión"
+            onClicked: { ventana.mensajeErrorLogin = ""; ventana.pantalla = "Login"; }
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Crear cuenta"
+            onClicked: { ventana.mensajeErrorLogin = ""; ventana.pantalla = "Registro"; }
+        }
+    }
+
+    // Etiquetas abreviadas respecto a escritorio -- landscape móvil deja
+    // menos ancho por segmento que la ventana de escritorio, y
+    // SelectorSegmentado no envuelve ni recorta el texto.
+    SelectorSegmentado {
+        id: tabsSocialMovil
+        visible: ventana.pantalla === "Social" && ventana.tokenSesion !== ""
         anchors.top: barraSocialMovil.bottom
+        anchors.topMargin: 12 * Tema.escala
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        opciones: ["Amigos", "Buscar", "Recientes", "Solicitudes"]
+        seleccionado: ventana.pestanaSocialActual
+        onSeleccionadoChanged: {
+            ventana.pestanaSocialActual = seleccionado;
+            ventana.mensajeErrorSocial = "";
+            if (seleccionado === 0) redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto);
+            else if (seleccionado === 2) redcliente.listarJugadoresRecientes(ventana.servidorHost, ventana.servidorPuerto);
+            else if (seleccionado === 3) redcliente.listarSolicitudesPendientes(ventana.servidorHost, ventana.servidorPuerto);
+        }
+    }
+
+    // Timer de refresco de presencia -- mismo criterio que escritorio (ver
+    // el comentario largo en Main.qml de qml/).
+    Timer {
+        interval: 15000
+        repeat: true
+        running: ventana.pantalla === "Social" && ventana.pestanaSocialActual === 0 && ventana.tokenSesion !== ""
+        onTriggered: redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto)
+    }
+
+    // Slot de altura reactiva para el mensaje de error -- así el panel de
+    // debajo no tiene que saber si hay mensaje visible o no para anclarse.
+    Item {
+        id: errorSocialMovilSlot
+        visible: ventana.pantalla === "Social" && ventana.tokenSesion !== ""
+        anchors.top: tabsSocialMovil.bottom
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        height: ventana.mensajeErrorSocial !== "" ? textoErrorSocialMovil.implicitHeight + 8 * Tema.escala : 0
+
+        Text {
+            id: textoErrorSocialMovil
+            visible: ventana.mensajeErrorSocial !== ""
+            anchors.top: parent.top
+            anchors.topMargin: 6 * Tema.escala
+            width: parent.width
+            text: ventana.mensajeErrorSocial
+            color: Tema.colorPeligro
+            font.pixelSize: 11 * Tema.escala
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    Rectangle {
+        id: panelSocialMovil
+        visible: ventana.pantalla === "Social" && ventana.tokenSesion !== ""
+        anchors.top: errorSocialMovilSlot.bottom
+        anchors.topMargin: 8 * Tema.escala
         anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        titulo: "Social"
-        descripcion: "Añade amigos y ve quién está conectado antes de crear una sala."
+        anchors.margins: 16 * Tema.escala
+        radius: 8 * Tema.escala
+        color: Tema.colorPanel
+        border.width: 1
+        border.color: Tema.colorBorde
+
+        // ── Amigos ────────────────────────────────────────────────────
+        Text {
+            anchors.centerIn: parent
+            width: parent.width - 32 * Tema.escala
+            visible: ventana.pestanaSocialActual === 0 && modeloAmigos.count === 0
+            text: "Todavía no tienes amigos añadidos. Búscalos en \"Buscar\" o mira \"Recientes\"."
+            color: Tema.colorTextoTenue
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            font.pixelSize: 12 * Tema.escala
+        }
+        ListView {
+            visible: ventana.pestanaSocialActual === 0 && modeloAmigos.count > 0
+            anchors.fill: parent
+            anchors.margins: 12 * Tema.escala
+            clip: true
+            spacing: 6 * Tema.escala
+            model: modeloAmigos
+            delegate: Rectangle {
+                id: filaAmigoMovil
+                required property int accountId
+                required property string estado
+                required property string username
+                width: ListView.view.width
+                height: Tema.tamanoMinTactil
+                radius: 6 * Tema.escala
+                color: Tema.colorFondo
+                border.width: 1
+                border.color: Tema.colorBorde
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 10 * Tema.escala
+                    spacing: 8 * Tema.escala
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 7 * Tema.escala
+                        height: 7 * Tema.escala
+                        radius: width / 2
+                        color: filaAmigoMovil.estado === "CONECTADO" ? "#7FAE7A"
+                               : filaAmigoMovil.estado === "EN_PARTIDA" ? Tema.colorAccent
+                               : Tema.colorTextoMuyTenue
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: filaAmigoMovil.username
+                        color: Tema.colorTexto
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                }
+                Text {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: 10 * Tema.escala
+                    text: filaAmigoMovil.estado === "CONECTADO" ? "Conectado"
+                          : filaAmigoMovil.estado === "EN_PARTIDA" ? "En partida"
+                          : "Desconectado"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 10 * Tema.escala
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    // fase 2: abrir chat directo con este amigo
+                    onClicked: {}
+                }
+            }
+        }
+
+        // ── Buscar jugadores ──────────────────────────────────────────
+        // Borde de acento PERMANENTE (no solo al pulsar, a diferencia de
+        // cajaNombreSalaMovil) + icono de lupa -- sin esto se veía
+        // idéntico a las filas de resultado de debajo (mismo
+        // color/borde/altura), confuso dentro de una lista (reportado en
+        // pruebas reales). El resto de "campos falsos" del programa viven
+        // solos en un formulario, no encima de filas gemelas.
+        Rectangle {
+            id: cajaBusquedaSocialMovil
+            visible: ventana.pestanaSocialActual === 1
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 12 * Tema.escala
+            height: Tema.tamanoMinTactil
+            radius: 6 * Tema.escala
+            color: Tema.colorFondo
+            border.width: 1.5
+            border.color: Tema.colorAccent
+            property string valor: ""
+
+            Item {
+                id: iconoLupaMovil
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 10 * Tema.escala
+                width: 14 * Tema.escala
+                height: 14 * Tema.escala
+                Rectangle {
+                    width: 10 * Tema.escala
+                    height: 10 * Tema.escala
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: 1.6
+                    border.color: Tema.colorAccent
+                }
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    width: 5 * Tema.escala
+                    height: 1.6 * Tema.escala
+                    radius: height / 2
+                    rotation: 45
+                    transformOrigin: Item.Right
+                    color: Tema.colorAccent
+                }
+            }
+            Text {
+                anchors.left: iconoLupaMovil.right
+                anchors.right: parent.right
+                anchors.leftMargin: 8 * Tema.escala
+                anchors.rightMargin: 10 * Tema.escala
+                anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideRight
+                text: cajaBusquedaSocialMovil.valor !== "" ? cajaBusquedaSocialMovil.valor : "Buscar por nombre de usuario"
+                color: cajaBusquedaSocialMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                font.pixelSize: 13 * Tema.escala
+            }
+            MouseArea {
+                id: areaBusquedaSocialMovil
+                anchors.fill: parent
+                onClicked: campoBusquedaSocialMovil.abrir(cajaBusquedaSocialMovil.valor)
+            }
+            CampoEmergente {
+                id: campoBusquedaSocialMovil
+                parent: Overlay.overlay
+                etiqueta: "Buscar jugadores por nombre de usuario"
+                onAceptado: (texto) => {
+                    cajaBusquedaSocialMovil.valor = texto;
+                    ventana.mensajeErrorSocial = "";
+                    if (texto.length > 0) redcliente.buscarJugadores(ventana.servidorHost, ventana.servidorPuerto, texto);
+                }
+            }
+        }
+        Text {
+            anchors.top: cajaBusquedaSocialMovil.bottom
+            anchors.topMargin: 20 * Tema.escala
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 32 * Tema.escala
+            visible: ventana.pestanaSocialActual === 1 && modeloBusqueda.count === 0
+            text: "Busca por nombre de usuario para mandar una solicitud de amistad."
+            color: Tema.colorTextoTenue
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            font.pixelSize: 12 * Tema.escala
+        }
+        ListView {
+            visible: ventana.pestanaSocialActual === 1 && modeloBusqueda.count > 0
+            anchors.top: cajaBusquedaSocialMovil.bottom
+            anchors.topMargin: 10 * Tema.escala
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 12 * Tema.escala
+            clip: true
+            spacing: 6 * Tema.escala
+            model: modeloBusqueda
+            delegate: Rectangle {
+                id: filaBusquedaMovil
+                required property int accountId
+                required property int pendiente
+                required property string username
+                readonly property bool solicitudEnviada: filaBusquedaMovil.pendiente === 1
+                width: ListView.view.width
+                // + 12 -- mismo suelo que filaSalaMovil: el botón exige al
+                // menos Tema.tamanoMinTactil él solo, sin margen la fila
+                // quedaba justa (bordes del botón pegados a los de la
+                // fila, reportado en pruebas reales).
+                height: Tema.tamanoMinTactil + 12 * Tema.escala
+                radius: 6 * Tema.escala
+                color: Tema.colorFondo
+                border.width: 1
+                border.color: Tema.colorBorde
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: botonEnviarBusquedaMovil.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 10 * Tema.escala
+                    anchors.rightMargin: 8 * Tema.escala
+                    elide: Text.ElideRight
+                    text: filaBusquedaMovil.username
+                    color: Tema.colorTexto
+                    font.pixelSize: 12 * Tema.escala
+                }
+                BotonContorno {
+                    id: botonEnviarBusquedaMovil
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: 8 * Tema.escala
+                    enabled: !filaBusquedaMovil.solicitudEnviada
+                    opacity: filaBusquedaMovil.solicitudEnviada ? 0.6 : 1.0
+                    text: filaBusquedaMovil.solicitudEnviada ? "Enviada" : "Enviar solicitud"
+                    onClicked: {
+                        ventana.pendienteSolicitudUsername = filaBusquedaMovil.username;
+                        redcliente.enviarSolicitudAmistad(ventana.servidorHost, ventana.servidorPuerto, filaBusquedaMovil.username);
+                    }
+                }
+            }
+        }
+
+        // ── Jugadores Recientes ────────────────────────────────────────
+        Text {
+            anchors.centerIn: parent
+            width: parent.width - 32 * Tema.escala
+            visible: ventana.pestanaSocialActual === 2 && modeloRecientes.count === 0
+            text: "Todavía no has compartido mesa con nadie en las últimas 24h."
+            color: Tema.colorTextoTenue
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            font.pixelSize: 12 * Tema.escala
+        }
+        ListView {
+            visible: ventana.pestanaSocialActual === 2 && modeloRecientes.count > 0
+            anchors.fill: parent
+            anchors.margins: 12 * Tema.escala
+            clip: true
+            spacing: 6 * Tema.escala
+            model: modeloRecientes
+            delegate: Rectangle {
+                id: filaRecienteMovil
+                required property int accountId
+                required property int pendiente
+                required property string username
+                readonly property bool solicitudEnviada: filaRecienteMovil.pendiente === 1
+                width: ListView.view.width
+                height: Tema.tamanoMinTactil + 12 * Tema.escala
+                radius: 6 * Tema.escala
+                color: Tema.colorFondo
+                border.width: 1
+                border.color: Tema.colorBorde
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: botonEnviarRecienteMovil.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 10 * Tema.escala
+                    anchors.rightMargin: 8 * Tema.escala
+                    elide: Text.ElideRight
+                    text: filaRecienteMovil.username
+                    color: Tema.colorTexto
+                    font.pixelSize: 12 * Tema.escala
+                }
+                BotonContorno {
+                    id: botonEnviarRecienteMovil
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: 8 * Tema.escala
+                    enabled: !filaRecienteMovil.solicitudEnviada
+                    opacity: filaRecienteMovil.solicitudEnviada ? 0.6 : 1.0
+                    text: filaRecienteMovil.solicitudEnviada ? "Enviada" : "Enviar solicitud"
+                    onClicked: {
+                        ventana.pendienteSolicitudUsername = filaRecienteMovil.username;
+                        redcliente.enviarSolicitudAmistad(ventana.servidorHost, ventana.servidorPuerto, filaRecienteMovil.username);
+                    }
+                }
+            }
+        }
+
+        // ── Solicitudes ────────────────────────────────────────────────
+        Text {
+            anchors.centerIn: parent
+            width: parent.width - 32 * Tema.escala
+            visible: ventana.pestanaSocialActual === 3 && modeloSolicitudes.count === 0
+            text: "No tienes solicitudes de amistad pendientes."
+            color: Tema.colorTextoTenue
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            font.pixelSize: 12 * Tema.escala
+        }
+        ListView {
+            visible: ventana.pestanaSocialActual === 3 && modeloSolicitudes.count > 0
+            anchors.fill: parent
+            anchors.margins: 12 * Tema.escala
+            clip: true
+            spacing: 6 * Tema.escala
+            model: modeloSolicitudes
+            delegate: Rectangle {
+                id: filaSolicitudMovil
+                required property int solicitudId
+                required property int fromAccountId
+                required property int creadoEn
+                required property string fromUsername
+                width: ListView.view.width
+                height: Tema.tamanoMinTactil + 12 * Tema.escala
+                radius: 6 * Tema.escala
+                color: Tema.colorFondo
+                border.width: 1
+                border.color: Tema.colorBorde
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: filaBotonesSolicitudMovil.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 10 * Tema.escala
+                    anchors.rightMargin: 8 * Tema.escala
+                    elide: Text.ElideRight
+                    text: filaSolicitudMovil.fromUsername
+                    color: Tema.colorTexto
+                    font.pixelSize: 12 * Tema.escala
+                }
+                Row {
+                    id: filaBotonesSolicitudMovil
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: 8 * Tema.escala
+                    spacing: 6 * Tema.escala
+                    BotonContorno {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Rechazar"
+                        onClicked: redcliente.responderSolicitud(
+                            ventana.servidorHost, ventana.servidorPuerto, filaSolicitudMovil.solicitudId, false)
+                    }
+                    BotonRelleno {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Aceptar"
+                        onClicked: redcliente.responderSolicitud(
+                            ventana.servidorHost, ventana.servidorPuerto, filaSolicitudMovil.solicitudId, true)
+                    }
+                }
+            }
+        }
     }
 
     // ── Pantalla CrearSala ───────────────────────────────────────────────
@@ -2358,7 +2881,6 @@ ApplicationWindow {
                 text: "Crear sala"
                 onClicked: {
                     if (ventana.nombreJugador === "") { campoNombre.abrir(""); return; }
-                    ventana.creadorDeLaSala = true;
                     redcliente.crearSala(
                         ventana.servidorHost, ventana.servidorPuerto, ventana.nombreJugador,
                         cajaNombreSalaMovil.valor,
@@ -2405,12 +2927,42 @@ ApplicationWindow {
                 color: Tema.colorTextoTenue
                 font.pixelSize: 12 * Tema.escala
             }
-            Text {
+            Row {
                 visible: ventana.codigoSalaPropia !== ""
-                text: "Código para invitar: " + ventana.codigoSalaPropia
-                color: Tema.colorAccent
-                font.bold: true
-                font.pixelSize: 12 * Tema.escala
+                spacing: 8 * Tema.escala
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Código para invitar: " + ventana.codigoSalaPropia
+                    color: Tema.colorAccent
+                    font.bold: true
+                    font.pixelSize: 12 * Tema.escala
+                }
+                BotonContorno {
+                    id: botonCopiarCodigoMovil
+                    property bool copiado: false
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: copiado ? "Copiado" : "Copiar"
+                    onClicked: {
+                        // Mismo truco que escritorio (ver qml/Main.qml) --
+                        // sin API de portapapeles en QML puro, un TextEdit
+                        // oculto: seleccionar todo y copiar hace lo mismo
+                        // que el atajo de copiar en cualquier campo de texto.
+                        portapapelesCodigoSalaMovil.text = ventana.codigoSalaPropia;
+                        portapapelesCodigoSalaMovil.selectAll();
+                        portapapelesCodigoSalaMovil.copy();
+                        copiado = true;
+                        temporizadorCopiadoMovil.restart();
+                    }
+                    Timer {
+                        id: temporizadorCopiadoMovil
+                        interval: 1500
+                        onTriggered: botonCopiarCodigoMovil.copiado = false
+                    }
+                }
+                TextEdit {
+                    id: portapapelesCodigoSalaMovil
+                    visible: false
+                }
             }
             Text {
                 visible: ventana.nombresEsperadosLobby !== ""
@@ -2561,6 +3113,7 @@ ApplicationWindow {
             modeloHistorial: historialMovil
             modeloChat: mensajesChatPartida
             onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+            onAbrirChuleta: chuletaMovil.open()
             onDecisionEnviada: {
                 ventana.tuTurno = false;
                 ventana.turnoNombre = "";
@@ -2704,7 +3257,6 @@ ApplicationWindow {
                             soyHost: ventana.soyHost
                             // 5 = MIN_MANOS_PARA_STATS en NetworkObserver.cpp (servidor) -- si cambia ahí, cambiar aquí también.
                             contariaComoPerdida: ventana.tokenSesion !== "" && ventana.manoActual >= 5
-                            onContinuar: { ventana.votoAbierto = false; ventana.mensajeVoto = ""; }
                             onAbandonar: ventana.votoAbierto = false
                             onGuardarYSalir: ventana.votoAbierto = false
                         }
@@ -3518,10 +4070,6 @@ ApplicationWindow {
                             onAlternado: ventana.confirmarAllIn = !ventana.confirmarAllIn
                         }
                     }
-                    BotonContorno {
-                        text: "Ranking de manos"
-                        onClicked: chuletaMovil.open()
-                    }
                 }
             }
         }
@@ -3533,6 +4081,11 @@ ApplicationWindow {
     Rectangle {
         anchors.fill: parent
         visible: ventana.reconectandoAhora
+        // z alto a propósito -- mismo criterio que el cliente de
+        // escritorio (ver Main.qml de qml/): garantiza que este aviso
+        // gane siempre encima de cualquier otro overlay (showdown, voto)
+        // que pudiera seguir "abierto" cuando la conexión se cae.
+        z: 100
         color: "#0A140F"
         opacity: 0.92
         Column {

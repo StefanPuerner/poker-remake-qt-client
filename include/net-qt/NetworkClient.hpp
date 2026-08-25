@@ -14,6 +14,7 @@
 #include <QSslKey>
 #include <QSslSocket>
 #include <QTimer>
+#include <QVariantList>
 #include <QVariantMap>
 
 #include "../net/Protocol.hpp"
@@ -290,6 +291,7 @@ class NetworkClient : public QObject {
         {"token", token.toStdString()},
     }), [this](const std::string& /*payload*/) {
       token_.clear();
+      desconectarPresencia();
       emit logoutOk();
     });
   }
@@ -364,6 +366,136 @@ class NetworkClient : public QObject {
           estadisticasCuenta_ = m;
           emit estadisticasCuentaCambiaron();
         });
+  }
+
+  // ── Social ────────────────────────────────────────────────────────────────
+  //  Las seis, mismo patrón efímero que las de cuentas de arriba -- token_
+  //  interno, ninguna toca socket_ (la conexión persistente de la partida).
+  //  Respuestas en forma de lista van a parsearFilasSocial() (ver más abajo)
+  //  para no repetir el mismo split frágil aquí Y en las dos ramas QML.
+
+  /// Busca cuentas por username (coincidencia parcial). Sin resultados con
+  /// invitado (token_ vacío) -- ni siquiera se manda la petición.
+  Q_INVOKABLE void buscarJugadores(const QString& host, quint16 puerto, QString consulta) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::BUSCAR_JUGADORES, {
+            {"token", token_.toStdString()},
+            {"consulta", consulta.toStdString()},
+        }),
+        [this](const std::string& payload) {
+          emit jugadoresBusquedaActualizados(parsearFilasSocial(
+              net::jsonGetStr(payload, "jugadores"), {"accountId", "pendiente", "username"}));
+        });
+  }
+
+  Q_INVOKABLE void enviarSolicitudAmistad(const QString& host, quint16 puerto,
+                                          QString usernameDestino) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::ENVIAR_SOLICITUD_AMISTAD, {
+            {"token", token_.toStdString()},
+            {"username_destino", usernameDestino.toStdString()},
+        }),
+        [this](const std::string& payload) {
+          if (net::jsonGetStr(payload, "evento") == "SOLICITUD_ENVIADA") {
+            emit solicitudAmistadEnviada();
+          } else {
+            emit solicitudAmistadError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+          }
+        });
+  }
+
+  /// Acepta (aceptar=true) o rechaza una solicitud ENTRANTE.
+  Q_INVOKABLE void responderSolicitud(const QString& host, quint16 puerto, int solicitudId,
+                                      bool aceptar) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::RESPONDER_SOLICITUD, {
+            {"token", token_.toStdString()},
+            {"solicitud_id", std::to_string(solicitudId)},
+            {"aceptar", aceptar ? "1" : "0"},
+        }),
+        [this](const std::string& payload) {
+          if (net::jsonGetStr(payload, "evento") == "SOLICITUD_RESPONDIDA") {
+            emit solicitudRespondida();
+          } else {
+            emit solicitudRespondidaError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+          }
+        });
+  }
+
+  /// Amigos + presencia en vivo (estado: "CONECTADO"/"EN_PARTIDA"/"DESCONECTADO").
+  Q_INVOKABLE void listarAmigos(const QString& host, quint16 puerto) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_AMIGOS, {{"token", token_.toStdString()}}),
+        [this](const std::string& payload) {
+          emit amigosActualizados(parsearFilasSocial(
+              net::jsonGetStr(payload, "amigos"), {"accountId", "estado", "username"}));
+        });
+  }
+
+  /// Solicitudes de amistad ENTRANTES pendientes.
+  Q_INVOKABLE void listarSolicitudesPendientes(const QString& host, quint16 puerto) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_SOLICITUDES, {{"token", token_.toStdString()}}),
+        [this](const std::string& payload) {
+          emit solicitudesActualizadas(parsearFilasSocial(
+              net::jsonGetStr(payload, "solicitudes"),
+              {"solicitudId", "fromAccountId", "creadoEn", "fromUsername"}));
+        });
+  }
+
+  /// Cuentas con las que compartiste mesa en las últimas 24h (sin amigos ya).
+  Q_INVOKABLE void listarJugadoresRecientes(const QString& host, quint16 puerto) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_JUGADORES_RECIENTES, {{"token", token_.toStdString()}}),
+        [this](const std::string& payload) {
+          emit jugadoresRecientesActualizados(parsearFilasSocial(
+              net::jsonGetStr(payload, "recientes"), {"accountId", "pendiente", "username"}));
+        });
+  }
+
+  /**
+   * @brief Abre (si no lo estaba ya) el socket de presencia -- conexión
+   * persistente separada de socket_/enviarPeticionEfimera, que se queda
+   * viva mientras el cliente esté en menús para que otros vean a esta
+   * cuenta como CONECTADO. No-op con invitado (token_ vacío) o si ya hay
+   * una abierta. QML la llama al aterrizar en menús (login/registro, fin
+   * de partida, error de sala, abandonar, reconexión fallida) -- no hay un
+   * único punto de "volver a menús" en este código (~8 sitios distintos
+   * resetean "pantalla"), así que no tiene sentido centralizarlo aquí.
+   * Ver desconectarPresencia() para el camino contrario.
+   */
+  Q_INVOKABLE void conectarPresencia(const QString& host, quint16 puerto) {
+    if (token_.isEmpty() || presenciaConectada_) return;
+    presenciaConectada_ = true;
+
+    if (!presenciaSenalesConectadas_) {
+      presenciaSenalesConectadas_ = true;
+      connect(&presenciaSocket_, &QSslSocket::sslErrors, this,
+              [this](const QList<QSslError>& errores) {
+                gestionarErroresSsl(&presenciaSocket_, errores);
+              });
+      connect(&presenciaSocket_, &QSslSocket::encrypted, this, [this]() {
+        net::Message msg = net::buildMsg(net::MsgType::PRESENCIA_CONECTAR,
+                                         {{"token", token_.toStdString()}});
+        uint32_t len = qToBigEndian<uint32_t>(static_cast<uint32_t>(msg.payload.size()));
+        presenciaSocket_.write(reinterpret_cast<const char*>(&len), 4);
+        presenciaSocket_.write(msg.payload.data(), static_cast<qint64>(msg.payload.size()));
+      });
+      // Sin readyRead propio en V1 -- nada se empuja todavía (ver el plan,
+      // punto de enganche de la fase de chat directo/invitaciones).
+      connect(&presenciaSocket_, &QSslSocket::disconnected, this,
+              [this]() { presenciaConectada_ = false; });
+      connect(&presenciaSocket_, &QSslSocket::errorOccurred, this,
+              [this]() { presenciaConectada_ = false; });
+    }
+    presenciaSocket_.abort();
+    presenciaSocket_.connectToHostEncrypted(host, puerto);
   }
 
   /// @param canal "sala" (se ve en la sala de espera y también en la
@@ -468,9 +600,13 @@ class NetworkClient : public QObject {
    * compatibilidad con GAME_EVENT/PARTIDA_INICIADA sin estos campos).
    * @param tipoLimite 0=Sin límite, 1=Límite bote, 2=Límite fijo (mismo
    * enum que TipoLimite en GameTypes.hpp).
+   * @param host Nombre del jugador host, resuelto por el servidor (ver
+   * server/main.cpp) -- QML lo compara contra el nombre propio para fijar
+   * "soyHost" en vez de asumirlo localmente (ver el comentario histórico
+   * de creadorDeLaSala en Main.qml).
    */
   void partidaIniciada(int manos, int tipoLimite, bool permitirRecompra, bool rellenarConBots,
-                       bool preguntarExtension);
+                       bool preguntarExtension, QString host);
   void estadoMesaActualizado(QString ronda, int bote, QString turno,
                              QString jugadoresStr, int timeoutMs,
                              QString dealer, QString sb, QString bb);
@@ -531,6 +667,12 @@ class NetworkClient : public QObject {
   /// tienen el valor de la partida que acaba de terminar.
   void estadisticasFinCambiaron();
   void abandonaste(QString mensaje);
+  /// Ack del servidor a votar() (fin de mano) -- QML cierra el panel de
+  /// voto SOLO al recibir esto, no de forma optimista al pulsar el botón.
+  void votoConfirmado();
+  /// El host efectivo cambió a mitad de partida (ver
+  /// NetworkObserver::reasignarHostSiHaceFalta()) -- QML recalcula soyHost.
+  void hostCambiado(QString host);
   void saldosActualizados(QString jugadoresStr);
   void partidaGuardada(QString archivo);
   /// Se ha perdido la conexión y se está reintentando; segundosRestantes cuenta hacia 0.
@@ -585,7 +727,48 @@ class NetworkClient : public QObject {
   /// para este caso también, con una única tarjeta sin cartas.
   void ganadorSinShowdown(QString jugador, int bote);
 
+  // ── Social ──────────────────────────────────────────────────────────────
+  void jugadoresBusquedaActualizados(QVariantList jugadores);
+  void amigosActualizados(QVariantList amigos);
+  void solicitudesActualizadas(QVariantList solicitudes);
+  void jugadoresRecientesActualizados(QVariantList recientes);
+  void solicitudAmistadEnviada();
+  void solicitudAmistadError(QString mensaje);
+  void solicitudRespondida();
+  void solicitudRespondidaError(QString mensaje);
+
  private:
+  /**
+   * @brief Parsea una lista en el formato plano delimitado del protocolo
+   * ("campo1:campo2:...;campo1:campo2:...;...", el último campo de cada
+   * fila absorbe cualquier ':' que le quede -- mismo criterio que el resto
+   * del protocolo con texto libre, ver Protocol.hpp) a un QVariantList de
+   * QVariantMap, UNA sola vez en C++ -- evita repetir el mismo split
+   * frágil en las dos ramas QML. Detección numérica igual que
+   * buildMsg()/jsonGetInt() del lado servidor: un campo compuesto solo de
+   * dígitos se guarda como int, cualquier otra cosa como QString.
+   */
+  static QVariantList parsearFilasSocial(const std::string& csv, const QStringList& campos) {
+    QVariantList filas;
+    if (csv.empty()) return filas;
+    const QStringList filasStr = QString::fromStdString(csv).split(';', Qt::SkipEmptyParts);
+    for (const QString& filaStr : filasStr) {
+      QVariantMap fila;
+      int inicio = 0;
+      for (int i = 0; i < campos.size(); ++i) {
+        int fin = (i == campos.size() - 1) ? filaStr.size() : filaStr.indexOf(':', inicio);
+        if (fin < 0) fin = filaStr.size();
+        QString valor = filaStr.mid(inicio, fin - inicio);
+        bool esNumero = false;
+        int numero = valor.toInt(&esNumero);
+        fila[campos[i]] = esNumero ? QVariant(numero) : QVariant(valor);
+        inicio = fin + 1;
+      }
+      filas.push_back(fila);
+    }
+    return filas;
+  }
+
   void enviarMensaje(const net::Message& msg) {
     uint32_t len =
         qToBigEndian<uint32_t>(static_cast<uint32_t>(msg.payload.size()));
@@ -870,6 +1053,18 @@ class NetworkClient : public QObject {
     ajustes.endGroup();
     ajustes.sync();
   }
+
+  /// Contrapartida de conectarPresencia() -- cierra el socket de presencia
+  /// si estaba abierto. Se llama internamente (no desde QML) en cada punto
+  /// donde deja de tener sentido seguir anunciándose CONECTADO: al empezar
+  /// CUALQUIER conexión nueva de sala/partida (iniciarConexionConMensaje(),
+  /// porque a partir de ahí la presencia pasa a EN_PARTIDA vía el propio
+  /// asiento en el servidor) y al cerrar sesión (cerrarSesion()).
+  void desconectarPresencia() {
+    presenciaConectada_ = false;
+    presenciaSocket_.abort();
+  }
+
   /**
    * @brief Conexión persistente compartida por conectar()/crearSala()/unirseASala().
    *
@@ -880,6 +1075,11 @@ class NetworkClient : public QObject {
    */
   void iniciarConexionConMensaje(const QString& host, quint16 puerto,
                                  QString nombre, net::Message primerMensaje) {
+    // A partir de aquí la presencia (si la cuenta es real) la lleva el
+    // propio asiento en el servidor (EN_PARTIDA, ver PresenceRegistry) --
+    // el socket de presencia de menús ya no pinta nada mientras dure esta
+    // sesión de sala/partida.
+    desconectarPresencia();
     nombre_ = nombre;
     hostGuardado_ = host;
     puertoGuardado_ = puerto;
@@ -1072,8 +1272,9 @@ class NetworkClient : public QObject {
               bool preguntarExtension = net::jsonGetStr(payload, "preguntar_extension").empty()
                                              ? true
                                              : net::jsonGetInt(payload, "preguntar_extension") == 1;
+              QString host = QString::fromStdString(net::jsonGetStr(payload, "host"));
               emit partidaIniciada(manos, tipoLimite, permitirRecompra, rellenarConBots,
-                                   preguntarExtension);
+                                   preguntarExtension, host);
             } else if (evento == "NOMBRE_ASIGNADO") {
               // El nombre con el que el servidor nos identifica de verdad
               // (puede diferir del que escribimos, si llegó vacío o el
@@ -1287,6 +1488,22 @@ class NetworkClient : public QObject {
               QString jugador =
                   QString::fromStdString(net::jsonGetStr(payload, "jugador"));
               emit eventoJuego(" se ha reconectado", "sistema", jugador);
+            } else if (evento == "VOTO_RECIBIDO") {
+              // Ack del servidor a votar() -- QML ya no cierra el panel de
+              // voto de fin de mano al pulsar "Continuar", espera a esto
+              // (ver PanelVoto.qml/onVotoConfirmado). Antes cerraba el
+              // panel al instante sin confirmación real; si el voto se
+              // escribía en un socket ya muerto sin detectar aún la
+              // caída, el usuario se quedaba con el overlay de showdown
+              // abierto y sin panel dentro (softlock real reportado).
+              emit votoConfirmado();
+            } else if (evento == "HOST_CAMBIO") {
+              // El host efectivo cambió a mitad de partida (el anterior se
+              // fue/cayó, o el creador original volvió a recuperar el
+              // puesto) -- QML recalcula soyHost comparando contra el
+              // nombre propio, igual que en LOBBY_UPDATE/PARTIDA_INICIADA.
+              QString host = QString::fromStdString(net::jsonGetStr(payload, "host"));
+              emit hostCambiado(host);
             } else if (evento == "SALDOS_UPDATE") {
               QString jugadoresStr =
                   QString::fromStdString(net::jsonGetStr(payload, "jugadores"));
@@ -1407,4 +1624,14 @@ class NetworkClient : public QObject {
   QString mejorManoJugadorFinal_;
   QString eliminacionesFinalCsv_;
   QVariantMap estadisticasCuenta_;
+
+  // ── Social: socket de presencia ──────────────────────────────────────
+  // Conexión persistente SEPARADA de socket_ (la de sala/partida) -- ver
+  // conectarPresencia()/desconectarPresencia(). presenciaConectada_ cubre
+  // tanto "ya conectada" como "conectando ahora mismo", para que llamar a
+  // conectarPresencia() varias veces seguidas (QML no tiene un único punto
+  // de "volver a menús") no apile intentos.
+  QSslSocket presenciaSocket_;
+  bool presenciaConectada_ = false;
+  bool presenciaSenalesConectadas_ = false;  // connect() de presenciaSocket_ solo una vez
 };

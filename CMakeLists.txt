@@ -156,6 +156,7 @@ qt_add_qml_module(PokerClientMobile
         src/client-qt/qml-mobile/SelectorSegmentado.qml
         src/client-qt/qml-mobile/BarraSuperior.qml
         src/client-qt/qml-mobile/IconoAjustes.qml
+        src/client-qt/qml-mobile/IconoChuleta.qml
         src/client-qt/qml-mobile/CabeceraPullRefrescar.qml
         src/client-qt/qml-mobile/AsientoMini.qml
         src/client-qt/qml-mobile/ChatBox.qml

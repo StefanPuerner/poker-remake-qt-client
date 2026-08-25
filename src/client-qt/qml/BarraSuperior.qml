@@ -13,6 +13,10 @@ Item {
     id: barra
     property string textoCentro: ""
     property bool mostrarSaldo: false
+    // Solo tiene sentido en Partida (chuleta de combinaciones) — igual
+    // criterio que mostrarSaldo, en vez de mostrar el botón siempre y
+    // que quien lo pulse en Lobby/Salas no tenga nada que ver.
+    property bool mostrarChuleta: false
     required property string pantalla
     required property int miSaldoActual
     required property bool reconectandoAhora
@@ -22,6 +26,7 @@ Item {
     // leer su valor actual para mostrar nada aquí — así que basta con una
     // señal en vez de pasarlo también como required property.
     signal abrirAjustes()
+    signal abrirChuleta()
     height: 50 * Tema.escala
     // Flota en vez de ir pegada al borde — margen a los tres lados
     // puesto aquí (no en cada sitio donde se usa) para que las cinco
@@ -141,6 +146,44 @@ Item {
                     text: (barra.reconectandoAhora ? "Reconectando… · " : "") + barra.servidorHost + ":" + barra.servidorPuerto
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
+                }
+            }
+
+            Rectangle {
+                id: botonChuletaBarra
+                visible: barra.mostrarChuleta
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30 * Tema.escala
+                height: 30 * Tema.escala
+                radius: width / 2
+                border.width: 1
+                border.color: botonChuletaBarraArea.containsMouse ? Tema.colorAccent : Tema.colorBorde
+                gradient: Gradient {
+                    GradientStop {
+                        position: 0.0
+                        color: botonChuletaBarraArea.containsMouse ? Qt.lighter(Tema.colorAccent, 1.3) : "transparent"
+                    }
+                    GradientStop {
+                        position: 0.5
+                        color: botonChuletaBarraArea.containsMouse ? Tema.colorAccent : "transparent"
+                    }
+                    GradientStop {
+                        position: 1.0
+                        color: botonChuletaBarraArea.containsMouse ? Qt.darker(Tema.colorAccent, 1.25) : "transparent"
+                    }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: "?"
+                    font.bold: true
+                    font.pixelSize: 14 * Tema.escala
+                    color: botonChuletaBarraArea.containsMouse ? Tema.colorPanel : Tema.colorTextoTenue
+                }
+                MouseArea {
+                    id: botonChuletaBarraArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: barra.abrirChuleta()
                 }
             }
 

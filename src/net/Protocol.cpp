@@ -69,6 +69,28 @@ const char* msgTypeStr(MsgType t) {
       return "CONSULTAR_RANKING";
     case MsgType::CONSULTAR_ESTADISTICAS:
       return "CONSULTAR_ESTADISTICAS";
+    case MsgType::PRESENCIA_CONECTAR:
+      return "PRESENCIA_CONECTAR";
+    case MsgType::BUSCAR_JUGADORES:
+      return "BUSCAR_JUGADORES";
+    case MsgType::ENVIAR_SOLICITUD_AMISTAD:
+      return "ENVIAR_SOLICITUD_AMISTAD";
+    case MsgType::RESPONDER_SOLICITUD:
+      return "RESPONDER_SOLICITUD";
+    case MsgType::LISTAR_AMIGOS:
+      return "LISTAR_AMIGOS";
+    case MsgType::LISTAR_SOLICITUDES:
+      return "LISTAR_SOLICITUDES";
+    case MsgType::LISTAR_JUGADORES_RECIENTES:
+      return "LISTAR_JUGADORES_RECIENTES";
+    case MsgType::JUGADORES_BUSQUEDA_LISTA:
+      return "JUGADORES_BUSQUEDA_LISTA";
+    case MsgType::AMIGOS_LISTA:
+      return "AMIGOS_LISTA";
+    case MsgType::SOLICITUDES_LISTA:
+      return "SOLICITUDES_LISTA";
+    case MsgType::JUGADORES_RECIENTES_LISTA:
+      return "JUGADORES_RECIENTES_LISTA";
     default:
       return "UNKNOWN";
   }
@@ -101,6 +123,17 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "CHANGE_PASSWORD") return MsgType::CHANGE_PASSWORD;
   if (s == "CONSULTAR_RANKING") return MsgType::CONSULTAR_RANKING;
   if (s == "CONSULTAR_ESTADISTICAS") return MsgType::CONSULTAR_ESTADISTICAS;
+  if (s == "PRESENCIA_CONECTAR") return MsgType::PRESENCIA_CONECTAR;
+  if (s == "BUSCAR_JUGADORES") return MsgType::BUSCAR_JUGADORES;
+  if (s == "ENVIAR_SOLICITUD_AMISTAD") return MsgType::ENVIAR_SOLICITUD_AMISTAD;
+  if (s == "RESPONDER_SOLICITUD") return MsgType::RESPONDER_SOLICITUD;
+  if (s == "LISTAR_AMIGOS") return MsgType::LISTAR_AMIGOS;
+  if (s == "LISTAR_SOLICITUDES") return MsgType::LISTAR_SOLICITUDES;
+  if (s == "LISTAR_JUGADORES_RECIENTES") return MsgType::LISTAR_JUGADORES_RECIENTES;
+  if (s == "JUGADORES_BUSQUEDA_LISTA") return MsgType::JUGADORES_BUSQUEDA_LISTA;
+  if (s == "AMIGOS_LISTA") return MsgType::AMIGOS_LISTA;
+  if (s == "SOLICITUDES_LISTA") return MsgType::SOLICITUDES_LISTA;
+  if (s == "JUGADORES_RECIENTES_LISTA") return MsgType::JUGADORES_RECIENTES_LISTA;
   return MsgType::UNKNOWN;
 }
 

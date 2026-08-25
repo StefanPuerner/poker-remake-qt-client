@@ -69,6 +69,25 @@ enum class MsgType {
     CONSULTAR_RANKING,      ///< Pide el ranking global (sin payload, ni siquiera token -- es público).
     CONSULTAR_ESTADISTICAS, ///< Pide las estadísticas propias (token de la cuenta autenticada).
 
+    // Cliente → servidor -- Social. Mismo patrón efímero que
+    // CONSULTAR_RANKING salvo PRESENCIA_CONECTAR (única conexión que se
+    // queda viva mientras el cliente esté en menús).
+    PRESENCIA_CONECTAR,          ///< Abre el socket de presencia (token de cuenta real).
+    BUSCAR_JUGADORES,            ///< "token","consulta" -- búsqueda de cuentas por username.
+    ENVIAR_SOLICITUD_AMISTAD,    ///< "token","username_destino".
+    RESPONDER_SOLICITUD,         ///< "token","solicitud_id","aceptar" -- aceptar o rechazar.
+    LISTAR_AMIGOS,                ///< "token" -- amigos + presencia en vivo.
+    LISTAR_SOLICITUDES,          ///< "token" -- solicitudes entrantes pendientes.
+    LISTAR_JUGADORES_RECIENTES,  ///< "token" -- cuentas con mesa compartida en las últimas 24h.
+
+    // Servidor → cliente -- respuestas de listas de Social. Formato plano
+    // delimitado (";" entre filas, ":" entre campos, texto libre siempre al
+    // final) -- mismo criterio que el resto del protocolo, ver Protocol.hpp.
+    JUGADORES_BUSQUEDA_LISTA,    ///< "accountId:pendiente:username;..." -- respuesta a BUSCAR_JUGADORES.
+    AMIGOS_LISTA,                ///< "accountId:estado:username;..." -- respuesta a LISTAR_AMIGOS.
+    SOLICITUDES_LISTA,           ///< "solicitudId:fromAccountId:creadoEn:fromUsername;..." -- respuesta a LISTAR_SOLICITUDES.
+    JUGADORES_RECIENTES_LISTA,   ///< "accountId:pendiente:username;..." -- respuesta a LISTAR_JUGADORES_RECIENTES.
+
     UNKNOWN        ///< Tipo desconocido o mensaje malformado.
 };
 

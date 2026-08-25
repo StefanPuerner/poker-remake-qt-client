@@ -49,6 +49,7 @@ Rectangle {
     required property var modeloHistorial
     required property var modeloChat
     signal abrirAjustes()
+    signal abrirChuleta()
     // No se asigna a las propiedades "tuTurno"/"recompraSolicitada"
     // directamente desde dentro (romperían el binding de una vía que las
     // liga a ventana.tuTurno/ventana.recompraSolicitada en Main.qml — una
@@ -135,10 +136,17 @@ Rectangle {
             }
 
             IconoAjustes {
+                id: iconoAjustesCajon
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: 8 * Tema.escala
                 onAbrirAjustes: cajon.abrirAjustes()
+            }
+            IconoChuleta {
+                anchors.right: iconoAjustesCajon.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: 8 * Tema.escala
+                onAbrirChuleta: cajon.abrirChuleta()
             }
         }
 

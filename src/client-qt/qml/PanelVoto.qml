@@ -28,17 +28,21 @@ Row {
     // reales) pero nunca al revés -- jamás deja pasar un abandono que sí
     // vaya a contar sin avisar.
     required property bool contariaComoPerdida
-    signal continuar()
     signal abandonar()
     signal guardarYSalir()
 
     spacing: 8 * Tema.escala
     BotonRelleno {
         text: "Continuar a la siguiente mano"
-        onClicked: {
-            redcliente.votar();
-            continuar();
-        }
+        // Ya NO cierra el panel al pulsar (antes emitía "continuar()" al
+        // instante, optimista) -- quien instancie esto cierra su propio
+        // "votoAbierto" solo al recibir el ack real del servidor
+        // (NetworkClient::votoConfirmado(), evento VOTO_RECIBIDO). Si el
+        // voto se escribía en un socket ya muerto sin detectar aún la
+        // caída, el panel se cerraba igual y el usuario se quedaba con el
+        // overlay de showdown abierto sin nada dentro (softlock real
+        // reportado) -- ahora el panel se queda visible hasta confirmar.
+        onClicked: redcliente.votar();
     }
     BotonContorno {
         text: "Abandonar partida"

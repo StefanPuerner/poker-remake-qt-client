@@ -15,17 +15,17 @@ Row {
     // (invitado nunca cuenta + manos jugadas), no sabe si hay 2 cuentas
     // reales en la mesa -- puede sobrar el aviso alguna vez, nunca faltar.
     required property bool contariaComoPerdida
-    signal continuar()
     signal abandonar()
     signal guardarYSalir()
 
     spacing: 8 * Tema.escala
     BotonRelleno {
         text: "Continuar a la siguiente mano"
-        onClicked: {
-            redcliente.votar();
-            continuar();
-        }
+        // Ya NO cierra el panel al pulsar -- ver el comentario largo en
+        // PanelVoto.qml de qml/: quien instancie esto cierra su propio
+        // "votoAbierto" solo con el ack real del servidor
+        // (NetworkClient::votoConfirmado()), no de forma optimista.
+        onClicked: redcliente.votar();
     }
     BotonContorno {
         text: "Abandonar partida"
