@@ -5,16 +5,17 @@ pragma ComponentBehavior: Bound
 import QtQuick
 
 Rectangle {
+    id: carta
     // "bocaAbajo" o codigo vacío: dorso de carta (comunitaria todavía
     // no revelada). Con codigo real, siempre se ve la cara — así que
     // basta con no pasar "codigo" (o pasar "") para pedir un dorso.
     readonly property bool bocaAbajo: codigo.length === 0
     property string codigo
     property string rango: codigo.slice(0, codigo.length - 1)
-    // El servidor manda la letra cruda del palo (H/D/C/S); "palo" es el
-    // símbolo que se muestra, derivado de esa letra.
+    // El servidor manda la letra cruda del palo (H/D/C/S); PaloIcono la
+    // dibuja directamente (ver ese fichero) -- ya no hace falta derivar
+    // un símbolo Unicode de texto a partir de ella.
     property string letraPalo: codigo.slice(-1)
-    readonly property string palo: letraPalo === "H" ? "♥" : letraPalo === "D" ? "♦" : letraPalo === "C" ? "♣" : letraPalo === "S" ? "♠" : "?"
     property bool propia: false
     readonly property bool esRojo: letraPalo === "H" || letraPalo === "D"
     // Proporcional al propio tamaño de la carta, no un número fijo — así
@@ -59,13 +60,13 @@ Rectangle {
         border.color: Tema.colorAccent
         opacity: 0.7
     }
-    Text {
+    PaloIcono {
         visible: bocaAbajo
         anchors.centerIn: parent
-        text: "♣"
-        color: Tema.colorAccent
-        font.pixelSize: Math.round(parent.width * 0.4)
-        font.family: Tema.fuenteElegante
+        width: Math.round(parent.width * 0.4)
+        height: width
+        letraPalo: "C"
+        colorPalo: Tema.colorAccent
         opacity: 0.8
     }
 
@@ -81,12 +82,11 @@ Rectangle {
             font.family: Tema.fuenteElegante
             font.bold: true
         }
-        Text {
-            text: palo
-            color: esRojo ? "#c96a5c" : "#182019"
-            font.pixelSize: tamanoFuente
-            font.family: Tema.fuenteElegante
-            font.bold: true
+        PaloIcono {
+            width: tamanoFuente
+            height: width
+            letraPalo: carta.letraPalo
+            colorPalo: esRojo ? "#c96a5c" : "#182019"
         }
     }
     Column {
@@ -101,12 +101,11 @@ Rectangle {
             font.family: Tema.fuenteElegante
             font.bold: true
         }
-        Text {
-            text: palo
-            color: esRojo ? "#c96a5c" : "#182019"
-            font.pixelSize: tamanoFuente
-            font.family: Tema.fuenteElegante
-            font.bold: true
+        PaloIcono {
+            width: tamanoFuente
+            height: width
+            letraPalo: carta.letraPalo
+            colorPalo: esRojo ? "#c96a5c" : "#182019"
         }
     }
 }

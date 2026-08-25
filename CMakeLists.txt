@@ -51,6 +51,7 @@ qt_add_qml_module(PokerClientQt
         src/client-qt/qml/Main.qml
         src/client-qt/qml/Tema.qml
         src/client-qt/qml/Carta.qml
+        src/client-qt/qml/PaloIcono.qml
         src/client-qt/qml/Asiento.qml
         src/client-qt/qml/AsientoMini.qml
         src/client-qt/qml/Mesa.qml
@@ -159,6 +160,7 @@ qt_add_qml_module(PokerClientMobile
         src/client-qt/qml-mobile/AsientoMini.qml
         src/client-qt/qml-mobile/ChatBox.qml
         src/client-qt/qml-mobile/Carta.qml
+        src/client-qt/qml-mobile/PaloIcono.qml
         src/client-qt/qml-mobile/Asiento.qml
         src/client-qt/qml-mobile/Mesa.qml
         src/client-qt/qml-mobile/CajonPartida.qml

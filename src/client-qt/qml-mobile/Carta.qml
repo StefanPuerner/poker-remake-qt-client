@@ -5,11 +5,13 @@ import QtQuick
 import PokerQuickMobile
 
 Rectangle {
+    id: carta
     readonly property bool bocaAbajo: codigo.length === 0
     property string codigo
     property string rango: codigo.slice(0, codigo.length - 1)
+    // PaloIcono dibuja el símbolo directamente a partir de esta letra
+    // cruda (H/D/C/S) -- ver ese fichero.
     property string letraPalo: codigo.slice(-1)
-    readonly property string palo: letraPalo === "H" ? "♥" : letraPalo === "D" ? "♦" : letraPalo === "C" ? "♣" : letraPalo === "S" ? "♠" : "?"
     property bool propia: false
     readonly property bool esRojo: letraPalo === "H" || letraPalo === "D"
     readonly property int tamanoFuente: Math.round(width * 0.20)
@@ -43,13 +45,13 @@ Rectangle {
         border.color: Tema.colorAccent
         opacity: 0.7
     }
-    Text {
+    PaloIcono {
         visible: bocaAbajo
         anchors.centerIn: parent
-        text: "♣"
-        color: Tema.colorAccent
-        font.pixelSize: Math.round(parent.width * 0.4)
-        font.family: Tema.fuenteElegante
+        width: Math.round(parent.width * 0.4)
+        height: width
+        letraPalo: "C"
+        colorPalo: Tema.colorAccent
         opacity: 0.8
     }
 
@@ -65,12 +67,11 @@ Rectangle {
             font.family: Tema.fuenteElegante
             font.bold: true
         }
-        Text {
-            text: palo
-            color: esRojo ? "#c96a5c" : "#182019"
-            font.pixelSize: tamanoFuente
-            font.family: Tema.fuenteElegante
-            font.bold: true
+        PaloIcono {
+            width: tamanoFuente
+            height: width
+            letraPalo: carta.letraPalo
+            colorPalo: esRojo ? "#c96a5c" : "#182019"
         }
     }
     Column {
@@ -85,12 +86,11 @@ Rectangle {
             font.family: Tema.fuenteElegante
             font.bold: true
         }
-        Text {
-            text: palo
-            color: esRojo ? "#c96a5c" : "#182019"
-            font.pixelSize: tamanoFuente
-            font.family: Tema.fuenteElegante
-            font.bold: true
+        PaloIcono {
+            width: tamanoFuente
+            height: width
+            letraPalo: carta.letraPalo
+            colorPalo: esRojo ? "#c96a5c" : "#182019"
         }
     }
 }
