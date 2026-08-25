@@ -268,7 +268,6 @@ ApplicationWindow {
     property int statsManosGanadas: 0
     property int statsPartidasJugadas: 0
     property int statsPartidasGanadas: 0
-    property int statsFichasNetas: 0
     property int statsRachaActual: 0
     property int statsRachaMaxima: 0
     property int statsMayorBote: 0
@@ -1284,12 +1283,94 @@ ApplicationWindow {
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
             }
-            Text {
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Cuentas con al menos 10 partidas jugadas · ordenado por " +
-                      (ordenRankingActual === 0 ? "victorias" : "ratio")
-                color: Tema.colorTextoMuyTenue
-                font.pixelSize: 11 * Tema.escala
+                spacing: 6 * Tema.escala
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Cuentas con al menos 10 partidas jugadas · ordenado por " +
+                          (ordenRankingActual === 0 ? "victorias" : "ratio")
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 11 * Tema.escala
+                }
+                // Desplegable flotante: qué hace que una partida "cuente" no
+                // es obvio a simple vista (umbral antifarm, ver
+                // popupInfoRanking más abajo) -- pedido explícito tras
+                // confusión real con estadísticas que no subían.
+                Rectangle {
+                    id: iconoInfoRanking
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 15 * Tema.escala
+                    height: 15 * Tema.escala
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: 1.2
+                    border.color: Tema.colorTextoMuyTenue
+                    Text {
+                        anchors.centerIn: parent
+                        text: "i"
+                        font.italic: true
+                        font.bold: true
+                        font.pixelSize: 10 * Tema.escala
+                        color: Tema.colorTextoMuyTenue
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: popupInfoRanking.open()
+                    }
+                }
+            }
+
+            Popup {
+                id: popupInfoRanking
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                width: Math.min(420 * Tema.escala, (parent ? parent.width : 420) - 60 * Tema.escala)
+                padding: 20 * Tema.escala
+
+                background: Rectangle {
+                    color: Tema.colorPanel
+                    radius: 12 * Tema.escala
+                    border.width: 1
+                    border.color: Tema.colorAccent
+                }
+
+                contentItem: Column {
+                    spacing: 12 * Tema.escala
+                    Text {
+                        width: parent.width
+                        text: "¿Cuándo cuenta una partida?"
+                        color: Tema.colorTexto
+                        font.family: Tema.fuenteElegante
+                        font.bold: true
+                        font.pixelSize: 16 * Tema.escala
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Para las estadísticas personales (manos y partidas jugadas/ganadas, racha, mayor bote) hacen falta al menos 2 cuentas reales en la mesa y al menos 5 manos jugadas. Jugar en solitario contra bots no cuenta nunca, sea cual sea la duración."
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Las combinaciones mostradas en un showdown (mejor mano, contador por tipo) sí cuentan siempre, sin ese requisito."
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Para aparecer en este ranking hace falta además al menos 10 partidas jugadas de las que sí cuentan."
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 13 * Tema.escala
+                        wrapMode: Text.WordWrap
+                    }
+                }
             }
             SelectorPildoras {
                 id: tabsRanking
@@ -2800,7 +2881,6 @@ ApplicationWindow {
                 statsManosGanadas = m.manosGanadas;
                 statsPartidasJugadas = m.partidasJugadas;
                 statsPartidasGanadas = m.partidasGanadas;
-                statsFichasNetas = m.fichasNetas;
                 statsRachaActual = m.rachaActual;
                 statsRachaMaxima = m.rachaMaxima;
                 statsMayorBote = m.mayorBote;
@@ -3865,8 +3945,7 @@ ApplicationWindow {
                             { etiqueta: "Mayor bote ganado", valor: statsMayorBote + "" },
                             { etiqueta: "Mejor mano", valor: statsMejorManoFecha > 0
                                   ? statsMejorManoNombre + " (" + new Date(statsMejorManoFecha * 1000).toLocaleDateString() + ")"
-                                  : "—" },
-                            { etiqueta: "Fichas netas", valor: (statsFichasNetas >= 0 ? "+" : "") + statsFichasNetas }
+                                  : "—" }
                         ]
                         delegate: Row {
                             required property var modelData
@@ -3880,9 +3959,7 @@ ApplicationWindow {
                             Text {
                                 width: 160 * Tema.escala
                                 text: modelData.valor
-                                color: modelData.etiqueta === "Fichas netas"
-                                       ? (statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
-                                       : Tema.colorTexto
+                                color: Tema.colorTexto
                                 font.pixelSize: 12 * Tema.escala
                                 font.bold: true
                                 horizontalAlignment: Text.AlignRight

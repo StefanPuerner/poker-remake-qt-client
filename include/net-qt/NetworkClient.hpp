@@ -54,6 +54,12 @@ class NetworkClient : public QObject {
 
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
                             QString nombre) {
+    // Sala legacy: sin concepto de sala_id/código -- si veníamos de una
+    // sesión anterior con estos rellenos (crear/unirse a otra sala antes),
+    // limpiarlos aquí evita que una reconexión posterior intente un
+    // JOIN_GAME con datos de una sala que ya no tiene nada que ver.
+    salaIdActual_.clear();
+    codigoActual_.clear();
     iniciarConexionConMensaje(host, puerto, nombre,
         net::buildMsg(net::MsgType::JOIN_LOBBY, {{"nombre", nombre.toStdString()},
                                                   {"token", token_.toStdString()}}));
@@ -71,6 +77,12 @@ class NetworkClient : public QObject {
                              int dificultadBots, bool permitirRecompra,
                              bool rellenarConBots, bool abiertaTrasInicio,
                              bool preguntarExtension) {
+    // El sala_id de verdad no se conoce hasta que llegue SALA_CREADA (más
+    // abajo, en el bucle de readyRead) -- limpiar aquí lo de una sesión
+    // anterior evita usarlo por error si la conexión se cae ANTES de esa
+    // respuesta (ventana muy corta, pero incorrecta si no se limpia).
+    salaIdActual_.clear();
+    codigoActual_.clear();
     iniciarConexionConMensaje(host, puerto, nombre, net::buildMsg(net::MsgType::CREATE_GAME, {
         {"nombre",             nombre.toStdString()},
         {"nombre_sala",        nombreSala.toStdString()},
@@ -96,6 +108,11 @@ class NetworkClient : public QObject {
   /// ignora en el servidor.
   Q_INVOKABLE void unirseASala(const QString& host, quint16 puerto, QString nombre,
                                QString salaId, QString codigo) {
+    // Recordados para la reconexión mientras seguimos en el lobby (ver
+    // intentarReconexionAhora()) -- salaId puede venir vacío si se entró
+    // solo por código (sala privada), por eso se guardan los dos.
+    salaIdActual_ = salaId;
+    codigoActual_ = codigo;
     iniciarConexionConMensaje(host, puerto, nombre, net::buildMsg(net::MsgType::JOIN_GAME, {
         {"nombre",  nombre.toStdString()},
         {"sala_id", salaId.toStdString()},
@@ -194,6 +211,10 @@ class NetworkClient : public QObject {
   /// mismo fd en la sala recién lanzada, ver GAME_EVENT/SALA_CREADA).
   Q_INVOKABLE void cargarPartidaGuardada(const QString& host, quint16 puerto, QString nombre,
                                          QString archivo, QString nombreSala, bool publica) {
+    // Mismo motivo que en crearSala(): el sala_id de verdad llega luego,
+    // en SALA_CREADA.
+    salaIdActual_.clear();
+    codigoActual_.clear();
     iniciarConexionConMensaje(host, puerto, nombre, net::buildMsg(net::MsgType::CARGAR_PARTIDA, {
         {"nombre",      nombre.toStdString()},
         {"archivo",     archivo.toStdString()},
@@ -322,7 +343,6 @@ class NetworkClient : public QObject {
           m["manosGanadas"] = net::jsonGetInt(payload, "manos_ganadas");
           m["partidasJugadas"] = net::jsonGetInt(payload, "partidas_jugadas");
           m["partidasGanadas"] = net::jsonGetInt(payload, "partidas_ganadas");
-          m["fichasNetas"] = net::jsonGetInt(payload, "fichas_netas");
           m["rachaActual"] = net::jsonGetInt(payload, "racha_actual");
           m["rachaMaxima"] = net::jsonGetInt(payload, "racha_maxima");
           m["mayorBote"] = net::jsonGetInt(payload, "mayor_bote");
@@ -751,6 +771,13 @@ class NetworkClient : public QObject {
     nombre_ = nombre;
     hostGuardado_ = host;
     puertoGuardado_ = puerto;
+    // Nueva sesión de verdad (no un reintento de reconexión, que no pasa
+    // por aquí -- ver intentarReconexionAhora()): todavía no hay
+    // PARTIDA_INICIADA para ESTA sesión. salaIdActual_/codigoActual_ los
+    // gestiona cada Q_INVOKABLE (conectar/crearSala/unirseASala) por su
+    // cuenta, antes de llamar aquí -- tocarlos en este punto compartido
+    // pisaría el valor que unirseASala() ya dejó puesto justo antes.
+    enPartida_ = false;
     // Miembro, no capturado por valor en la lambda de "connected": esta
     // función puede llamarse varias veces (reintentar tras un ERROR_NOMBRE
     // con otro nombre, por ejemplo) — si las señales de socket_ solo se
@@ -803,9 +830,34 @@ class NetworkClient : public QObject {
         // servidor ya exige que coincida con la cuenta que tenía asignada
         // este nombre antes de caerse (ver AccountManager::tokenPerteneceACuenta) --
         // sin mandarlo aquí, una cuenta real nunca podría reconectar sola.
-        enviarMensaje(net::buildMsg(net::MsgType::JOIN_LOBBY,
-                                    {{"nombre", nombre_.toStdString()},
-                                     {"token", token_.toStdString()}}));
+        //
+        // JOIN_GAME en vez de JOIN_LOBBY si la caída fue mientras
+        // seguíamos en el lobby (partida sin empezar todavía): el
+        // dispatcher solo sabe reconectar a una sala EN_CURSO
+        // (buscarSalaDeJugadorEnCurso, ver RoomRegistry) -- una sala
+        // todavía en LOBBY es invisible por ese camino, así que JOIN_LOBBY
+        // ahí no tiene forma de encontrarla nunca (bug real, visto en
+        // producción: el temporizador de 60s se agotaba sin ninguna
+        // posibilidad real de éxito). JOIN_GAME con el sala_id/código
+        // recordados sí la encuentra (estaEnLobbyYHayHueco()), y si para
+        // entonces la sala ya pasó a EN_CURSO (el host pulsó "Empezar"
+        // justo en ese momento), el dispatcher también lo cubre (ver la
+        // rama nueva con tieneJugador() en el bloque JOIN_GAME de
+        // server/main.cpp). Una vez PARTIDA_INICIADA llega de verdad,
+        // enPartida_ pasa a true y el resto de caídas usa JOIN_LOBBY como
+        // siempre (ese camino ya funciona, no se toca).
+        if (!enPartida_ && (!salaIdActual_.isEmpty() || !codigoActual_.isEmpty())) {
+          enviarMensaje(net::buildMsg(net::MsgType::JOIN_GAME, {
+              {"nombre",  nombre_.toStdString()},
+              {"sala_id", salaIdActual_.toStdString()},
+              {"codigo",  codigoActual_.toStdString()},
+              {"token",   token_.toStdString()},
+          }));
+        } else {
+          enviarMensaje(net::buildMsg(net::MsgType::JOIN_LOBBY,
+                                      {{"nombre", nombre_.toStdString()},
+                                       {"token", token_.toStdString()}}));
+        }
       } else {
         conectadoAlgunaVez_ = true;
         emit conectado();
@@ -889,6 +941,11 @@ class NetworkClient : public QObject {
           } else if (tipo == "GAME_EVENT") {
             std::string evento = net::jsonGetStr(payload, "evento");
             if (evento == "PARTIDA_INICIADA") {
+              // A partir de aquí, si la conexión se cae, la reconexión
+              // debe usar JOIN_LOBBY (camino ya probado, ver
+              // intentarReconexionAhora()) en vez de JOIN_GAME -- la sala
+              // ya no está en lobby.
+              enPartida_ = true;
               int manos = net::jsonGetInt(payload, "manos");
               int tipoLimite = net::jsonGetInt(payload, "tipo_limite");
               bool permitirRecompra = net::jsonGetInt(payload, "permitir_recompra") == 1;
@@ -925,6 +982,11 @@ class NetworkClient : public QObject {
             } else if (evento == "SALA_CREADA") {
               QString salaId = QString::fromStdString(net::jsonGetStr(payload, "sala_id"));
               QString codigo = QString::fromStdString(net::jsonGetStr(payload, "codigo"));
+              // Igual que en unirseASala(): recordados para poder mandar
+              // JOIN_GAME (no JOIN_LOBBY) si la conexión se cae mientras
+              // seguimos en el lobby de ESTA sala recién creada.
+              salaIdActual_ = salaId;
+              codigoActual_ = codigo;
               emit salaCreada(salaId, codigo);
             } else if (evento == "ERROR_SALA") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
@@ -1195,6 +1257,18 @@ class NetworkClient : public QObject {
   QString token_;
   QString hostGuardado_;
   quint16 puertoGuardado_ = 0;
+  // Sala actual, para poder reconectar con JOIN_GAME (no JOIN_LOBBY) si la
+  // caída fue mientras seguíamos en su lobby -- ver
+  // intentarReconexionAhora() y el comentario largo ahí. Los rellenan
+  // conectar()/crearSala()/unirseASala()/cargarPartidaGuardada() (limpios)
+  // y el handler de SALA_CREADA (rellenos, en cuanto se conoce el id real).
+  QString salaIdActual_;
+  QString codigoActual_;
+  // true en cuanto llega GAME_EVENT/PARTIDA_INICIADA de verdad -- a partir
+  // de ahí una reconexión ya debe usar JOIN_LOBBY como siempre (la sala ya
+  // no está en lobby). false de nuevo al arrancar cualquier conexión nueva
+  // (ver iniciarConexionConMensaje()), nunca durante un simple reintento.
+  bool enPartida_ = false;
   bool conectadoAlgunaVez_ = false;
   bool reconectando_ = false;
   bool esperandoConfirmacionTrasReconectar_ = false;  // ver connected(), no basta con el handshake TCP

@@ -257,7 +257,6 @@ ApplicationWindow {
     property int statsManosGanadas: 0
     property int statsPartidasJugadas: 0
     property int statsPartidasGanadas: 0
-    property int statsFichasNetas: 0
     property int statsRachaActual: 0
     property int statsRachaMaxima: 0
     property int statsMayorBote: 0
@@ -406,6 +405,19 @@ ApplicationWindow {
         if (revealsShowdown.length > 0)
             return revealsShowdown.reduce(function(acc, r) { return acc + r.premio; }, 0);
         return boteActual;
+    }
+
+    // Fecha de "mejor mano" (pestaña Cuenta): toLocaleDateString() da un
+    // formato largo ("martes, 25 de agosto de 2026") que no cabe en la
+    // columna de valor de esta pantalla, mucho más estrecha que la de
+    // escritorio -- se corta a la mitad (visto en real). AA/MM/DD numérico
+    // en vez de intentar acortar el formato largo por locale.
+    function formatearFechaCorta(unixSegundos) {
+        var d = new Date(unixSegundos * 1000);
+        var dosDigitos = function(n) { return (n < 10 ? "0" : "") + n; };
+        return dosDigitos(d.getFullYear() % 100) + "/" +
+               dosDigitos(d.getMonth() + 1) + "/" +
+               dosDigitos(d.getDate());
     }
 
     Connections {
@@ -852,7 +864,6 @@ ApplicationWindow {
             ventana.statsManosGanadas = m.manosGanadas;
             ventana.statsPartidasJugadas = m.partidasJugadas;
             ventana.statsPartidasGanadas = m.partidasGanadas;
-            ventana.statsFichasNetas = m.fichasNetas;
             ventana.statsRachaActual = m.rachaActual;
             ventana.statsRachaMaxima = m.rachaMaxima;
             ventana.statsMayorBote = m.mayorBote;
@@ -1715,13 +1726,91 @@ ApplicationWindow {
         anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         anchors.top: barraRankingMovil.bottom
         anchors.topMargin: 12 * Tema.escala
+        spacing: 10 * Tema.escala
         SelectorPildoras {
             id: tabsRankingMovil
+            anchors.verticalCenter: parent.verticalCenter
             opciones: ["Más victorias", "Mejor ratio"]
             seleccionado: ventana.ordenRankingActual
             onSeleccionadoChanged: {
                 ventana.ordenRankingActual = seleccionado;
                 ventana.reordenarRanking();
+            }
+        }
+        // Desplegable flotante: qué hace que una partida "cuente" no es
+        // obvio a simple vista (umbral antifarm, ver popupInfoRankingMovil
+        // más abajo) -- mismo motivo que en escritorio.
+        Rectangle {
+            id: iconoInfoRankingMovil
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.max(22 * Tema.escala, Tema.tamanoMinTactil * 0.5)
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.width: 1.2
+            border.color: Tema.colorTextoMuyTenue
+            Text {
+                anchors.centerIn: parent
+                text: "i"
+                font.italic: true
+                font.bold: true
+                font.pixelSize: 12 * Tema.escala
+                color: Tema.colorTextoMuyTenue
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: popupInfoRankingMovil.open()
+            }
+        }
+    }
+
+    Popup {
+        id: popupInfoRankingMovil
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(340 * Tema.escala, (parent ? parent.width : 340) - 40 * Tema.escala)
+        padding: 18 * Tema.escala
+
+        background: Rectangle {
+            color: Tema.colorPanel
+            radius: 12 * Tema.escala
+            border.width: 1
+            border.color: Tema.colorAccent
+        }
+
+        contentItem: Column {
+            spacing: 10 * Tema.escala
+            Text {
+                width: parent.width
+                text: "¿Cuándo cuenta una partida?"
+                color: Tema.colorTexto
+                font.family: Tema.fuenteElegante
+                font.bold: true
+                font.pixelSize: 14 * Tema.escala
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: "Para las estadísticas personales (manos y partidas jugadas/ganadas, racha, mayor bote) hacen falta al menos 2 cuentas reales en la mesa y al menos 5 manos jugadas. Jugar en solitario contra bots no cuenta nunca, sea cual sea la duración."
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: "Las combinaciones mostradas en un showdown (mejor mano, contador por tipo) sí cuentan siempre, sin ese requisito."
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: "Para aparecer en este ranking hace falta además al menos 10 partidas jugadas de las que sí cuentan."
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
+                wrapMode: Text.WordWrap
             }
         }
     }
@@ -3157,9 +3246,8 @@ ApplicationWindow {
                                 { etiqueta: "Manos ganadas", valor: ventana.statsManosGanadas + "" },
                                 { etiqueta: "Mayor bote ganado", valor: ventana.statsMayorBote + "" },
                                 { etiqueta: "Mejor mano", valor: ventana.statsMejorManoFecha > 0
-                                      ? ventana.statsMejorManoNombre + " (" + new Date(ventana.statsMejorManoFecha * 1000).toLocaleDateString() + ")"
-                                      : "—" },
-                                { etiqueta: "Fichas netas", valor: (ventana.statsFichasNetas >= 0 ? "+" : "") + ventana.statsFichasNetas }
+                                      ? ventana.statsMejorManoNombre + " (" + ventana.formatearFechaCorta(ventana.statsMejorManoFecha) + ")"
+                                      : "—" }
                             ]
                             delegate: Row {
                                 required property var modelData
@@ -3173,9 +3261,7 @@ ApplicationWindow {
                                 Text {
                                     width: 150 * Tema.escala
                                     text: modelData.valor
-                                    color: modelData.etiqueta === "Fichas netas"
-                                           ? (ventana.statsFichasNetas >= 0 ? Tema.colorAccent : Tema.colorPeligro)
-                                           : Tema.colorTexto
+                                    color: Tema.colorTexto
                                     font.pixelSize: 11 * Tema.escala
                                     font.bold: true
                                     horizontalAlignment: Text.AlignRight
