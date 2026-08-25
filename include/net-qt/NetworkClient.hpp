@@ -8,6 +8,7 @@
 #include <QElapsedTimer>
 #include <QList>
 #include <QObject>
+#include <QSettings>
 #include <QSslCertificate>
 #include <QSslError>
 #include <QSslKey>
@@ -60,6 +61,7 @@ class NetworkClient : public QObject {
     // JOIN_GAME con datos de una sala que ya no tiene nada que ver.
     salaIdActual_.clear();
     codigoActual_.clear();
+    olvidarSesionEnDisco();
     iniciarConexionConMensaje(host, puerto, nombre,
         net::buildMsg(net::MsgType::JOIN_LOBBY, {{"nombre", nombre.toStdString()},
                                                   {"token", token_.toStdString()}}));
@@ -119,6 +121,7 @@ class NetworkClient : public QObject {
         {"codigo",  codigo.toStdString()},
         {"token",   token_.toStdString()},
     }));
+    guardarSesionEnDisco();
   }
 
   /**
@@ -416,11 +419,13 @@ class NetworkClient : public QObject {
   Q_INVOKABLE void abandonar() {
     desconexionEsperada_ = true;  // el servidor va a cerrar nuestro socket a propósito
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "LEAVE"}}));
+    olvidarSesionEnDisco();
   }
 
   Q_INVOKABLE void guardarYSalir() {
     desconexionEsperada_ = true;
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "SAVE_AND_EXIT"}}));
+    olvidarSesionEnDisco();
   }
 
  signals:
@@ -730,6 +735,11 @@ class NetworkClient : public QObject {
       timerReintento_.stop();
       reconectando_ = false;
       esperandoConfirmacionTrasReconectar_ = false;
+      // Se agotaron los 60s de verdad -- si esto venía de un arranque en
+      // frío (intentarRecuperarSesion()), la sala guardada ya no sirve
+      // para nada: olvidarla evita reintentar la misma sala muerta la
+      // próxima vez que se abra la app.
+      olvidarSesionEnDisco();
       emit reconexionFallida();
       return;
     }
@@ -757,7 +767,109 @@ class NetworkClient : public QObject {
     socket_.connectToHostEncrypted(hostGuardado_, puertoGuardado_);
   }
 
+  /**
+   * @brief Recupera una sesión de sala/partida tras un arranque en frío —
+   * Android puede matar el proceso entero al mandar la app a segundo
+   * plano (cambiar de app un momento, una notificación...), no solo
+   * suspenderlo: en ese caso NO hay nada que "reanudar" en memoria, la
+   * próxima vez que el usuario abre la app es un proceso nuevo desde
+   * cero, con salaIdActual_/token_/enPartida_/etc. todos a su valor por
+   * defecto — la reconexión normal (intentarReconexionAhora(), pensada
+   * para una caída de socket con el proceso vivo) no tiene nada que
+   * reintentar. android.app.background_running=true (ver AndroidManifest)
+   * reduce cuánto pasa esto, pero no lo elimina.
+   *
+   * Se llama desde QML justo después de que iniciarSesionConToken() haya
+   * validado el token (onLoginOk) -- token_/nombre_ ya están al día en
+   * ese punto. Lo que había en juego antes de que el proceso muriera lo
+   * lee esta función sola, de disco (ver guardarSesionEnDisco() más
+   * abajo) -- QML no guarda ni pasa nada de la sala a propósito: la
+   * escritura vive aquí, junto al resto del estado de sesión, para poder
+   * forzar sync() a disco en el momento exacto en que cambia (ver esa
+   * función) sin depender de cuándo decida escribir Qt.labs.settings del
+   * lado QML.
+   *
+   * @return Un mapa con "recuperando" (bool) y, si es true, "enPartida"
+   * (bool) -- para que QML decida a qué pantalla ir (Lobby/Partida) sin
+   * necesitar una señal aparte. Si de verdad intenta algo, emite
+   * reconectando() igual que cualquier otra reconexión (mismo overlay).
+   * Reutiliza el mismo camino JOIN_GAME/JOIN_LOBBY que ya usa la
+   * reconexión normal (ver el bloque "reconectando_" en
+   * iniciarConexionConMensaje()) en vez de duplicar esa lógica — la única
+   * diferencia real es de dónde sale el estado a recuperar (memoria viva,
+   * en el caso normal; disco, en un arranque en frío).
+   *
+   * Si el servidor ya no reconoce la sala (la ventana de reconexión de
+   * 60s hace tiempo que expiró, o la sala en lobby ya no existe), esto
+   * termina igual que cualquier reconexión fallida: reconexionFallida(),
+   * que ya limpia lo persistido (ver más abajo) para no reintentar la
+   * misma sala muerta en el próximo arranque.
+   */
+  Q_INVOKABLE QVariantMap intentarRecuperarSesion(const QString& host, quint16 puerto) {
+    QSettings ajustes;
+    ajustes.beginGroup(QStringLiteral("sesionSala"));
+    QString salaId = ajustes.value(QStringLiteral("salaId")).toString();
+    QString codigo = ajustes.value(QStringLiteral("codigo")).toString();
+    bool enPartida = ajustes.value(QStringLiteral("enPartida"), false).toBool();
+    ajustes.endGroup();
+
+    if (salaId.isEmpty() && codigo.isEmpty()) return {{"recuperando", false}};
+
+    salaIdActual_ = salaId;
+    codigoActual_ = codigo;
+    iniciarConexionConMensaje(host, puerto, nombre_,
+        net::buildMsg(net::MsgType::JOIN_LOBBY, {{"nombre", nombre_.toStdString()},
+                                                  {"token", token_.toStdString()}}));
+    // iniciarConexionConMensaje() acaba de resetear enPartida_ a false y
+    // dejar salaIdActual_/codigoActual_ tal cual (asume una sesión NUEVA,
+    // no una que se está recuperando) -- se restauran aquí los valores
+    // reales de antes de que el proceso muriera.
+    salaIdActual_ = salaId;
+    codigoActual_ = codigo;
+    enPartida_ = enPartida;
+    iniciarReconexion();
+    return {{"recuperando", true}, {"enPartida", enPartida}};
+  }
+
  private:
+  /// Escribe a disco (con sync() explícito, ver el porqué abajo) lo que
+  /// hace falta para intentarRecuperarSesion() tras un arranque en frío:
+  /// sala/código/si ya empezó la partida, y el host/puerto donde estaba
+  /// conectado (salaIdActual_/codigoActual_/enPartida_ + hostGuardado_/
+  /// puertoGuardado_, todos ya al día para cuando se llama esto). Se
+  /// llama en cada punto donde ese estado cambia de verdad (unirseASala(),
+  /// SALA_CREADA, PARTIDA_INICIADA) -- nunca desde QML, ver el comentario
+  /// largo de intentarRecuperarSesion().
+  ///
+  /// sync() explícito, no confiar en el volcado periódico/al destruirse
+  /// que hace QSettings por defecto: el escenario que esto cubre es
+  /// EXACTAMENTE un proceso al que no le da tiempo a hacer nada al morir
+  /// (Android lo mata sin aviso) -- sin forzar la escritura ahora mismo,
+  /// el cambio más reciente (justo el que más importa, el que se acaba
+  /// de producir) podría no haber llegado a disco todavía cuando el
+  /// proceso desaparece.
+  void guardarSesionEnDisco() {
+    QSettings ajustes;
+    ajustes.beginGroup(QStringLiteral("sesionSala"));
+    ajustes.setValue(QStringLiteral("salaId"), salaIdActual_);
+    ajustes.setValue(QStringLiteral("codigo"), codigoActual_);
+    ajustes.setValue(QStringLiteral("enPartida"), enPartida_);
+    ajustes.endGroup();
+    ajustes.sync();
+  }
+
+  /// Contrapartida de guardarSesionEnDisco() -- se llama en cada punto
+  /// donde la sala guardada deja de ser válida para recuperar (fin de
+  /// partida, guardar y salir, abandonar, sesión legacy sin sala,
+  /// reconexión que se da por perdida, o el servidor rechazando la sala
+  /// de plano). Mismo sync() explícito y mismo motivo.
+  void olvidarSesionEnDisco() {
+    QSettings ajustes;
+    ajustes.beginGroup(QStringLiteral("sesionSala"));
+    ajustes.remove(QStringLiteral(""));
+    ajustes.endGroup();
+    ajustes.sync();
+  }
   /**
    * @brief Conexión persistente compartida por conectar()/crearSala()/unirseASala().
    *
@@ -946,6 +1058,7 @@ class NetworkClient : public QObject {
               // intentarReconexionAhora()) en vez de JOIN_GAME -- la sala
               // ya no está en lobby.
               enPartida_ = true;
+              guardarSesionEnDisco();
               int manos = net::jsonGetInt(payload, "manos");
               int tipoLimite = net::jsonGetInt(payload, "tipo_limite");
               bool permitirRecompra = net::jsonGetInt(payload, "permitir_recompra") == 1;
@@ -987,8 +1100,14 @@ class NetworkClient : public QObject {
               // seguimos en el lobby de ESTA sala recién creada.
               salaIdActual_ = salaId;
               codigoActual_ = codigo;
+              guardarSesionEnDisco();
               emit salaCreada(salaId, codigo);
             } else if (evento == "ERROR_SALA") {
+              // También llega aquí si intentarRecuperarSesion() (arranque
+              // en frío) apuntaba a una sala que el servidor ya no
+              // reconoce -- olvidarla evita reintentar la misma sala
+              // muerta en el próximo arranque.
+              olvidarSesionEnDisco();
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
               // Mismo motivo que ERROR_NOMBRE más abajo: el servidor cierra
               // el socket justo después — no hay nada que reconectar.
@@ -1143,9 +1262,11 @@ class NetworkClient : public QObject {
               eliminacionesFinalCsv_ =
                   QString::fromStdString(net::jsonGetStr(payload, "eliminaciones"));
               emit estadisticasFinCambiaron();
+              olvidarSesionEnDisco();
               emit finDePartida(ganador, saldo, evento == "FIN_PARTIDA_LIMITE");
             } else if (evento == "ABANDONASTE") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+              olvidarSesionEnDisco();
               emit abandonaste(mensaje);
             } else if (evento == "JUGADOR_SALE") {
               QString jugador =

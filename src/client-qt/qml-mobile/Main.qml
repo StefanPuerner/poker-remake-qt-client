@@ -449,8 +449,23 @@ ApplicationWindow {
             nombreJugador = username;
             tokenSesion = token;
             mensajeErrorLogin = "";
-            pantalla = "Salas";
-            redcliente.refrescarSalas(servidorHost, servidorPuerto);
+            // Sala/partida guardada en disco de una sesión anterior
+            // (Android mató el proceso mientras seguíamos dentro) -- ver
+            // el comentario largo en NetworkClient::intentarRecuperarSesion().
+            // El propio C++ decide si hay algo que recuperar (persistencia
+            // vive ahí, no aquí, para poder forzar sync() a disco en el
+            // momento exacto en que cambia -- ver esa función). El overlay
+            // de "reconectando" lo dispara solo la señal reconectando()
+            // que esto emite si de verdad intenta algo (mismo mecanismo
+            // que cualquier otra reconexión, ver onReconectando más abajo);
+            // si falla, onReconexionFallida ya limpia lo persistido.
+            var recuperacion = redcliente.intentarRecuperarSesion(servidorHost, servidorPuerto);
+            if (recuperacion.recuperando) {
+                pantalla = recuperacion.enPartida ? "Partida" : "Lobby";
+            } else {
+                pantalla = "Salas";
+                redcliente.refrescarSalas(servidorHost, servidorPuerto);
+            }
         }
         function onLoginError(mensaje) {
             mensajeErrorLogin = mensaje;
