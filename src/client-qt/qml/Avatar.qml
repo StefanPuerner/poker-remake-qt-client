@@ -68,6 +68,7 @@ Item {
 
     // ── Marco metálico (niveles permanentes) ────────────────────────────
     Rectangle {
+        id: marcoMetalico
         visible: avatar.esTierMetalico
         anchors.centerIn: parent
         width: avatar.tamano * 1.16
@@ -92,12 +93,21 @@ Item {
                 border.width: Math.max(1, avatar.tamano * 0.014)
                 border.color: avatar.tierActual[3]
                 rotation: 45
-                anchors.horizontalCenter: index % 2 === 0 ? parent.horizontalCenter : undefined
-                anchors.verticalCenter: index % 2 === 1 ? parent.verticalCenter : undefined
-                anchors.top: index === 0 ? parent.top : undefined
-                anchors.bottom: index === 2 ? parent.bottom : undefined
-                anchors.left: index === 3 ? parent.left : undefined
-                anchors.right: index === 1 ? parent.right : undefined
+                // Referencia explícita a marcoMetalico (por id) en vez de
+                // "parent" -- un Repeater no garantiza que sus delegates
+                // tengan ya un parent válido en el instante en que se
+                // evalúan estos bindings de anchors por primera vez (visto
+                // en producción: "Cannot read property ... of null" al
+                // reconstruir listas de amigos con muchos avatares a la
+                // vez, 2026-08-27). "parent" apuntaba a lo mismo en la
+                // práctica una vez asentado, pero por un instante puede ser
+                // null -- referenciar el id evita esa ventana.
+                anchors.horizontalCenter: index % 2 === 0 ? marcoMetalico.horizontalCenter : undefined
+                anchors.verticalCenter: index % 2 === 1 ? marcoMetalico.verticalCenter : undefined
+                anchors.top: index === 0 ? marcoMetalico.top : undefined
+                anchors.bottom: index === 2 ? marcoMetalico.bottom : undefined
+                anchors.left: index === 3 ? marcoMetalico.left : undefined
+                anchors.right: index === 1 ? marcoMetalico.right : undefined
                 anchors.margins: avatar.tamano * 0.02
             }
         }

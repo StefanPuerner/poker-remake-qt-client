@@ -10,6 +10,10 @@ Row {
     id: selector
     property var opciones: []
     property int seleccionado: 0
+    // Ver el comentario largo en SelectorSegmentado.qml -- mismo motivo:
+    // este componente nunca escribe su propia "seleccionado" para no
+    // romper un binding declarativo externo.
+    signal elegido(int indice)
     spacing: 6 * Tema.escala
     Repeater {
         model: selector.opciones
@@ -32,7 +36,7 @@ Row {
             }
             MouseArea {
                 anchors.fill: parent
-                onClicked: selector.seleccionado = pildora.index
+                onClicked: selector.elegido(pildora.index)
             }
         }
     }

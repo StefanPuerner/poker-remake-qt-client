@@ -170,6 +170,14 @@ ApplicationWindow {
         if (ajustesAbiertos && tokenSesion !== "") {
             redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
         }
+        // Al cerrar: vuelve a la pestaña "Ajustes" y al principio del
+        // scroll -- estado inicial de verdad la próxima vez que se abra,
+        // no lo que se hubiera dejado a medias (pedido explícito
+        // 2026-08-28, mismo criterio que el reset de Social al reentrar).
+        if (!ajustesAbiertos) {
+            pestanaAjustesActual = 0;
+            if (scrollAjustes.contentItem) scrollAjustes.contentItem.contentY = 0;
+        }
     }
     // Pestaña activa del cajón lateral: 0 = Ajustes (tema/mesa/cliente),
     // 1 = Cuenta (gestión de cuenta o, sin sesión, acceso a login/
@@ -189,6 +197,26 @@ ApplicationWindow {
     SoundEffect {
         id: sonidoTurno
         source: "qrc:/qt/qml/PokerQuick/assets/sonidos/turno.wav"
+    }
+    // Crash real en producción (backtrace con gdb, 2026-08-28):
+    // "corrupted double-linked list" / SIGABRT SIEMPRE al cerrar la
+    // ventana, dentro de pw_stream_destroy() (PipeWire) llamado desde
+    // QRtAudioEngine::~QRtAudioEngine() -- el motor de audio de
+    // QtMultimedia se destruye en cascada junto con el resto del árbol de
+    // QObject cuando ~QQmlApplicationEngine() tira la ventana abajo,
+    // FUERA del bucle de eventos ya funcionando con normalidad. Sin
+    // relación con NetworkClient/presencia (confirmado en el backtrace).
+    // Parando el sonido (y soltando su "source", lo que libera el stream
+    // de PipeWire de verdad) en cuanto se sabe que la app va a cerrar --
+    // mientras el bucle de eventos SIGUE vivo -- el stream se cierra
+    // limpio en vez de quedar a medio destruir cuando le toca el turno en
+    // la cascada de destructores.
+    Connections {
+        target: Qt.application
+        function onAboutToQuit() {
+            sonidoTurno.stop();
+            sonidoTurno.source = "";
+        }
     }
     property bool confirmarAllIn: false
     // Centralizados para que la barra superior pueda mostrarlos, y para no
@@ -239,6 +267,11 @@ ApplicationWindow {
     // valor si se creó como privada; se muestra en el Lobby para que el
     // host pueda compartirlo. Se limpia al volver a Inicio.
     property string codigoSalaPropia: ""
+    // El sala_id propio -- antes solo lo conocía quien CREABA la sala
+    // (nunca se guardaba en ningún sitio, ver SALA_CREADA); ahora también
+    // llega al unirse (SALA_UNIDA, mismo evento del lado NetworkClient::
+    // salaCreada). Necesario para invitarASala() desde la sala de espera.
+    property string salaIdPropia: ""
     ListModel {
         id: salasDisponibles
     }
@@ -284,6 +317,72 @@ ApplicationWindow {
     // parámetros, ver el comentario largo en NetworkClient.hpp).
     property string pendienteSolicitudUsername: ""
     property string mensajeErrorSocial: ""
+    // ── Amigos + chat fusionados (Cerrar Social v1) ─────────────────────
+    // "Chats" no es una pestaña aparte -- cada fila de Amigos ya muestra
+    // presencia Y el último mensaje (si lo hay), decisión tomada tras
+    // playtest real (2026-08-27): la pestaña separada dejaba "atrás" en un
+    // callejón sin salida. modeloResumenChats sigue siendo la fuente
+    // cruda (llega de listarResumenChats()); modeloAmigosConChat es el
+    // cruce por accountId que de verdad pinta la lista, reconstruido cada
+    // vez que cualquiera de las dos fuentes cambia.
+    ListModel {
+        id: modeloResumenChats
+    }
+    ListModel {
+        id: modeloAmigosConChat
+    }
+    function reconstruirModeloAmigosConChat() {
+        var resumenPorId = {};
+        for (var i = 0; i < modeloResumenChats.count; i++) {
+            var r = modeloResumenChats.get(i);
+            resumenPorId[r.accountId] = r;
+        }
+        modeloAmigosConChat.clear();
+        for (var j = 0; j < modeloAmigos.count; j++) {
+            var a = modeloAmigos.get(j);
+            var r2 = resumenPorId[a.accountId];
+            modeloAmigosConChat.append({
+                accountId: a.accountId,
+                username: a.username,
+                estado: a.estado,
+                ultimoTexto: r2 ? r2.ultimoTexto : "",
+                // !! fuerza booleano de verdad -- parsearFilasChat() (C++)
+                // detecta "0"/"1" como número y los manda como int, no
+                // bool; sin el !!, el primer amigo sin chat aún (rama
+                // "false" de abajo, sí boolean) fijaba el rol de
+                // ListModel como Bool, y el siguiente amigo CON chat
+                // (r2.ultimoEsMio como int) rompía con "Can't assign to
+                // existing role 'ultimoEsMio' of different type".
+                ultimoEsMio: r2 ? !!r2.ultimoEsMio : false,
+                noLeidos: r2 ? r2.noLeidos : 0
+            });
+            if (chatAmigoSeleccionado === a.accountId) chatAmigoSeleccionadoEstado = a.estado;
+        }
+    }
+    // Chat embebido en la pestaña Amigos, estilo WhatsApp Web (lista a la
+    // izquierda, conversación a la derecha) -- reemplaza al popup flotante
+    // VistaChatDirecto de antes (2026-08-27): con la pestaña ya rediseñada
+    // como una pantalla de chat de verdad, ya no hacía falta un overlay
+    // aparte para evitar el "callejón sin salida" del primer intento (ver
+    // el historial de qt_gameplay_ui_backlog/memoria de esa sesión).
+    // -1 = ningún amigo seleccionado, el panel derecho muestra el placeholder.
+    property int chatAmigoSeleccionado: -1
+    property string chatAmigoSeleccionadoNombre: ""
+    // Se mantiene al día en cada reconstruirModeloAmigosConChat() (presencia
+    // se refresca sola cada 15s, ver el Timer de la pestaña Amigos), no solo
+    // en el instante de abrir -- así la cabecera del chat no se queda con un
+    // estado de presencia congelado mientras la conversación sigue abierta.
+    property string chatAmigoSeleccionadoEstado: ""
+    ListModel {
+        id: modeloConversacionAmigos
+    }
+    function abrirChatAmigo(id, nombre, estado) {
+        chatAmigoSeleccionado = id;
+        chatAmigoSeleccionadoNombre = nombre;
+        chatAmigoSeleccionadoEstado = estado;
+        modeloConversacionAmigos.clear();
+        redcliente.listarConversacion(servidorHost, servidorPuerto, id);
+    }
     // El estado "pendiente" de cada fila viene del SERVIDOR (buscarJugadores()/
     // listarJugadoresRecientes() ya lo calculan, ver AccountManager.cpp) --
     // no de una lista local en memoria. Antes se marcaba "enviada" a mano
@@ -503,6 +602,27 @@ ApplicationWindow {
         anchors.fill: parent
         color: Tema.colorFondo
 
+        // Cualquier TextField enfocado (campo de código de sala, búsqueda,
+        // renombrar guardada...) se quedaba con el foco -- y el aro/subrayado
+        // de "activo" encendido -- indefinidamente si dejabas de escribir y
+        // pulsabas en otro sitio que no fuera OTRO control con foco propio,
+        // en vez de perderlo como en cualquier formulario normal (pedido
+        // explícito 2026-08-28). Un único MouseArea de fondo, DEBAJO de
+        // toda pantalla (primer hijo = z más bajo entre hermanos sin "z"
+        // explícito) que ninguna otra pantalla reclama: cualquier click que
+        // no toque un control real "cae" hasta aquí y se lleva el foco a un
+        // Item neutro, sin quitárselo a nada que sí lo necesite (un botón
+        // pulsado, por ejemplo, ya consume el evento antes de llegar aquí).
+        Item {
+            id: capturaFocoFondo
+            anchors.fill: parent
+            focus: true
+            MouseArea {
+                anchors.fill: parent
+                onClicked: capturaFocoFondo.forceActiveFocus()
+            }
+        }
+
         // ── Riel de navegación (Salas/Ranking/Torneos/Social) ─────────────
         // Instancia única, visible solo en las 4 pantallas "hub" -- ver
         // RielNavegacion.qml. Las demás pantallas (Inicio/Login/Registro/
@@ -520,7 +640,13 @@ ApplicationWindow {
                 // no hace falta un botón "Refrescar" aparte para esto.
                 if (nombre === "Ranking") redcliente.consultarRanking(servidorHost, servidorPuerto);
                 if (nombre === "Social" && tokenSesion !== "") {
+                    // Estado inicial de verdad al reentrar -- pestaña
+                    // Amigos y sin chat abierto, no lo que se hubiera
+                    // dejado a medias la última vez (pedido explícito
+                    // 2026-08-28: el estado efímero de una pantalla se
+                    // reinicia al salir de ella, no se queda "congelado").
                     pestanaSocialActual = 0;
+                    chatAmigoSeleccionado = -1;
                     mensajeErrorSocial = "";
                     redcliente.listarAmigos(servidorHost, servidorPuerto);
                 }
@@ -933,7 +1059,19 @@ ApplicationWindow {
             reconectandoAhora: ventana.reconectandoAhora
             servidorHost: ventana.servidorHost
             servidorPuerto: ventana.servidorPuerto
+            mostrarRefrescar: true
+            mostrarSalir: true
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
+            onRefrescar: viendoGuardadas ? redcliente.listarGuardadas(servidorHost, servidorPuerto)
+                                          : redcliente.refrescarSalas(servidorHost, servidorPuerto)
+            // "ventana." explícito -- mismo bug de scoping que el
+            // comentario de arriba ("pragma ComponentBehavior: Bound"):
+            // "pantalla" a secas aquí se resolvería contra la required
+            // property PROPIA de BarraSuperior (pantalla: ventana.pantalla,
+            // un binding de solo lectura), no navegaría a ningún sitio y
+            // de paso rompería ese binding -- bug real, "Salir" no hacía
+            // nada (2026-08-28).
+            onSalir: ventana.pantalla = "Inicio"
         }
         Column {
             visible: pantalla === "Salas"
@@ -946,348 +1084,377 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 25 * Tema.escala
             spacing: 16 * Tema.escala
-            // Antes 420 — con archivo + fecha + 3 botones en cada fila de
-            // guardadas, se quedaba corta y el texto se solapaba con los
-            // botones. Más ancha, y con tope según el ancho de ventana
-            // (mismo patrón que CrearSala) para pantallas pequeñas.
-            width: Math.min(680 * Tema.escala, ventana.width - 60 * Tema.escala)
+            // Tope subido de 680 a 1040*escala (rediseño "aprovechar el
+            // ancho de la ventana", 2026-08-27) -- con la ventana de
+            // referencia (1040×780, escala=1) esto sigue siendo el mismo
+            // 680 de antes gracias al Math.min de abajo; el salto real solo
+            // se nota en ventanas más anchas, donde antes sobraba la mitad
+            // del hueco junto al riel.
+            width: Math.min(1040 * Tema.escala, ventana.width - 60 * Tema.escala)
 
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: viendoGuardadas ? "Partidas guardadas" : "Salas disponibles"
-                color: Tema.colorTexto
-                font.family: Tema.fuenteElegante
-                font.pixelSize: 22 * Tema.escala
-            }
-
-            // Mismo patrón de pestañas que Historial/Chat en PanelLateral.
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8 * Tema.escala
-                Rectangle {
-                    width: textoTabSalasPub.implicitWidth + 24 * Tema.escala
-                    height: 30 * Tema.escala
-                    radius: height / 2
-                    color: !viendoGuardadas ? Tema.colorAccent : "transparent"
-                    Text {
-                        id: textoTabSalasPub
-                        anchors.centerIn: parent
-                        text: "Salas públicas"
-                        color: !viendoGuardadas ? Tema.colorPanel : Tema.colorTextoTenue
-                        font.bold: !viendoGuardadas
-                        font.pixelSize: 13 * Tema.escala
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: viendoGuardadas = false
-                    }
+            // Título + "unirse por código" en la misma fila -- antes el
+            // campo de código vivía suelto al final de la pantalla, lejos
+            // del título y de las salas a las que en realidad se refiere.
+            Item {
+                width: parent.width
+                height: Math.max(textoTituloSalas.implicitHeight, filaCodigoSalas.implicitHeight)
+                Text {
+                    id: textoTituloSalas
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: viendoGuardadas ? "Partidas guardadas" : "Salas disponibles"
+                    color: Tema.colorTexto
+                    font.family: Tema.fuenteElegante
+                    font.pixelSize: 24 * Tema.escala
                 }
-                Rectangle {
-                    width: textoTabGuardadas.implicitWidth + 24 * Tema.escala
-                    height: 30 * Tema.escala
-                    radius: height / 2
-                    color: viendoGuardadas ? Tema.colorAccent : "transparent"
-                    Text {
-                        id: textoTabGuardadas
-                        anchors.centerIn: parent
-                        text: "Partidas guardadas"
-                        color: viendoGuardadas ? Tema.colorPanel : Tema.colorTextoTenue
-                        font.bold: viendoGuardadas
+                Row {
+                    id: filaCodigoSalas
+                    visible: !viendoGuardadas
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8 * Tema.escala
+                    TextField {
+                        id: campoCodigoUnion
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 170 * Tema.escala
+                        placeholderText: (activeFocus || text.length > 0) ? "" : "Código de sala privada"
+                        color: Tema.colorTexto
                         font.pixelSize: 13 * Tema.escala
+                        placeholderTextColor: Tema.colorTextoMuyTenue
+                        // Mismo campo "subrayado" sin caja que Login/Registro
+                        // -- ver el comentario original en el punto donde
+                        // vivía antes esta fila.
+                        background: Rectangle {
+                            color: "transparent"
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: 1
+                                color: campoCodigoUnion.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                            }
+                        }
+                        onAccepted: botonUnirsePorCodigo.clicked()
                     }
-                    MouseArea {
-                        anchors.fill: parent
+                    BotonContorno {
+                        id: botonUnirsePorCodigo
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Unirse por código"
                         onClicked: {
-                            viendoGuardadas = true;
-                            redcliente.listarGuardadas(servidorHost, servidorPuerto);
+                            redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, "", campoCodigoUnion.text);
                         }
                     }
                 }
             }
 
+            // Barra de pestañas (mismo componente que Social/Ranking, en vez
+            // del selector de píldoras suelto de antes) + "Crear sala
+            // nueva" en la misma barra -- antes vivía abajo del todo, lejos
+            // de las pestañas a las que en realidad pertenece.
+            Row {
+                width: parent.width
+                spacing: 10 * Tema.escala
+                SelectorSegmentado {
+                    id: tabsSalas
+                    width: parent.width - botonCrearSalaTab.width - parent.spacing
+                    opciones: ["Salas", "Partidas guardadas"]
+                    seleccionado: viendoGuardadas ? 1 : 0
+                    onElegido: (indice) => {
+                        viendoGuardadas = indice === 1;
+                        if (viendoGuardadas) redcliente.listarGuardadas(servidorHost, servidorPuerto);
+                    }
+                }
+                BotonRelleno {
+                    id: botonCrearSalaTab
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Crear sala nueva"
+                    onClicked: pantalla = "CrearSala"
+                }
+            }
+
+            // ── Estados vacíos -- una caja modesta, no el panel entero ────
             Rectangle {
                 width: parent.width
-                height: 340 * Tema.escala
+                height: 200 * Tema.escala
+                visible: !viendoGuardadas && salasDisponibles.count === 0
+                radius: 10 * Tema.escala
                 border.width: 1
-                border.color: Qt.rgba(0, 0, 0, 0.3)
-                radius: 8 * Tema.escala
+                border.color: Qt.rgba(0, 0, 0, 0.35)
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
                     GradientStop { position: 1.0; color: Tema.colorPanel }
                 }
-
                 Text {
                     anchors.centerIn: parent
-                    width: parent.width - 40
-                    visible: !viendoGuardadas && listaSalas.count === 0
+                    width: parent.width - 60 * Tema.escala
                     text: "No hay salas públicas disponibles ahora mismo."
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     font.pixelSize: 13 * Tema.escala
                 }
+            }
+            Rectangle {
+                width: parent.width
+                height: 200 * Tema.escala
+                visible: viendoGuardadas && guardadasDisponibles.count === 0
+                radius: 10 * Tema.escala
+                border.width: 1
+                border.color: Qt.rgba(0, 0, 0, 0.35)
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                }
                 Text {
                     anchors.centerIn: parent
-                    width: parent.width - 40
-                    visible: viendoGuardadas && listaGuardadas.count === 0
+                    width: parent.width - 60 * Tema.escala
                     text: "No hay partidas guardadas en el servidor."
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     font.pixelSize: 13 * Tema.escala
                 }
+            }
 
-                ListView {
-                    id: listaSalas
-                    visible: !viendoGuardadas
-                    anchors.fill: parent
-                    anchors.margins: 10 * Tema.escala
-                    clip: true
-                    spacing: 8 * Tema.escala
-                    model: salasDisponibles
-                    delegate: Rectangle {
-                        id: filaSala
-                        required property string id
-                        required property string nombre
-                        required property int conectados
-                        required property int esperados
-                        width: ListView.view.width
-                        height: 44 * Tema.escala
-                        radius: 6 * Tema.escala
-                        color: Tema.colorFondo
+            // ── Salas: rejilla de tarjetas en vez de filas finas dentro de
+            // un panel único -- cada tarjeta lleva su propio degradado y
+            // borde (mismo "elevado sobre el fondo" que ya usan las
+            // tarjetas de Social/Amigos). Nº de columnas = las que quepan a
+            // ~320*escala cada una, repartiendo el sobrante entre todas
+            // (mismo criterio que el "realce" de SelectorSegmentado) --
+            // altura acotada a 4 filas con scroll propio si hay más salas,
+            // para no desbordar la ventana con un servidor muy cargado.
+            GridView {
+                id: gridSalas
+                visible: !viendoGuardadas && salasDisponibles.count > 0
+                width: parent.width
+                height: Math.min(contentHeight, 4 * cellHeight)
+                clip: true
+                cellWidth: Math.floor(width / Math.max(1, Math.floor(width / (320 * Tema.escala))))
+                cellHeight: 130 * Tema.escala
+                model: salasDisponibles
+                delegate: Item {
+                    id: celdaSala
+                    required property string id
+                    required property string nombre
+                    required property int conectados
+                    required property int esperados
+                    width: gridSalas.cellWidth
+                    height: gridSalas.cellHeight
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 6 * Tema.escala
+                        radius: 10 * Tema.escala
                         border.width: 1
-                        border.color: Tema.colorBorde
+                        border.color: Qt.rgba(0, 0, 0, 0.35)
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                            GradientStop { position: 1.0; color: Tema.colorPanel }
+                        }
 
                         Column {
                             anchors.left: parent.left
-                            anchors.right: botonUnirse.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.rightMargin: 10 * Tema.escala
-                            Text {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                text: filaSala.nombre !== "" ? filaSala.nombre : filaSala.id
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                            }
-                            Text {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                text: filaSala.conectados + " / " + filaSala.esperados + " jugadores"
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 11 * Tema.escala
-                            }
-                        }
-                        BotonRelleno {
-                            id: botonUnirse
                             anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 10 * Tema.escala
-                            text: "Unirse"
-                            onClicked: {
-                                redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, filaSala.id, "");
-                            }
-                        }
-                    }
-                }
+                            anchors.top: parent.top
+                            anchors.margins: 14 * Tema.escala
+                            spacing: 10 * Tema.escala
 
-                ListView {
-                    id: listaGuardadas
-                    visible: viendoGuardadas
-                    anchors.fill: parent
-                    anchors.margins: 10 * Tema.escala
-                    clip: true
-                    spacing: 8 * Tema.escala
-                    model: guardadasDisponibles
-                    delegate: Rectangle {
-                        id: filaGuardada
-                        required property string archivo
-                        required property string fecha
-                        required property int humanos
-                        required property int bots
-                        property bool renombrando: false
-                        property bool confirmandoBorrado: false
-                        width: ListView.view.width
-                        height: 44 * Tema.escala
-                        radius: 6 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: Tema.colorBorde
-
-                        Column {
-                            visible: !filaGuardada.renombrando
-                            anchors.left: parent.left
-                            anchors.right: filaAcciones.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.rightMargin: 10 * Tema.escala
                             Text {
                                 width: parent.width
                                 elide: Text.ElideRight
-                                text: filaGuardada.archivo
+                                text: celdaSala.nombre !== "" ? celdaSala.nombre : celdaSala.id
                                 color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
+                                font.bold: true
+                                font.pixelSize: 15 * Tema.escala
                             }
-                            Text {
+
+                            Row {
                                 width: parent.width
-                                elide: Text.ElideRight
-                                text: filaGuardada.fecha + " · " + filaGuardada.humanos +
-                                      " humano(s), " + filaGuardada.bots + " bot(s)"
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 11 * Tema.escala
-                            }
-                        }
-
-                        // Modo renombrar: sustituye la columna de arriba por
-                        // un campo de texto + confirmar, en vez de una
-                        // pantalla/diálogo aparte.
-                        Row {
-                            visible: filaGuardada.renombrando
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 10 * Tema.escala
-                            spacing: 6 * Tema.escala
-                            TextField {
-                                id: campoRenombrar
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 160 * Tema.escala
-                                text: filaGuardada.archivo.replace(/\.pok$/, "")
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                background: Rectangle {
-                                    color: Tema.colorPanel
-                                    radius: 6 * Tema.escala
-                                    border.width: 1
-                                    border.color: Tema.colorAccent
-                                }
-                                Keys.onReturnPressed: {
-                                    redcliente.renombrarGuardada(servidorHost, servidorPuerto,
-                                                                 filaGuardada.archivo, text);
-                                    filaGuardada.renombrando = false;
-                                }
-                            }
-                            BotonContorno {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "OK"
-                                onClicked: {
-                                    redcliente.renombrarGuardada(servidorHost, servidorPuerto,
-                                                                 filaGuardada.archivo, campoRenombrar.text);
-                                    filaGuardada.renombrando = false;
-                                }
-                            }
-                        }
-
-                        Row {
-                            id: filaAcciones
-                            visible: !filaGuardada.renombrando
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 10 * Tema.escala
-                            spacing: 6 * Tema.escala
-                            BotonRelleno {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "Reanudar"
-                                onClicked: {
-                                    redcliente.cargarPartidaGuardada(
-                                        servidorHost, servidorPuerto, nombreUsuario.text,
-                                        filaGuardada.archivo, filaGuardada.archivo, true);
-                                }
-                            }
-                            BotonContorno {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "✎"
-                                onClicked: filaGuardada.renombrando = true
-                            }
-                            BotonContorno {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: filaGuardada.confirmandoBorrado ? "¿Seguro?" : "🗑"
-                                colorBorde: Tema.colorPeligro
-                                onClicked: {
-                                    if (filaGuardada.confirmandoBorrado) {
-                                        redcliente.borrarGuardada(servidorHost, servidorPuerto,
-                                                                  filaGuardada.archivo);
-                                    } else {
-                                        filaGuardada.confirmandoBorrado = true;
+                                spacing: 10 * Tema.escala
+                                Rectangle {
+                                    id: pistaOcupacion
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - textoOcupacion.width - parent.spacing
+                                    height: 5 * Tema.escala
+                                    radius: height / 2
+                                    color: Qt.rgba(1, 1, 1, 0.08)
+                                    Rectangle {
+                                        width: pistaOcupacion.width * (celdaSala.esperados > 0
+                                                   ? Math.min(1.0, celdaSala.conectados / celdaSala.esperados) : 0)
+                                        height: parent.height
+                                        radius: height / 2
+                                        gradient: Gradient {
+                                            orientation: Gradient.Horizontal
+                                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorAccent, 1.3) }
+                                            GradientStop { position: 1.0; color: Tema.colorAccent }
+                                        }
                                     }
                                 }
+                                Text {
+                                    id: textoOcupacion
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: celdaSala.conectados + " / " + celdaSala.esperados
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                            }
+
+                            BotonRelleno {
+                                text: "Unirse"
+                                enabled: celdaSala.conectados < celdaSala.esperados
+                                opacity: enabled ? 1.0 : 0.55
+                                onClicked: {
+                                    redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, celdaSala.id, "");
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8 * Tema.escala
-                BotonContorno {
-                    text: "Refrescar"
-                    onClicked: viendoGuardadas ? redcliente.listarGuardadas(servidorHost, servidorPuerto)
-                                                : redcliente.refrescarSalas(servidorHost, servidorPuerto)
-                }
-                BotonRelleno {
-                    visible: !viendoGuardadas
-                    text: "Crear sala nueva"
-                    onClicked: pantalla = "CrearSala"
-                }
-            }
+            // ── Partidas guardadas: se queda en una columna (el modo
+            // renombrar y las 3 acciones necesitan más ancho por fila del
+            // que daría una rejilla de 2 columnas), pero con el mismo
+            // degradado/borde/radio que las tarjetas de arriba en vez del
+            // relleno plano de antes.
+            ListView {
+                id: listaGuardadas
+                visible: viendoGuardadas && guardadasDisponibles.count > 0
+                width: parent.width
+                height: Math.min(contentHeight, 380 * Tema.escala)
+                clip: true
+                spacing: 10 * Tema.escala
+                model: guardadasDisponibles
+                delegate: Rectangle {
+                    id: filaGuardada
+                    required property string archivo
+                    required property string fecha
+                    required property int humanos
+                    required property int bots
+                    property bool renombrando: false
+                    property bool confirmandoBorrado: false
+                    width: ListView.view.width
+                    height: 56 * Tema.escala
+                    radius: 10 * Tema.escala
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
 
-            Row {
-                visible: !viendoGuardadas
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8 * Tema.escala
-                // Row no centra verticalmente hijos de distinta altura por
-                // defecto (el TextField y el botón no miden lo mismo) — se
-                // centra cada uno a mano, mismo motivo que en los campos de
-                // chat.
-                TextField {
-                    id: campoCodigoUnion
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 160 * Tema.escala
-                    placeholderText: (activeFocus || text.length > 0) ? "" : "Código de sala privada"
-                    color: Tema.colorTexto
-                    font.pixelSize: 13 * Tema.escala
-                    placeholderTextColor: Tema.colorTextoMuyTenue
-                    // Mismo campo "subrayado" sin caja que Login/Registro/el
-                    // viejo nombreUsuario -- antes tenía fondo propio y
-                    // borde redondeado en las cuatro esquinas, el único
-                    // campo de todo el programa con ese estilo distinto.
-                    background: Rectangle {
-                        color: "transparent"
-                        Rectangle {
-                            anchors.bottom: parent.bottom
+                    Column {
+                        visible: !filaGuardada.renombrando
+                        anchors.left: parent.left
+                        anchors.right: filaAcciones.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 14 * Tema.escala
+                        anchors.rightMargin: 10 * Tema.escala
+                        Text {
                             width: parent.width
-                            height: 1
-                            color: campoCodigoUnion.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                            elide: Text.ElideRight
+                            text: filaGuardada.archivo
+                            color: Tema.colorTexto
+                            font.pixelSize: 14 * Tema.escala
+                        }
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: filaGuardada.fecha + " · " + filaGuardada.humanos +
+                                  " humano(s), " + filaGuardada.bots + " bot(s)"
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 12 * Tema.escala
                         }
                     }
-                    // Igual que en Inicio: Enter hace lo mismo que pulsar
-                    // el botón de al lado, sin tener que ir hasta él con Tab.
-                    onAccepted: botonUnirsePorCodigo.clicked()
-                }
-                BotonContorno {
-                    id: botonUnirsePorCodigo
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Unirse por código"
-                    onClicked: {
-                        redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, "", campoCodigoUnion.text);
+
+                    // Modo renombrar: sustituye la columna de arriba por
+                    // un campo de texto + confirmar, en vez de una
+                    // pantalla/diálogo aparte.
+                    Row {
+                        visible: filaGuardada.renombrando
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 14 * Tema.escala
+                        spacing: 6 * Tema.escala
+                        TextField {
+                            id: campoRenombrar
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 160 * Tema.escala
+                            text: filaGuardada.archivo.replace(/\.pok$/, "")
+                            color: Tema.colorTexto
+                            font.pixelSize: 13 * Tema.escala
+                            background: Rectangle {
+                                color: Tema.colorPanel
+                                radius: 6 * Tema.escala
+                                border.width: 1
+                                border.color: Tema.colorAccent
+                            }
+                            Keys.onReturnPressed: {
+                                redcliente.renombrarGuardada(servidorHost, servidorPuerto,
+                                                             filaGuardada.archivo, text);
+                                filaGuardada.renombrando = false;
+                            }
+                        }
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "OK"
+                            onClicked: {
+                                redcliente.renombrarGuardada(servidorHost, servidorPuerto,
+                                                             filaGuardada.archivo, campoRenombrar.text);
+                                filaGuardada.renombrando = false;
+                            }
+                        }
+                    }
+
+                    Row {
+                        id: filaAcciones
+                        visible: !filaGuardada.renombrando
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 10 * Tema.escala
+                        spacing: 6 * Tema.escala
+                        BotonRelleno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Reanudar"
+                            onClicked: {
+                                redcliente.cargarPartidaGuardada(
+                                    servidorHost, servidorPuerto, nombreUsuario.text,
+                                    filaGuardada.archivo, filaGuardada.archivo, true);
+                            }
+                        }
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "✎"
+                            onClicked: filaGuardada.renombrando = true
+                        }
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: filaGuardada.confirmandoBorrado ? "¿Seguro?" : "🗑"
+                            colorBorde: Tema.colorPeligro
+                            onClicked: {
+                                if (filaGuardada.confirmandoBorrado) {
+                                    redcliente.borrarGuardada(servidorHost, servidorPuerto,
+                                                              filaGuardada.archivo);
+                                } else {
+                                    filaGuardada.confirmandoBorrado = true;
+                                }
+                            }
+                        }
                     }
                 }
             }
 
+            // "Refrescar"/"Salir" viven ahora en BarraSuperior (arriba,
+            // junto a Ajustes) -- ver mostrarRefrescar/mostrarSalir. Dos
+            // píldoras sueltas al final de una pantalla que ya tiene su
+            // propia barra de pestañas y rejilla de tarjetas quedaban
+            // descolgadas del resto del rediseño.
             Text {
                 id: estadoTextoSalas
                 anchors.horizontalCenter: parent.horizontalCenter
                 color: Tema.colorPeligro
                 font.pixelSize: 11 * Tema.escala
                 text: mensajeErrorConexion
-            }
-
-            BotonContorno {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Salir"
-                colorBorde: Tema.colorPeligro
-                onClicked: pantalla = "Inicio"
             }
         }
 
@@ -1308,7 +1475,9 @@ ApplicationWindow {
             reconectandoAhora: ventana.reconectandoAhora
             servidorHost: ventana.servidorHost
             servidorPuerto: ventana.servidorPuerto
+            mostrarSalir: true
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
+            onSalir: ventana.pantalla = "Inicio"
         }
         Column {
             visible: pantalla === "Ranking"
@@ -1317,7 +1486,10 @@ ApplicationWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.horizontalCenterOffset: rielNavegacion.width / 2
             spacing: 10 * Tema.escala
-            width: Math.min(680 * Tema.escala, ventana.width - rielNavegacion.width - 60 * Tema.escala)
+            // Mismo tope subido que Salas/Social (680 → 1040*escala) --
+            // rediseño "aprovechar el ancho de la ventana", 2026-08-27. La
+            // tabla en sí no cambia de estructura, solo se agranda.
+            width: Math.min(1040 * Tema.escala, ventana.width - rielNavegacion.width - 60 * Tema.escala)
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -1415,23 +1587,23 @@ ApplicationWindow {
                     }
                 }
             }
-            SelectorPildoras {
+            SelectorSegmentado {
                 id: tabsRanking
-                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
                 opciones: ["Más victorias", "Mejor ratio"]
                 seleccionado: ordenRankingActual
-                onSeleccionadoChanged: {
-                    ordenRankingActual = seleccionado;
+                onElegido: (indice) => {
+                    ordenRankingActual = indice;
                     reordenarRanking();
                 }
             }
 
             Rectangle {
                 width: parent.width
-                height: 380 * Tema.escala
+                height: 460 * Tema.escala
                 border.width: 1
                 border.color: Qt.rgba(0, 0, 0, 0.3)
-                radius: 8 * Tema.escala
+                radius: 10 * Tema.escala
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
                     GradientStop { position: 1.0; color: Tema.colorPanel }
@@ -1451,9 +1623,9 @@ ApplicationWindow {
                 ListView {
                     visible: rankingModel.count > 0
                     anchors.fill: parent
-                    anchors.margins: 14 * Tema.escala
+                    anchors.margins: 16 * Tema.escala
                     clip: true
-                    spacing: 6 * Tema.escala
+                    spacing: 8 * Tema.escala
                     model: rankingModel
                     header: Row {
                         width: parent ? parent.width : 0
@@ -1487,6 +1659,7 @@ ApplicationWindow {
                     }
                     delegate: Rectangle {
                         id: filaRanking
+                        required property int accountId
                         required property string username
                         required property int partidasJugadas
                         required property int partidasGanadas
@@ -1494,32 +1667,54 @@ ApplicationWindow {
                         readonly property bool esUsuarioPropio:
                             username.toLowerCase() === nombreUsuario.text.toLowerCase()
                         width: ListView.view.width
-                        height: 46 * Tema.escala
-                        radius: 8 * Tema.escala
-                        color: esUsuarioPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.1) : Tema.colorFondo
+                        height: 56 * Tema.escala
+                        radius: 10 * Tema.escala
+                        // Fila normal: mismo degradado elevado que el resto
+                        // del rediseño (antes plano, Tema.colorFondo). La
+                        // fila propia lleva el mismo degradado pero teñido
+                        // de acento -- distinguible sin caer en un relleno
+                        // plano (un Rectangle con "gradient" fijado ignora
+                        // "color" del todo, así que no se puede alternar
+                        // entre las dos con una condición en "gradient"
+                        // mismo -- por eso el color se decide en cada
+                        // GradientStop en vez de en el Gradient entero).
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0.0
+                                color: filaRanking.esUsuarioPropio
+                                       ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.18)
+                                       : Qt.lighter(Tema.colorPanel, 1.5)
+                            }
+                            GradientStop {
+                                position: 1.0
+                                color: filaRanking.esUsuarioPropio
+                                       ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.08)
+                                       : Tema.colorPanel
+                            }
+                        }
                         border.width: esUsuarioPropio ? 1.5 : 1
-                        border.color: esUsuarioPropio ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.3)
+                        border.color: esUsuarioPropio ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.35)
 
                         Row {
                             anchors.fill: parent
-                            anchors.leftMargin: 12 * Tema.escala
-                            anchors.rightMargin: 12 * Tema.escala
+                            anchors.leftMargin: 14 * Tema.escala
+                            anchors.rightMargin: 14 * Tema.escala
                             Text {
                                 width: 34 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: (filaRanking.index + 1) + ""
                                 font.family: Tema.fuenteElegante
                                 color: filaRanking.index < 3 ? Tema.colorAccent : Tema.colorTextoTenue
-                                font.pixelSize: 15 * Tema.escala
+                                font.pixelSize: 16 * Tema.escala
                             }
                             Row {
-                                width: filaRanking.width - 34 * Tema.escala - 220 * Tema.escala - 24 * Tema.escala
+                                width: filaRanking.width - 34 * Tema.escala - 220 * Tema.escala - 28 * Tema.escala
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 10 * Tema.escala
+                                spacing: 12 * Tema.escala
                                 Avatar {
                                     anchors.verticalCenter: parent.verticalCenter
                                     letra: filaRanking.username.length > 0 ? filaRanking.username.charAt(0).toUpperCase() : "?"
-                                    tamano: 28 * Tema.escala
+                                    tamano: 34 * Tema.escala
                                     marco: Tema.marcoPorPartidasGanadas(filaRanking.partidasGanadas)
                                     colorBorde: filaRanking.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
                                 }
@@ -1529,7 +1724,7 @@ ApplicationWindow {
                                     font.bold: filaRanking.esUsuarioPropio
                                     color: Tema.colorTexto
                                     elide: Text.ElideRight
-                                    font.pixelSize: 13 * Tema.escala
+                                    font.pixelSize: 14 * Tema.escala
                                 }
                             }
                             Text {
@@ -1538,7 +1733,7 @@ ApplicationWindow {
                                 horizontalAlignment: Text.AlignRight
                                 text: filaRanking.partidasGanadas + ""
                                 color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
+                                font.pixelSize: 14 * Tema.escala
                             }
                             Text {
                                 width: 110 * Tema.escala
@@ -1546,8 +1741,15 @@ ApplicationWindow {
                                 horizontalAlignment: Text.AlignRight
                                 text: Math.round(100 * filaRanking.partidasGanadas / filaRanking.partidasJugadas) + "%"
                                 color: Tema.colorTextoTenue
-                                font.pixelSize: 13 * Tema.escala
+                                font.pixelSize: 14 * Tema.escala
                             }
+                        }
+                        // Fila completa abre el perfil público -- mismo
+                        // criterio que filaBusqueda/filaReciente.
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: popupPerfilJugador.abrir(filaRanking.accountId)
                         }
                     }
                 }
@@ -1569,7 +1771,9 @@ ApplicationWindow {
             reconectandoAhora: ventana.reconectandoAhora
             servidorHost: ventana.servidorHost
             servidorPuerto: ventana.servidorPuerto
+            mostrarSalir: true
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
+            onSalir: ventana.pantalla = "Inicio"
         }
         Proximamente {
             visible: pantalla === "Torneos"
@@ -1593,7 +1797,9 @@ ApplicationWindow {
             reconectandoAhora: ventana.reconectandoAhora
             servidorHost: ventana.servidorHost
             servidorPuerto: ventana.servidorPuerto
+            mostrarSalir: true
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
+            onSalir: ventana.pantalla = "Inicio"
         }
         // ── Social: invitados ven un aviso + acceso a login/registro, mismo
         // criterio que la pestaña Cuenta del cajón lateral (no tiene
@@ -1639,7 +1845,9 @@ ApplicationWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.horizontalCenterOffset: rielNavegacion.width / 2
             spacing: 10 * Tema.escala
-            width: Math.min(680 * Tema.escala, ventana.width - rielNavegacion.width - 60 * Tema.escala)
+            // Mismo tope subido que Salas/Ranking (680 → 1040*escala) --
+            // rediseño "aprovechar el ancho de la ventana", 2026-08-27.
+            width: Math.min(1040 * Tema.escala, ventana.width - rielNavegacion.width - 60 * Tema.escala)
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -1654,12 +1862,18 @@ ApplicationWindow {
                 width: parent.width
                 opciones: ["Amigos", "Buscar jugadores", "Jugadores Recientes", "Solicitudes"]
                 seleccionado: pestanaSocialActual
-                onSeleccionadoChanged: {
-                    pestanaSocialActual = seleccionado;
+                onElegido: (indice) => {
+                    pestanaSocialActual = indice;
                     mensajeErrorSocial = "";
-                    if (seleccionado === 0) redcliente.listarAmigos(servidorHost, servidorPuerto);
-                    else if (seleccionado === 2) redcliente.listarJugadoresRecientes(servidorHost, servidorPuerto);
-                    else if (seleccionado === 3) redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
+                    // Amigos fusiona presencia + último mensaje en la misma
+                    // fila (ya no hay pestaña "Chats" aparte) -- pide las
+                    // dos listas juntas.
+                    if (indice === 0) {
+                        redcliente.listarAmigos(servidorHost, servidorPuerto);
+                        redcliente.listarResumenChats(servidorHost, servidorPuerto);
+                    }
+                    else if (indice === 2) redcliente.listarJugadoresRecientes(servidorHost, servidorPuerto);
+                    else if (indice === 3) redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
                 }
             }
 
@@ -1683,64 +1897,240 @@ ApplicationWindow {
                 onTriggered: redcliente.listarAmigos(servidorHost, servidorPuerto)
             }
 
+            // ── Amigos -- vista dividida estilo WhatsApp Web: lista de
+            // amigos a la izquierda (≤ mitad del ancho, reutiliza el mismo
+            // lenguaje de tarjeta -- degradado + borde -- que el resto del
+            // rediseño), conversación a la derecha (reutiliza ChatBox.qml,
+            // igual que hacía el popup VistaChatDirecto que sustituye este
+            // panel). El panel de chat solo "se enciende" (borde dorado)
+            // con una conversación elegida -- apagado (borde neutro) en el
+            // placeholder, para que se note que no hay nada seleccionado.
             Rectangle {
                 width: parent.width
-                height: 380 * Tema.escala
+                height: 200 * Tema.escala
+                visible: pestanaSocialActual === 0 && modeloAmigos.count === 0
+                radius: 10 * Tema.escala
                 border.width: 1
-                border.color: Qt.rgba(0, 0, 0, 0.3)
-                radius: 8 * Tema.escala
+                border.color: Qt.rgba(0, 0, 0, 0.35)
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
                     GradientStop { position: 1.0; color: Tema.colorPanel }
                 }
-
-                // ── Amigos ────────────────────────────────────────────────
                 Text {
                     anchors.centerIn: parent
-                    width: parent.width - 40
-                    visible: pestanaSocialActual === 0 && modeloAmigos.count === 0
+                    width: parent.width - 60 * Tema.escala
                     text: "Todavía no tienes amigos añadidos. Búscalos en \"Buscar jugadores\" o mira \"Jugadores Recientes\"."
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     font.pixelSize: 13 * Tema.escala
                 }
+            }
+            Row {
+                visible: pestanaSocialActual === 0 && modeloAmigos.count > 0
+                width: parent.width
+                height: 440 * Tema.escala
+                spacing: 14 * Tema.escala
+
                 ListView {
-                    visible: pestanaSocialActual === 0 && modeloAmigos.count > 0
-                    anchors.fill: parent
-                    anchors.margins: 14 * Tema.escala
+                    id: listaAmigosChat
+                    width: parent.width * 0.42
+                    height: parent.height
                     clip: true
-                    spacing: 6 * Tema.escala
-                    model: modeloAmigos
+                    spacing: 8 * Tema.escala
+                    model: modeloAmigosConChat
                     delegate: Rectangle {
-                        id: filaAmigo
+                        id: filaAmigoChat
                         required property int accountId
                         required property string estado
                         required property string username
+                        required property string ultimoTexto
+                        required property bool ultimoEsMio
+                        required property int noLeidos
                         width: ListView.view.width
-                        height: 52 * Tema.escala
-                        radius: 8 * Tema.escala
-                        color: Tema.colorFondo
+                        height: 76 * Tema.escala
+                        radius: 10 * Tema.escala
                         border.width: 1
-                        border.color: Qt.rgba(0, 0, 0, 0.3)
+                        border.color: chatAmigoSeleccionado === filaAmigoChat.accountId
+                                          ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.35)
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                            GradientStop { position: 1.0; color: Tema.colorPanel }
+                        }
+
+                        // Avatar y columna de estado son hijos DIRECTOS de
+                        // filaAmigoChat (no de un Row intermedio) a
+                        // propósito: la segunda MouseArea de abajo ancla
+                        // "centerIn: avatarFilaAmigo", y QML solo permite
+                        // anclar contra el propio padre o un hermano
+                        // directo -- anidado dentro de un Row habría sido
+                        // un hermano del Row, no de avatarFilaAmigo (bug
+                        // real en producción: "Cannot anchor to an item
+                        // that isn't a parent or sibling", 2026-08-27).
+                        Avatar {
+                            id: avatarFilaAmigo
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            letra: filaAmigoChat.username.length > 0 ? filaAmigoChat.username.charAt(0).toUpperCase() : "?"
+                            tamano: 40 * Tema.escala
+                        }
+                        Column {
+                            anchors.left: avatarFilaAmigo.right
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.right: columnaEstadoAmigo.left
+                            anchors.rightMargin: 8 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4 * Tema.escala
+                            Text {
+                                width: parent.width
+                                elide: Text.ElideRight
+                                text: filaAmigoChat.username
+                                color: Tema.colorTexto
+                                font.pixelSize: 13.5 * Tema.escala
+                            }
+                            Text {
+                                width: parent.width
+                                elide: Text.ElideRight
+                                text: filaAmigoChat.ultimoTexto !== ""
+                                          ? (filaAmigoChat.ultimoEsMio ? "Tú: " : "") + filaAmigoChat.ultimoTexto
+                                          : "Toca para chatear"
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 11.5 * Tema.escala
+                            }
+                        }
+                        // Estado de presencia (punto + palabra, no solo el
+                        // punto -- pedido explícito tras probar la
+                        // pestaña: un color solo puede confundir) + badge
+                        // de no-leídos, apilados a la derecha.
+                        Column {
+                            id: columnaEstadoAmigo
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6 * Tema.escala
+                            Row {
+                                anchors.right: parent.right
+                                spacing: 5 * Tema.escala
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 7 * Tema.escala
+                                    height: 7 * Tema.escala
+                                    radius: width / 2
+                                    color: filaAmigoChat.estado === "CONECTADO" ? "#7FAE7A"
+                                           : filaAmigoChat.estado === "EN_PARTIDA" ? Tema.colorAccent
+                                           : Tema.colorTextoMuyTenue
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: filaAmigoChat.estado === "CONECTADO" ? "Conectado"
+                                          : filaAmigoChat.estado === "EN_PARTIDA" ? "En partida"
+                                          : "Desconectado"
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                            }
+                            Rectangle {
+                                id: badgeNoLeidosAmigo
+                                visible: filaAmigoChat.noLeidos > 0
+                                anchors.right: parent.right
+                                width: 20 * Tema.escala
+                                height: 20 * Tema.escala
+                                radius: width / 2
+                                color: Tema.colorAccent
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: filaAmigoChat.noLeidos > 9 ? "9+" : filaAmigoChat.noLeidos + ""
+                                    color: Tema.colorTextoSobreOscuro
+                                    font.pixelSize: 10 * Tema.escala
+                                    font.bold: true
+                                }
+                            }
+                        }
+                        // Hit-test dividido: el resto de la fila selecciona
+                        // la conversación (se muestra en el panel derecho),
+                        // un área de toque encima del avatar (MÁS grande
+                        // que su bounding box de 40px, declarada DESPUÉS =
+                        // prioridad de hit-test sobre la de abajo) abre el
+                        // perfil público.
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: abrirChatAmigo(filaAmigoChat.accountId, filaAmigoChat.username, filaAmigoChat.estado)
+                        }
+                        MouseArea {
+                            width: 46 * Tema.escala
+                            height: 46 * Tema.escala
+                            cursorShape: Qt.PointingHandCursor
+                            anchors.centerIn: avatarFilaAmigo
+                            onClicked: popupPerfilJugador.abrir(filaAmigoChat.accountId)
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: panelChatAmigo
+                    width: parent.width - listaAmigosChat.width - parent.spacing
+                    height: parent.height
+                    radius: 12 * Tema.escala
+                    border.width: 1
+                    border.color: chatAmigoSeleccionado >= 0 ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.35)
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
+
+                    // Placeholder -- "apagado", sin conversación elegida.
+                    Column {
+                        visible: chatAmigoSeleccionado < 0
+                        anchors.centerIn: parent
+                        spacing: 10 * Tema.escala
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "💬"
+                            font.pixelSize: 34 * Tema.escala
+                            opacity: 0.35
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Elige una conversación de la lista"
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 13 * Tema.escala
+                        }
+                    }
+
+                    // Conversación activa.
+                    Column {
+                        visible: chatAmigoSeleccionado >= 0
+                        anchors.fill: parent
+                        anchors.margins: 16 * Tema.escala
+                        spacing: 12 * Tema.escala
 
                         Row {
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 12 * Tema.escala
+                            id: cabeceraChatAmigo
+                            width: parent.width
                             spacing: 10 * Tema.escala
+                            BotonContorno {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "←"
+                                onClicked: chatAmigoSeleccionado = -1
+                            }
                             Avatar {
                                 anchors.verticalCenter: parent.verticalCenter
-                                letra: filaAmigo.username.length > 0 ? filaAmigo.username.charAt(0).toUpperCase() : "?"
-                                tamano: 32 * Tema.escala
+                                letra: chatAmigoSeleccionadoNombre.length > 0
+                                           ? chatAmigoSeleccionadoNombre.charAt(0).toUpperCase() : "?"
+                                tamano: 34 * Tema.escala
                             }
                             Column {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 3 * Tema.escala
                                 Text {
-                                    text: filaAmigo.username
+                                    text: chatAmigoSeleccionadoNombre
                                     color: Tema.colorTexto
-                                    font.pixelSize: 13 * Tema.escala
+                                    font.bold: true
+                                    font.pixelSize: 15 * Tema.escala
                                 }
                                 Row {
                                     spacing: 5 * Tema.escala
@@ -1749,260 +2139,325 @@ ApplicationWindow {
                                         width: 7 * Tema.escala
                                         height: 7 * Tema.escala
                                         radius: width / 2
-                                        color: filaAmigo.estado === "CONECTADO" ? "#7FAE7A"
-                                               : filaAmigo.estado === "EN_PARTIDA" ? Tema.colorAccent
+                                        color: chatAmigoSeleccionadoEstado === "CONECTADO" ? "#7FAE7A"
+                                               : chatAmigoSeleccionadoEstado === "EN_PARTIDA" ? Tema.colorAccent
                                                : Tema.colorTextoMuyTenue
                                     }
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: filaAmigo.estado === "CONECTADO" ? "Conectado"
-                                              : filaAmigo.estado === "EN_PARTIDA" ? "En partida"
+                                        text: chatAmigoSeleccionadoEstado === "CONECTADO" ? "Conectado"
+                                              : chatAmigoSeleccionadoEstado === "EN_PARTIDA" ? "En partida"
                                               : "Desconectado"
-                                        color: Tema.colorTextoMuyTenue
+                                        color: Tema.colorTextoTenue
                                         font.pixelSize: 11 * Tema.escala
                                     }
                                 }
                             }
                         }
-                        MouseArea {
-                            anchors.fill: parent
-                            // fase 2: abrir chat directo con este amigo
-                            onClicked: {}
+
+                        ChatBox {
+                            width: parent.width
+                            height: parent.height - cabeceraChatAmigo.height - parent.spacing
+                            activo: true
+                            modelo: modeloConversacionAmigos
+                            miNombre: nombreUsuario.text
+                            onEnviar: (texto) => {
+                                redcliente.enviarMensajeDirecto(servidorHost, servidorPuerto, chatAmigoSeleccionado, texto);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Buscar jugadores ──────────────────────────────────────────
+            Column {
+                visible: pestanaSocialActual === 1
+                width: parent.width
+                spacing: 12 * Tema.escala
+
+                Row {
+                    spacing: 8 * Tema.escala
+                    TextField {
+                        id: campoBusquedaSocial
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 260 * Tema.escala
+                        placeholderText: (activeFocus || text.length > 0) ? "" : "Nombre de usuario"
+                        color: Tema.colorTexto
+                        font.pixelSize: 13 * Tema.escala
+                        placeholderTextColor: Tema.colorTextoMuyTenue
+                        background: Rectangle {
+                            color: "transparent"
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: 1
+                                color: campoBusquedaSocial.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                            }
+                        }
+                        onAccepted: botonBuscarSocial.clicked()
+                    }
+                    BotonContorno {
+                        id: botonBuscarSocial
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Buscar"
+                        onClicked: {
+                            mensajeErrorSocial = "";
+                            if (campoBusquedaSocial.text.length > 0)
+                                redcliente.buscarJugadores(servidorHost, servidorPuerto, campoBusquedaSocial.text);
                         }
                     }
                 }
 
-                // ── Buscar jugadores ──────────────────────────────────────
-                Column {
-                    visible: pestanaSocialActual === 1
-                    anchors.fill: parent
-                    anchors.margins: 14 * Tema.escala
-                    spacing: 10 * Tema.escala
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 8 * Tema.escala
-                        TextField {
-                            id: campoBusquedaSocial
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 220 * Tema.escala
-                            placeholderText: (activeFocus || text.length > 0) ? "" : "Nombre de usuario"
-                            color: Tema.colorTexto
-                            font.pixelSize: 13 * Tema.escala
-                            placeholderTextColor: Tema.colorTextoMuyTenue
-                            background: Rectangle {
-                                color: "transparent"
-                                Rectangle {
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width
-                                    height: 1
-                                    color: campoBusquedaSocial.activeFocus ? Tema.colorAccent : Tema.colorBorde
-                                }
-                            }
-                            onAccepted: botonBuscarSocial.clicked()
-                        }
-                        BotonContorno {
-                            id: botonBuscarSocial
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Buscar"
-                            onClicked: {
-                                mensajeErrorSocial = "";
-                                if (campoBusquedaSocial.text.length > 0)
-                                    redcliente.buscarJugadores(servidorHost, servidorPuerto, campoBusquedaSocial.text);
-                            }
-                        }
+                Rectangle {
+                    width: parent.width
+                    height: 200 * Tema.escala
+                    visible: modeloBusqueda.count === 0
+                    radius: 10 * Tema.escala
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
                     }
-
                     Text {
-                        width: parent.width
-                        visible: modeloBusqueda.count === 0
+                        anchors.centerIn: parent
+                        width: parent.width - 60 * Tema.escala
                         text: "Busca por nombre de usuario para mandar una solicitud de amistad."
                         color: Tema.colorTextoTenue
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         font.pixelSize: 13 * Tema.escala
                     }
-                    ListView {
-                        visible: modeloBusqueda.count > 0
-                        width: parent.width
-                        height: parent.height - campoBusquedaSocial.height - parent.spacing
-                        clip: true
-                        spacing: 6 * Tema.escala
-                        model: modeloBusqueda
-                        delegate: Rectangle {
-                            id: filaBusqueda
-                            required property int accountId
-                            required property int pendiente
-                            required property string username
-                            readonly property bool solicitudEnviada: filaBusqueda.pendiente === 1
-                            width: ListView.view.width
-                            height: 50 * Tema.escala
-                            radius: 8 * Tema.escala
-                            color: Tema.colorFondo
-                            border.width: 1
-                            border.color: Qt.rgba(0, 0, 0, 0.3)
+                }
+                ListView {
+                    visible: modeloBusqueda.count > 0
+                    width: parent.width
+                    height: Math.min(contentHeight, 380 * Tema.escala)
+                    clip: true
+                    spacing: 8 * Tema.escala
+                    model: modeloBusqueda
+                    delegate: Rectangle {
+                        id: filaBusqueda
+                        required property int accountId
+                        required property int pendiente
+                        required property string username
+                        readonly property bool solicitudEnviada: filaBusqueda.pendiente === 1
+                        width: ListView.view.width
+                        height: 58 * Tema.escala
+                        radius: 10 * Tema.escala
+                        border.width: 1
+                        border.color: Qt.rgba(0, 0, 0, 0.35)
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                            GradientStop { position: 1.0; color: Tema.colorPanel }
+                        }
 
-                            Row {
-                                anchors.left: parent.left
+                        Row {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 14 * Tema.escala
+                            spacing: 12 * Tema.escala
+                            Avatar {
                                 anchors.verticalCenter: parent.verticalCenter
-                                anchors.leftMargin: 12 * Tema.escala
-                                spacing: 10 * Tema.escala
-                                Avatar {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    letra: filaBusqueda.username.length > 0 ? filaBusqueda.username.charAt(0).toUpperCase() : "?"
-                                    tamano: 32 * Tema.escala
-                                }
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: filaBusqueda.username
-                                    color: Tema.colorTexto
-                                    font.pixelSize: 13 * Tema.escala
-                                }
+                                letra: filaBusqueda.username.length > 0 ? filaBusqueda.username.charAt(0).toUpperCase() : "?"
+                                tamano: 36 * Tema.escala
                             }
-                            BotonContorno {
-                                anchors.right: parent.right
+                            Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                anchors.rightMargin: 12 * Tema.escala
-                                enabled: !filaBusqueda.solicitudEnviada
-                                opacity: filaBusqueda.solicitudEnviada ? 0.6 : 1.0
-                                text: filaBusqueda.solicitudEnviada ? "Enviada" : "Enviar solicitud"
-                                onClicked: {
-                                    pendienteSolicitudUsername = filaBusqueda.username;
-                                    redcliente.enviarSolicitudAmistad(servidorHost, servidorPuerto, filaBusqueda.username);
-                                }
+                                text: filaBusqueda.username
+                                color: Tema.colorTexto
+                                font.pixelSize: 14 * Tema.escala
+                            }
+                        }
+                        // Fila completa abre el perfil público -- estas
+                        // listas nunca compiten con la acción de chat
+                        // (por diseño no son ya-amigos, ver el plan).
+                        // Declarada ANTES del botón para que este último
+                        // (declarado después) tenga prioridad de hit-test
+                        // en su propia área.
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: popupPerfilJugador.abrir(filaBusqueda.accountId)
+                        }
+                        BotonContorno {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.rightMargin: 14 * Tema.escala
+                            enabled: !filaBusqueda.solicitudEnviada
+                            opacity: filaBusqueda.solicitudEnviada ? 0.6 : 1.0
+                            text: filaBusqueda.solicitudEnviada ? "Enviada" : "Enviar solicitud"
+                            onClicked: {
+                                pendienteSolicitudUsername = filaBusqueda.username;
+                                redcliente.enviarSolicitudAmistad(servidorHost, servidorPuerto, filaBusqueda.username);
                             }
                         }
                     }
                 }
+            }
 
-                // ── Jugadores Recientes ───────────────────────────────────
+            // ── Jugadores Recientes ────────────────────────────────────────
+            Rectangle {
+                width: parent.width
+                height: 200 * Tema.escala
+                visible: pestanaSocialActual === 2 && modeloRecientes.count === 0
+                radius: 10 * Tema.escala
+                border.width: 1
+                border.color: Qt.rgba(0, 0, 0, 0.35)
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                }
                 Text {
                     anchors.centerIn: parent
-                    width: parent.width - 40
-                    visible: pestanaSocialActual === 2 && modeloRecientes.count === 0
+                    width: parent.width - 60 * Tema.escala
                     text: "Todavía no has compartido mesa con nadie en las últimas 24h."
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     font.pixelSize: 13 * Tema.escala
                 }
-                ListView {
-                    visible: pestanaSocialActual === 2 && modeloRecientes.count > 0
-                    anchors.fill: parent
-                    anchors.margins: 14 * Tema.escala
-                    clip: true
-                    spacing: 6 * Tema.escala
-                    model: modeloRecientes
-                    delegate: Rectangle {
-                        id: filaReciente
-                        required property int accountId
-                        required property int pendiente
-                        required property string username
-                        readonly property bool solicitudEnviada: filaReciente.pendiente === 1
-                        width: ListView.view.width
-                        height: 50 * Tema.escala
-                        radius: 8 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: Qt.rgba(0, 0, 0, 0.3)
+            }
+            ListView {
+                visible: pestanaSocialActual === 2 && modeloRecientes.count > 0
+                width: parent.width
+                height: Math.min(contentHeight, 380 * Tema.escala)
+                clip: true
+                spacing: 8 * Tema.escala
+                model: modeloRecientes
+                delegate: Rectangle {
+                    id: filaReciente
+                    required property int accountId
+                    required property int pendiente
+                    required property string username
+                    readonly property bool solicitudEnviada: filaReciente.pendiente === 1
+                    width: ListView.view.width
+                    height: 58 * Tema.escala
+                    radius: 10 * Tema.escala
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
 
-                        Row {
-                            anchors.left: parent.left
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 14 * Tema.escala
+                        spacing: 12 * Tema.escala
+                        Avatar {
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 12 * Tema.escala
-                            spacing: 10 * Tema.escala
-                            Avatar {
-                                anchors.verticalCenter: parent.verticalCenter
-                                letra: filaReciente.username.length > 0 ? filaReciente.username.charAt(0).toUpperCase() : "?"
-                                tamano: 32 * Tema.escala
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: filaReciente.username
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                            }
+                            letra: filaReciente.username.length > 0 ? filaReciente.username.charAt(0).toUpperCase() : "?"
+                            tamano: 36 * Tema.escala
                         }
-                        BotonContorno {
-                            anchors.right: parent.right
+                        Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 12 * Tema.escala
-                            enabled: !filaReciente.solicitudEnviada
-                            opacity: filaReciente.solicitudEnviada ? 0.6 : 1.0
-                            text: filaReciente.solicitudEnviada ? "Enviada" : "Enviar solicitud"
-                            onClicked: {
-                                pendienteSolicitudUsername = filaReciente.username;
-                                redcliente.enviarSolicitudAmistad(servidorHost, servidorPuerto, filaReciente.username);
-                            }
+                            text: filaReciente.username
+                            color: Tema.colorTexto
+                            font.pixelSize: 14 * Tema.escala
+                        }
+                    }
+                    // Fila completa abre el perfil público -- mismo
+                    // criterio que filaBusqueda (ver el comentario ahí).
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: popupPerfilJugador.abrir(filaReciente.accountId)
+                    }
+                    BotonContorno {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 14 * Tema.escala
+                        enabled: !filaReciente.solicitudEnviada
+                        opacity: filaReciente.solicitudEnviada ? 0.6 : 1.0
+                        text: filaReciente.solicitudEnviada ? "Enviada" : "Enviar solicitud"
+                        onClicked: {
+                            pendienteSolicitudUsername = filaReciente.username;
+                            redcliente.enviarSolicitudAmistad(servidorHost, servidorPuerto, filaReciente.username);
                         }
                     }
                 }
+            }
 
-                // ── Solicitudes ───────────────────────────────────────────
+            // ── Solicitudes ────────────────────────────────────────────────
+            Rectangle {
+                width: parent.width
+                height: 200 * Tema.escala
+                visible: pestanaSocialActual === 3 && modeloSolicitudes.count === 0
+                radius: 10 * Tema.escala
+                border.width: 1
+                border.color: Qt.rgba(0, 0, 0, 0.35)
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                }
                 Text {
                     anchors.centerIn: parent
-                    width: parent.width - 40
-                    visible: pestanaSocialActual === 3 && modeloSolicitudes.count === 0
+                    width: parent.width - 60 * Tema.escala
                     text: "No tienes solicitudes de amistad pendientes."
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     font.pixelSize: 13 * Tema.escala
                 }
-                ListView {
-                    visible: pestanaSocialActual === 3 && modeloSolicitudes.count > 0
-                    anchors.fill: parent
-                    anchors.margins: 14 * Tema.escala
-                    clip: true
-                    spacing: 6 * Tema.escala
-                    model: modeloSolicitudes
-                    delegate: Rectangle {
-                        id: filaSolicitud
-                        required property int solicitudId
-                        required property int fromAccountId
-                        required property int creadoEn
-                        required property string fromUsername
-                        width: ListView.view.width
-                        height: 52 * Tema.escala
-                        radius: 8 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: Qt.rgba(0, 0, 0, 0.3)
+            }
+            ListView {
+                visible: pestanaSocialActual === 3 && modeloSolicitudes.count > 0
+                width: parent.width
+                height: Math.min(contentHeight, 380 * Tema.escala)
+                clip: true
+                spacing: 8 * Tema.escala
+                model: modeloSolicitudes
+                delegate: Rectangle {
+                    id: filaSolicitud
+                    required property int solicitudId
+                    required property int fromAccountId
+                    required property int creadoEn
+                    required property string fromUsername
+                    width: ListView.view.width
+                    height: 60 * Tema.escala
+                    radius: 10 * Tema.escala
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
 
-                        Row {
-                            anchors.left: parent.left
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 14 * Tema.escala
+                        spacing: 12 * Tema.escala
+                        Avatar {
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 12 * Tema.escala
-                            spacing: 10 * Tema.escala
-                            Avatar {
-                                anchors.verticalCenter: parent.verticalCenter
-                                letra: filaSolicitud.fromUsername.length > 0 ? filaSolicitud.fromUsername.charAt(0).toUpperCase() : "?"
-                                tamano: 32 * Tema.escala
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: filaSolicitud.fromUsername
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                            }
+                            letra: filaSolicitud.fromUsername.length > 0 ? filaSolicitud.fromUsername.charAt(0).toUpperCase() : "?"
+                            tamano: 36 * Tema.escala
                         }
-                        Row {
-                            anchors.right: parent.right
+                        Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.rightMargin: 12 * Tema.escala
-                            spacing: 8 * Tema.escala
-                            BotonContorno {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "Rechazar"
-                                onClicked: redcliente.responderSolicitud(
-                                    servidorHost, servidorPuerto, filaSolicitud.solicitudId, false)
-                            }
-                            BotonRelleno {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "Aceptar"
-                                onClicked: redcliente.responderSolicitud(
-                                    servidorHost, servidorPuerto, filaSolicitud.solicitudId, true)
-                            }
+                            text: filaSolicitud.fromUsername
+                            color: Tema.colorTexto
+                            font.pixelSize: 14 * Tema.escala
+                        }
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 14 * Tema.escala
+                        spacing: 8 * Tema.escala
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Rechazar"
+                            onClicked: redcliente.responderSolicitud(
+                                servidorHost, servidorPuerto, filaSolicitud.solicitudId, false)
+                        }
+                        BotonRelleno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Aceptar"
+                            onClicked: redcliente.responderSolicitud(
+                                servidorHost, servidorPuerto, filaSolicitud.solicitudId, true)
                         }
                     }
                 }
@@ -2236,6 +2691,7 @@ ApplicationWindow {
                                 id: selectorDificultad
                                 opciones: ["Fácil", "Normal", "Experto"]
                                 seleccionado: 0
+                                onElegido: (indice) => seleccionado = indice
                             }
                         }
             
@@ -2254,6 +2710,7 @@ ApplicationWindow {
                                 id: selectorLimite
                                 opciones: ["Sin límite", "Límite bote", "Límite fijo"]
                                 seleccionado: 0
+                                onElegido: (indice) => seleccionado = indice
                             }
                         }
             
@@ -2647,6 +3104,7 @@ ApplicationWindow {
                         radioBorde: 999
                         onClicked: {
                             codigoSalaPropia = "";
+                            salaIdPropia = "";
                             pantalla = "Salas";
                             redcliente.refrescarSalas(servidorHost, servidorPuerto);
                         }
@@ -2782,6 +3240,17 @@ ApplicationWindow {
                     onClicked: redcliente.empezarPartida()
                 }
 
+                // Con sesión iniciada únicamente -- un invitado no tiene
+                // amigos que invitar. Funciona igual en sala pública o
+                // privada (a diferencia de "Código para invitar", que solo
+                // se ve en privadas).
+                BotonContorno {
+                    visible: tokenSesion !== "" && salaIdPropia !== ""
+                    text: "Invitar amigos"
+                    radioBorde: 999
+                    onClicked: popupInvitarAmigos.abrir()
+                }
+
                 BotonContorno {
                     text: "Abandonar sala"
                     radioBorde: 999
@@ -2826,6 +3295,7 @@ ApplicationWindow {
                 activo: chatActive
                 modelo: mensajesChatSala
                 miNombre: nombreUsuario.text
+                onEnviar: (texto) => redcliente.enviarChat(texto, "sala")
             }
         }
         // ------------------- PARTIDA --------------------------------
@@ -3321,6 +3791,7 @@ ApplicationWindow {
             function onAmigosActualizados(amigos) {
                 modeloAmigos.clear();
                 for (var i = 0; i < amigos.length; i++) modeloAmigos.append(amigos[i]);
+                reconstruirModeloAmigosConChat();
             }
             function onSolicitudesActualizadas(solicitudes) {
                 modeloSolicitudes.clear();
@@ -3329,6 +3800,39 @@ ApplicationWindow {
             function onJugadoresRecientesActualizados(recientes) {
                 modeloRecientes.clear();
                 for (var i = 0; i < recientes.length; i++) modeloRecientes.append(recientes[i]);
+            }
+            function onResumenChatsActualizado(chats) {
+                modeloResumenChats.clear();
+                for (var i = 0; i < chats.length; i++) modeloResumenChats.append(chats[i]);
+                reconstruirModeloAmigosConChat();
+            }
+            // PUSH por el socket de presencia: si estamos mirando Amigos,
+            // refresca el resumen para que el último mensaje/badge se
+            // pongan al día sin esperar a salir y volver a entrar en la
+            // pestaña. Si además es justo la conversación abierta en el
+            // panel derecho, releer también esa -- más barato que tocar el
+            // modelo a mano y de paso marca leído server-side.
+            function onMensajeDirectoRecibido(fromAccountId, fromUsername, texto, creadoEn, mensajeId) {
+                if (pestanaSocialActual === 0) {
+                    redcliente.listarResumenChats(servidorHost, servidorPuerto);
+                }
+                if (chatAmigoSeleccionado === fromAccountId) {
+                    redcliente.listarConversacion(servidorHost, servidorPuerto, chatAmigoSeleccionado);
+                }
+            }
+            function onConversacionActualizada(mensajes) {
+                modeloConversacionAmigos.clear();
+                for (var i = 0; i < mensajes.length; i++) {
+                    var m = mensajes[i];
+                    modeloConversacionAmigos.append({
+                        autor: m.fromAccountId === chatAmigoSeleccionado ? chatAmigoSeleccionadoNombre : nombreUsuario.text,
+                        mensaje: m.texto,
+                        hora: Qt.formatTime(new Date(m.creadoEn * 1000), "hh:mm")
+                    });
+                }
+            }
+            function onInvitacionSalaRecibida(fromAccountId, fromUsername, salaId, codigo, nombreSala) {
+                bannerInvitacionSala.mostrar(fromAccountId, fromUsername, salaId, codigo, nombreSala);
             }
             function onSolicitudAmistadEnviada() {
                 mensajeErrorSocial = "";
@@ -3397,6 +3901,7 @@ ApplicationWindow {
             }
             function onSalaCreada(salaId, codigo) {
                 codigoSalaPropia = codigo;
+                salaIdPropia = salaId;
             }
             function onGuardadasActualizadas(guardadasCsv) {
                 guardadasDisponibles.clear();
@@ -3421,13 +3926,16 @@ ApplicationWindow {
                     var partes = rankingCsv.split(";");
                     for (var i = 0; i < partes.length; i++) {
                         var campos = partes[i].split(":");
-                        // "username" es el resto tras los 2 primeros campos,
-                        // no campos[2] a secas -- mismo motivo que "nombre"/
-                        // "fecha" en salas/guardadas más arriba.
+                        // "username" es el resto tras los 3 primeros campos,
+                        // no campos[3] a secas -- mismo motivo que "nombre"/
+                        // "fecha" en salas/guardadas más arriba. accountId
+                        // antepuesto (Cerrar Social v1) -- abre el perfil
+                        // público de cada fila.
                         filas.push({
-                            partidasJugadas: parseInt(campos[0]),
-                            partidasGanadas: parseInt(campos[1]),
-                            username: campos.slice(2).join(":")
+                            accountId: parseInt(campos[0]),
+                            partidasJugadas: parseInt(campos[1]),
+                            partidasGanadas: parseInt(campos[2]),
+                            username: campos.slice(3).join(":")
                         });
                     }
                 }
@@ -4275,6 +4783,30 @@ ApplicationWindow {
         }
     }
 
+    // ── Cerrar Social v1: perfil público, invitar a sala, banner ──────────
+    // Instancias únicas a nivel de ventana raíz -- mismo motivo que los
+    // overlays de arriba: el perfil se abre desde varias pantallas (Social,
+    // Ranking), y el banner de invitación puede llegar en cualquier
+    // pantalla de menú.
+    PopupPerfilJugador {
+        id: popupPerfilJugador
+        servidorHost: ventana.servidorHost
+        servidorPuerto: ventana.servidorPuerto
+    }
+    PopupInvitarAmigos {
+        id: popupInvitarAmigos
+        servidorHost: ventana.servidorHost
+        servidorPuerto: ventana.servidorPuerto
+        salaId: ventana.salaIdPropia
+        listaAmigos: modeloAmigos
+    }
+    BannerInvitacionSala {
+        id: bannerInvitacionSala
+        onUnirse: (salaId, codigo) => {
+            redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, salaId, codigo);
+        }
+    }
+
     // ── Cajón lateral de ajustes ───────────────────────────────────────────
     // El botón que lo abre ya no flota aparte — vive dentro de la
     // BarraSuperior de cada pantalla (ver el componente más arriba), así
@@ -4344,7 +4876,7 @@ ApplicationWindow {
                 width: parent.width
                 opciones: ["Ajustes", "Cuenta"]
                 seleccionado: ventana.pestanaAjustesActual
-                onSeleccionadoChanged: ventana.pestanaAjustesActual = seleccionado
+                onElegido: (indice) => ventana.pestanaAjustesActual = indice
             }
 
             Column {

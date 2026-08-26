@@ -16,6 +16,11 @@ Rectangle {
     property var modelo
     property string miNombre
     required property bool activo
+    // Quien instancia esto decide A DÓNDE va el mensaje (chat de sala vía
+    // redcliente.enviarChat(), o un chat directo vía
+    // redcliente.enviarMensajeDirecto() -- ver VistaChatDirecto.qml) --
+    // mismo cambio que en escritorio (ver ChatBox.qml de qml/).
+    signal enviar(string texto)
     visible: activo
     width: 300 * Tema.escala
     height: 320 * Tema.escala
@@ -139,7 +144,7 @@ Rectangle {
             text: "Enviar"
             onClicked: {
                 if (textoChat.text.length === 0) return;
-                redcliente.enviarChat(textoChat.text, "sala");
+                cajaChat.enviar(textoChat.text);
                 cajaChat.modelo.append({
                     autor: cajaChat.miNombre,
                     mensaje: textoChat.text,

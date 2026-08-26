@@ -88,6 +88,37 @@ enum class MsgType {
     SOLICITUDES_LISTA,           ///< "solicitudId:fromAccountId:creadoEn:fromUsername;..." -- respuesta a LISTAR_SOLICITUDES.
     JUGADORES_RECIENTES_LISTA,   ///< "accountId:pendiente:username;..." -- respuesta a LISTAR_JUGADORES_RECIENTES.
 
+    // Cliente → servidor -- cerrar Social v1 (chat directo, invitar a
+    // sala, perfil de jugador). Mismo patrón efímero que el resto de
+    // Social salvo los dos "push" de abajo, que viajan por la conexión
+    // PRESENCIA_CONECTAR ya abierta, sin que el cliente pida nada.
+    ENVIAR_MENSAJE_DIRECTO,      ///< "token","to_account_id","texto" -- requiere amistad confirmada.
+    LISTAR_CONVERSACION,         ///< "token","con_account_id" -- historial con un amigo; marca sus mensajes como leídos.
+    LISTAR_RESUMEN_CHATS,        ///< "token" -- un resumen por interlocutor (último mensaje + no leídos), para la pestaña "Chats".
+    INVITAR_A_SALA,              ///< "token","to_account_id","sala_id" -- solo si el destinatario está CONECTADO a presencia ahora mismo.
+    CONSULTAR_PERFIL_JUGADOR,    ///< "account_id" -- público, sin token, mismo criterio que CONSULTAR_RANKING.
+
+    // Servidor → cliente -- respuestas de listas de la Social v1.
+    // CONVERSACION_LISTA/RESUMEN_CHATS_LISTA llevan texto LIBRE de chat, a
+    // diferencia de todo lo demás en este protocolo (usernames/nombres de
+    // sala siempre pasan por sanitizarNombre(), que ya excluye ':' y ';').
+    // Un mensaje con ':' o ';' de verdad escrito por un usuario rompería el
+    // formato ":"/";" de siempre, así que estas dos usan separadores de
+    // control ASCII en su lugar -- '\x1F' (unit separator) entre campos,
+    // '\x1E' (record separator) entre filas -- que jsonEscape()/jsonUnescape()
+    // dejan pasar intactos (solo tocan comillas/backslash/\n\r\t) y que
+    // nadie escribe desde un teclado normal.
+    CONVERSACION_LISTA,          ///< "id\x1FfromAccountId\x1FcreadoEn\x1Fleido\x1Ftexto\x1E..." -- respuesta a LISTAR_CONVERSACION.
+    RESUMEN_CHATS_LISTA,         ///< "accountId\x1FultimoEsMio\x1FnoLeidos\x1FultimoEn\x1Fusername\x1FultimoTexto\x1E..." -- respuesta a LISTAR_RESUMEN_CHATS.
+    PERFIL_JUGADOR,              ///< Campos JSON sueltos (NO lista) -- "existe","account_id","username" + los mismos campos que ESTADISTICAS_CUENTA -- respuesta a CONSULTAR_PERFIL_JUGADOR.
+
+    // Servidor → cliente -- PUSH por el socket de presencia (único uso
+    // real de ese socket en V1, ver PresenceRegistry::empujarMensaje()):
+    // no son respuesta a nada que el cliente haya pedido en esa
+    // conexión, llegan solos mientras el destinatario esté en menús.
+    MENSAJE_DIRECTO_ENTRANTE,    ///< "fromAccountId","fromUsername","texto","creadoEn","mensajeId".
+    INVITACION_SALA_ENTRANTE,    ///< "fromAccountId","fromUsername","salaId","codigo","nombreSala".
+
     UNKNOWN        ///< Tipo desconocido o mensaje malformado.
 };
 

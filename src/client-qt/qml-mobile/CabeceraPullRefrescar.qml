@@ -12,7 +12,12 @@ import PokerQuickMobile
 
 Item {
     id: cabecera
-    required property ListView vista
+    // Flickable (no ListView) -- así funciona igual de header de un
+    // GridView (rediseño de tarjetas, 2026-08-28): solo se usan
+    // width/contentY/dragging, los tres viven en Flickable, el ancestro
+    // común de ListView y GridView -- ListView seguía sirviendo antes por
+    // casualidad de tipos, no porque hiciera falta nada específico de él.
+    required property Flickable vista
     property bool refrescando: false
     signal refrescar()
 

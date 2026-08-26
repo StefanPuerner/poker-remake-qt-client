@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -44,15 +45,38 @@ class NetworkClient : public QObject {
   // que las cuatro propiedades de arriba (bug de Android con señales de
   // muchos parámetros), un único QVariantMap en vez de veinte campos sueltos.
   Q_PROPERTY(QVariantMap estadisticasCuenta READ estadisticasCuenta NOTIFY estadisticasCuentaCambiaron)
+  // Perfil de OTRO jugador (Amigos/Recientes/Búsqueda/Ranking) -- Q_PROPERTY
+  // SEPARADA de estadisticasCuenta, a propósito: son las mismas ~19
+  // estadísticas pero de una cuenta ajena, no la propia -- mirar el perfil
+  // de otro no debe pisar "mis stats" mientras el panel Cuenta siga abierto.
+  Q_PROPERTY(QVariantMap perfilJugador READ perfilJugador NOTIFY perfilJugadorCambiaron)
 
  public:
-  using QObject::QObject;
+  explicit NetworkClient(QObject* parent = nullptr) : QObject(parent) {
+    // Crash real en producción (backtrace con gdb, 2026-08-28):
+    // "corrupted double-linked list" / SIGABRT dentro de
+    // QSslSocketPrivate::~QSslSocketPrivate(), llamado desde
+    // ~NetworkClient() -- "client" vive como variable local de main()
+    // (ver client-qt/main.cpp), así que su destructor corre DESPUÉS de
+    // que app.exec() ya haya vuelto, con el bucle de eventos YA PARADO.
+    // Destruir un QSslSocket sin bucle de eventos vivo es frágil (parte
+    // de su desconexión interna depende de poder procesar eventos). Con
+    // esta conexión, socket_/presenciaSocket_ se abortan en cuanto se
+    // sabe que la app va a cerrar -- aboutToQuit() se emite ANTES de que
+    // el bucle pare de verdad, así que el cierre de ambos sockets ocurre
+    // con todo todavía funcionando con normalidad.
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, [this]() {
+      socket_.abort();
+      presenciaSocket_.abort();
+    });
+  }
 
   int manosDisputadasFinal() const { return manosDisputadasFinal_; }
   QString mejorManoFinal() const { return mejorManoFinal_; }
   QString mejorManoJugadorFinal() const { return mejorManoJugadorFinal_; }
   QString eliminacionesFinalCsv() const { return eliminacionesFinalCsv_; }
   QVariantMap estadisticasCuenta() const { return estadisticasCuenta_; }
+  QVariantMap perfilJugador() const { return perfilJugador_; }
 
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
                             QString nombre) {
@@ -459,6 +483,121 @@ class NetworkClient : public QObject {
         });
   }
 
+  // ── Cerrar Social v1: chat directo, invitar a sala, perfil ────────────────
+  //  Mismo patrón efímero que el resto de Social. CONVERSACION_LISTA/
+  //  RESUMEN_CHATS_LISTA llevan texto libre de chat -- parsearFilasChat()
+  //  (más abajo) usa separadores de control ('\x1F'/'\x1E'), NO ':'/';'
+  //  como parsearFilasSocial(), porque un mensaje real puede contener
+  //  cualquiera de esos dos caracteres (ver el comentario de esos MsgType
+  //  en Protocol.hpp).
+
+  /// Manda un mensaje directo -- requiere ser amigos (lo valida el
+  /// servidor). token_ interno, igual que el resto de Social.
+  Q_INVOKABLE void enviarMensajeDirecto(const QString& host, quint16 puerto, int toAccountId,
+                                        QString texto) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::ENVIAR_MENSAJE_DIRECTO, {
+            {"token", token_.toStdString()},
+            {"to_account_id", std::to_string(toAccountId)},
+            {"texto", texto.toStdString()},
+        }),
+        [this](const std::string& payload) {
+          if (net::jsonGetStr(payload, "evento") == "MENSAJE_DIRECTO_ENVIADO") {
+            emit mensajeDirectoEnviado();
+          } else {
+            emit mensajeDirectoError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+          }
+        });
+  }
+
+  /// Historial con un amigo (últimos 50) -- efecto colateral del lado
+  /// servidor: marca sus mensajes entrantes como leídos.
+  Q_INVOKABLE void listarConversacion(const QString& host, quint16 puerto, int conAccountId) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_CONVERSACION, {
+            {"token", token_.toStdString()},
+            {"con_account_id", std::to_string(conAccountId)},
+        }),
+        [this](const std::string& payload) {
+          emit conversacionActualizada(parsearFilasChat(
+              net::jsonGetStr(payload, "mensajes"),
+              {"id", "fromAccountId", "creadoEn", "leido", "texto"}));
+        });
+  }
+
+  /// Un resumen por interlocutor (último mensaje + no leídos), para la
+  /// pestaña "Chats".
+  Q_INVOKABLE void listarResumenChats(const QString& host, quint16 puerto) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_RESUMEN_CHATS, {{"token", token_.toStdString()}}),
+        [this](const std::string& payload) {
+          emit resumenChatsActualizado(parsearFilasChat(
+              net::jsonGetStr(payload, "chats"),
+              {"accountId", "ultimoEsMio", "noLeidos", "ultimoEn", "username", "ultimoTexto"}));
+        });
+  }
+
+  /// Invita a un amigo a @p salaId -- solo llega si ese amigo está
+  /// CONECTADO a presencia ahora mismo (ver el plan, no se persiste como
+  /// pendiente si no lo está).
+  Q_INVOKABLE void invitarASala(const QString& host, quint16 puerto, int toAccountId,
+                                QString salaId) {
+    if (token_.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::INVITAR_A_SALA, {
+            {"token", token_.toStdString()},
+            {"to_account_id", std::to_string(toAccountId)},
+            {"sala_id", salaId.toStdString()},
+        }),
+        [this](const std::string& payload) {
+          if (net::jsonGetStr(payload, "evento") == "INVITACION_ENVIADA") {
+            emit invitacionEnviada();
+          } else {
+            emit invitacionError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+          }
+        });
+  }
+
+  /// Perfil público de OTRA cuenta -- sin exigir sesión iniciada, igual
+  /// que consultarRanking(). Rellena la Q_PROPERTY perfilJugador, NUNCA
+  /// estadisticasCuenta (esa es siempre la propia).
+  Q_INVOKABLE void consultarPerfilJugador(const QString& host, quint16 puerto, int accountId) {
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::CONSULTAR_PERFIL_JUGADOR, {
+            {"account_id", std::to_string(accountId)},
+        }),
+        [this](const std::string& payload) {
+          QVariantMap m;
+          m["existe"] = net::jsonGetInt(payload, "existe") != 0;
+          m["accountId"] = net::jsonGetInt(payload, "account_id");
+          m["username"] = QString::fromStdString(net::jsonGetStr(payload, "username"));
+          m["manosJugadas"] = net::jsonGetInt(payload, "manos_jugadas");
+          m["manosGanadas"] = net::jsonGetInt(payload, "manos_ganadas");
+          m["partidasJugadas"] = net::jsonGetInt(payload, "partidas_jugadas");
+          m["partidasGanadas"] = net::jsonGetInt(payload, "partidas_ganadas");
+          m["rachaActual"] = net::jsonGetInt(payload, "racha_actual");
+          m["rachaMaxima"] = net::jsonGetInt(payload, "racha_maxima");
+          m["mayorBote"] = net::jsonGetInt(payload, "mayor_bote");
+          m["mejorManoNombre"] = QString::fromStdString(net::jsonGetStr(payload, "mejor_mano_nombre"));
+          m["mejorManoFecha"] = net::jsonGetInt(payload, "mejor_mano_fecha");
+          m["vecesCartaAlta"] = net::jsonGetInt(payload, "veces_carta_alta");
+          m["vecesPareja"] = net::jsonGetInt(payload, "veces_pareja");
+          m["vecesDoblePareja"] = net::jsonGetInt(payload, "veces_doble_pareja");
+          m["vecesTrio"] = net::jsonGetInt(payload, "veces_trio");
+          m["vecesEscalera"] = net::jsonGetInt(payload, "veces_escalera");
+          m["vecesColor"] = net::jsonGetInt(payload, "veces_color");
+          m["vecesFullHouse"] = net::jsonGetInt(payload, "veces_full_house");
+          m["vecesPoker"] = net::jsonGetInt(payload, "veces_poker");
+          m["vecesEscaleraColor"] = net::jsonGetInt(payload, "veces_escalera_color");
+          m["vecesEscaleraReal"] = net::jsonGetInt(payload, "veces_escalera_real");
+          perfilJugador_ = m;
+          emit perfilJugadorCambiaron();
+        });
+  }
+
   /**
    * @brief Abre (si no lo estaba ya) el socket de presencia -- conexión
    * persistente separada de socket_/enviarPeticionEfimera, que se queda
@@ -487,14 +626,31 @@ class NetworkClient : public QObject {
         presenciaSocket_.write(reinterpret_cast<const char*>(&len), 4);
         presenciaSocket_.write(msg.payload.data(), static_cast<qint64>(msg.payload.size()));
       });
-      // Sin readyRead propio en V1 -- nada se empuja todavía (ver el plan,
-      // punto de enganche de la fase de chat directo/invitaciones).
+      // Framer PROPIO, más pequeño que el de enviarPeticionEfimera()/socket_
+      // a propósito -- no se reutiliza el de socket_ (atado a sus propios
+      // miembros y el camino más probado/sensible del cliente, duplicar
+      // ~10 líneas es más seguro que arriesgar una regresión ahí). En bucle
+      // porque, a diferencia de una petición efímera, aquí pueden llegar
+      // varios mensajes seguidos antes de que el bucle de eventos procese
+      // el primero.
+      connect(&presenciaSocket_, &QSslSocket::readyRead, this, [this]() {
+        bufferPresencia_ += presenciaSocket_.readAll();
+        while (bufferPresencia_.size() >= 4) {
+          uint32_t n = qFromBigEndian<uint32_t>(
+              reinterpret_cast<const uchar*>(bufferPresencia_.constData()));
+          if (bufferPresencia_.size() < static_cast<int>(4 + n)) break;
+          std::string payload(bufferPresencia_.constData() + 4, n);
+          bufferPresencia_.remove(0, static_cast<int>(4 + n));
+          despacharPushPresencia(payload);
+        }
+      });
       connect(&presenciaSocket_, &QSslSocket::disconnected, this,
-              [this]() { presenciaConectada_ = false; });
+              [this]() { presenciaConectada_ = false; bufferPresencia_.clear(); });
       connect(&presenciaSocket_, &QSslSocket::errorOccurred, this,
-              [this]() { presenciaConectada_ = false; });
+              [this]() { presenciaConectada_ = false; bufferPresencia_.clear(); });
     }
     presenciaSocket_.abort();
+    bufferPresencia_.clear();  // por si quedaba algo a medio leer de una conexión anterior
     presenciaSocket_.connectToHostEncrypted(host, puerto);
   }
 
@@ -737,6 +893,28 @@ class NetworkClient : public QObject {
   void solicitudRespondida();
   void solicitudRespondidaError(QString mensaje);
 
+  // ── Cerrar Social v1: chat directo, invitar a sala, perfil ────────────────
+  /// Respuesta a enviarMensajeDirecto().
+  void mensajeDirectoEnviado();
+  void mensajeDirectoError(QString mensaje);
+  /// Respuesta a listarConversacion() -- filas {id,fromAccountId,creadoEn,leido,texto}.
+  void conversacionActualizada(QVariantList mensajes);
+  /// Respuesta a listarResumenChats() -- filas
+  /// {accountId,ultimoEsMio,noLeidos,ultimoEn,username,ultimoTexto}.
+  void resumenChatsActualizado(QVariantList chats);
+  /// PUSH por el socket de presencia: llegó un mensaje directo mientras
+  /// estábamos en menús (ver el framer de presenciaSocket_ más abajo).
+  void mensajeDirectoRecibido(int fromAccountId, QString fromUsername, QString texto,
+                              int creadoEn, int mensajeId);
+  /// Respuesta a invitarASala().
+  void invitacionEnviada();
+  void invitacionError(QString mensaje);
+  /// PUSH por el socket de presencia: un amigo te invitó a su sala.
+  void invitacionSalaRecibida(int fromAccountId, QString fromUsername, QString salaId,
+                              QString codigo, QString nombreSala);
+  /// Respuesta a consultarPerfilJugador() -- ver Q_PROPERTY perfilJugador.
+  void perfilJugadorCambiaron();
+
  private:
   /**
    * @brief Parsea una lista en el formato plano delimitado del protocolo
@@ -767,6 +945,66 @@ class NetworkClient : public QObject {
       filas.push_back(fila);
     }
     return filas;
+  }
+
+  /**
+   * @brief Mismo propósito que parsearFilasSocial() pero para
+   * CONVERSACION_LISTA/RESUMEN_CHATS_LISTA, que llevan texto LIBRE de
+   * chat -- separadores de control '\x1F' (campo) / '\x1E' (fila) en vez
+   * de ':'/';' , porque un mensaje real puede contener cualquiera de esos
+   * dos caracteres (ver el comentario de esos MsgType en Protocol.hpp).
+   * Sin el truco de "el último campo absorbe el resto": no hace falta,
+   * '\x1F' nunca aparece en texto normal, un split exacto ya basta. Los
+   * campos "texto"/"ultimoTexto"/"username" NUNCA se auto-detectan como
+   * número (a diferencia de parsearFilasSocial()) -- un mensaje que sea
+   * solo dígitos ("123") debe seguir siendo una QString, no un int.
+   */
+  static QVariantList parsearFilasChat(const std::string& csv, const QStringList& campos) {
+    QVariantList filas;
+    if (csv.empty()) return filas;
+    const QString sepCampo(QChar(0x1F));
+    const QString sepFila(QChar(0x1E));
+    const QStringList filasStr = QString::fromStdString(csv).split(sepFila, Qt::SkipEmptyParts);
+    for (const QString& filaStr : filasStr) {
+      const QStringList valores = filaStr.split(sepCampo);
+      QVariantMap fila;
+      for (int i = 0; i < campos.size() && i < valores.size(); ++i) {
+        const QString& nombreCampo = campos[i];
+        const QString& valor = valores[i];
+        if (nombreCampo == QLatin1String("texto") || nombreCampo == QLatin1String("ultimoTexto") ||
+            nombreCampo == QLatin1String("username")) {
+          fila[nombreCampo] = valor;
+          continue;
+        }
+        bool esNumero = false;
+        int numero = valor.toInt(&esNumero);
+        fila[nombreCampo] = esNumero ? QVariant(numero) : QVariant(valor);
+      }
+      filas.push_back(fila);
+    }
+    return filas;
+  }
+
+  /// Despacha un mensaje llegado por presenciaSocket_ -- solo los 2 tipos
+  /// de push de la Social v1 (ver el framer en conectarPresencia()),
+  /// cualquier otro tipo se ignora.
+  void despacharPushPresencia(const std::string& payload) {
+    net::MsgType tipo = net::strToMsgType(net::jsonGetStr(payload, "type"));
+    if (tipo == net::MsgType::MENSAJE_DIRECTO_ENTRANTE) {
+      emit mensajeDirectoRecibido(
+          net::jsonGetInt(payload, "from_account_id"),
+          QString::fromStdString(net::jsonGetStr(payload, "from_username")),
+          QString::fromStdString(net::jsonGetStr(payload, "texto")),
+          net::jsonGetInt(payload, "creado_en"),
+          net::jsonGetInt(payload, "mensaje_id"));
+    } else if (tipo == net::MsgType::INVITACION_SALA_ENTRANTE) {
+      emit invitacionSalaRecibida(
+          net::jsonGetInt(payload, "from_account_id"),
+          QString::fromStdString(net::jsonGetStr(payload, "from_username")),
+          QString::fromStdString(net::jsonGetStr(payload, "sala_id")),
+          QString::fromStdString(net::jsonGetStr(payload, "codigo")),
+          QString::fromStdString(net::jsonGetStr(payload, "nombre_sala")));
+    }
   }
 
   void enviarMensaje(const net::Message& msg) {
@@ -1293,7 +1531,12 @@ class NetworkClient : public QObject {
               QString c1 = QString::fromStdString(net::jsonGetStr(payload, "c1"));
               QString c2 = QString::fromStdString(net::jsonGetStr(payload, "c2"));
               emit misCartasRepartidas(c1, c2);
-            } else if (evento == "SALA_CREADA") {
+            } else if (evento == "SALA_CREADA" || evento == "SALA_UNIDA") {
+              // SALA_UNIDA: mismos campos que SALA_CREADA, mismo manejo --
+              // cierra el hueco de que hasta ahora solo quien CREA una sala
+              // conocía su propio sala_id (ver el plan "Cerrar Social v1"),
+              // necesario para poder invitar a alguien desde una sala a la
+              // que uno mismo se unió.
               QString salaId = QString::fromStdString(net::jsonGetStr(payload, "sala_id"));
               QString codigo = QString::fromStdString(net::jsonGetStr(payload, "codigo"));
               // Igual que en unirseASala(): recordados para poder mandar
@@ -1624,6 +1867,7 @@ class NetworkClient : public QObject {
   QString mejorManoJugadorFinal_;
   QString eliminacionesFinalCsv_;
   QVariantMap estadisticasCuenta_;
+  QVariantMap perfilJugador_;  ///< Perfil de OTRA cuenta -- ver el comentario del Q_PROPERTY.
 
   // ── Social: socket de presencia ──────────────────────────────────────
   // Conexión persistente SEPARADA de socket_ (la de sala/partida) -- ver
@@ -1634,4 +1878,5 @@ class NetworkClient : public QObject {
   QSslSocket presenciaSocket_;
   bool presenciaConectada_ = false;
   bool presenciaSenalesConectadas_ = false;  // connect() de presenciaSocket_ solo una vez
+  QByteArray bufferPresencia_;  ///< Framer de MENSAJE_DIRECTO_ENTRANTE/INVITACION_SALA_ENTRANTE.
 };

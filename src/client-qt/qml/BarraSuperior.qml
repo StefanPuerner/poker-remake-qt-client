@@ -17,6 +17,14 @@ Item {
     // criterio que mostrarSaldo, en vez de mostrar el botón siempre y
     // que quien lo pulse en Lobby/Salas no tenga nada que ver.
     property bool mostrarChuleta: false
+    // "Refrescar"/"Salir" -- antes vivían como dos píldoras sueltas al
+    // final de la pantalla Salas, descolgadas del resto del rediseño
+    // (rejilla de tarjetas + barra de pestañas arriba, ver Main.qml).
+    // Mismo criterio que mostrarChuleta: solo Salas los activa hoy, pero
+    // cualquier pantalla futura con sentido de "refrescar"/"salir" puede
+    // reutilizarlos sin más.
+    property bool mostrarRefrescar: false
+    property bool mostrarSalir: false
     required property string pantalla
     required property int miSaldoActual
     required property bool reconectandoAhora
@@ -27,6 +35,8 @@ Item {
     // señal en vez de pasarlo también como required property.
     signal abrirAjustes()
     signal abrirChuleta()
+    signal refrescar()
+    signal salir()
     height: 50 * Tema.escala
     // Flota en vez de ir pegada al borde — margen a los tres lados
     // puesto aquí (no en cada sitio donde se usa) para que las cinco
@@ -184,6 +194,74 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: barra.abrirChuleta()
+                }
+            }
+
+            Rectangle {
+                id: botonRefrescarBarra
+                visible: barra.mostrarRefrescar
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30 * Tema.escala
+                height: 30 * Tema.escala
+                radius: width / 2
+                border.width: 1
+                border.color: botonRefrescarBarraArea.containsMouse ? Tema.colorAccent : Tema.colorBorde
+                gradient: Gradient {
+                    GradientStop {
+                        position: 0.0
+                        color: botonRefrescarBarraArea.containsMouse ? Qt.lighter(Tema.colorAccent, 1.3) : "transparent"
+                    }
+                    GradientStop {
+                        position: 0.5
+                        color: botonRefrescarBarraArea.containsMouse ? Tema.colorAccent : "transparent"
+                    }
+                    GradientStop {
+                        position: 1.0
+                        color: botonRefrescarBarraArea.containsMouse ? Qt.darker(Tema.colorAccent, 1.25) : "transparent"
+                    }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: "↻"
+                    font.bold: true
+                    font.pixelSize: 17 * Tema.escala
+                    color: botonRefrescarBarraArea.containsMouse ? Tema.colorPanel : Tema.colorTextoTenue
+                }
+                MouseArea {
+                    id: botonRefrescarBarraArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: barra.refrescar()
+                }
+            }
+
+            // Píldora de texto (no un icono circular como el resto) --
+            // "salir" es una acción con más peso (desconecta de verdad),
+            // el color de peligro solo es inequívoco acompañado de la
+            // palabra.
+            Rectangle {
+                id: botonSalirBarra
+                visible: barra.mostrarSalir
+                anchors.verticalCenter: parent.verticalCenter
+                height: 26 * Tema.escala
+                width: textoSalirBarra.implicitWidth + 20 * Tema.escala
+                radius: height / 2
+                border.width: 1
+                border.color: Tema.colorPeligro
+                color: botonSalirBarraArea.containsMouse ? Tema.colorPeligro : "transparent"
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Text {
+                    id: textoSalirBarra
+                    anchors.centerIn: parent
+                    text: "Salir"
+                    font.pixelSize: 12 * Tema.escala
+                    color: botonSalirBarraArea.containsMouse ? Tema.colorPanel : Tema.colorPeligro
+                }
+                MouseArea {
+                    id: botonSalirBarraArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: barra.salir()
                 }
             }
 

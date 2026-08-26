@@ -91,6 +91,26 @@ const char* msgTypeStr(MsgType t) {
       return "SOLICITUDES_LISTA";
     case MsgType::JUGADORES_RECIENTES_LISTA:
       return "JUGADORES_RECIENTES_LISTA";
+    case MsgType::ENVIAR_MENSAJE_DIRECTO:
+      return "ENVIAR_MENSAJE_DIRECTO";
+    case MsgType::LISTAR_CONVERSACION:
+      return "LISTAR_CONVERSACION";
+    case MsgType::LISTAR_RESUMEN_CHATS:
+      return "LISTAR_RESUMEN_CHATS";
+    case MsgType::INVITAR_A_SALA:
+      return "INVITAR_A_SALA";
+    case MsgType::CONSULTAR_PERFIL_JUGADOR:
+      return "CONSULTAR_PERFIL_JUGADOR";
+    case MsgType::CONVERSACION_LISTA:
+      return "CONVERSACION_LISTA";
+    case MsgType::RESUMEN_CHATS_LISTA:
+      return "RESUMEN_CHATS_LISTA";
+    case MsgType::PERFIL_JUGADOR:
+      return "PERFIL_JUGADOR";
+    case MsgType::MENSAJE_DIRECTO_ENTRANTE:
+      return "MENSAJE_DIRECTO_ENTRANTE";
+    case MsgType::INVITACION_SALA_ENTRANTE:
+      return "INVITACION_SALA_ENTRANTE";
     default:
       return "UNKNOWN";
   }
@@ -134,6 +154,16 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "AMIGOS_LISTA") return MsgType::AMIGOS_LISTA;
   if (s == "SOLICITUDES_LISTA") return MsgType::SOLICITUDES_LISTA;
   if (s == "JUGADORES_RECIENTES_LISTA") return MsgType::JUGADORES_RECIENTES_LISTA;
+  if (s == "ENVIAR_MENSAJE_DIRECTO") return MsgType::ENVIAR_MENSAJE_DIRECTO;
+  if (s == "LISTAR_CONVERSACION") return MsgType::LISTAR_CONVERSACION;
+  if (s == "LISTAR_RESUMEN_CHATS") return MsgType::LISTAR_RESUMEN_CHATS;
+  if (s == "INVITAR_A_SALA") return MsgType::INVITAR_A_SALA;
+  if (s == "CONSULTAR_PERFIL_JUGADOR") return MsgType::CONSULTAR_PERFIL_JUGADOR;
+  if (s == "CONVERSACION_LISTA") return MsgType::CONVERSACION_LISTA;
+  if (s == "RESUMEN_CHATS_LISTA") return MsgType::RESUMEN_CHATS_LISTA;
+  if (s == "PERFIL_JUGADOR") return MsgType::PERFIL_JUGADOR;
+  if (s == "MENSAJE_DIRECTO_ENTRANTE") return MsgType::MENSAJE_DIRECTO_ENTRANTE;
+  if (s == "INVITACION_SALA_ENTRANTE") return MsgType::INVITACION_SALA_ENTRANTE;
   return MsgType::UNKNOWN;
 }
 

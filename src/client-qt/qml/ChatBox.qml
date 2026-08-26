@@ -15,6 +15,12 @@ Rectangle {
     // dentro de su propio fichero, así que quien instancie esto ahora
     // pasa el valor explícitamente.
     required property bool activo
+    // Quien instancia esto decide A DÓNDE va el mensaje (chat de sala vía
+    // redcliente.enviarChat(), o un chat directo vía
+    // redcliente.enviarMensajeDirecto() -- ver VistaChatDirecto.qml) --
+    // ChatBox ya no llama a la red directamente, solo hace el eco local
+    // en "modelo" (igual para los dos casos) y emite esta señal.
+    signal enviar(string texto)
     visible: activo
     width: 340 * Tema.escala
     height: 460 * Tema.escala
@@ -149,7 +155,7 @@ Rectangle {
                 // blanco -- antes esto no hacía falta porque llegar hasta
                 // aquí exigía Tab + Espacio a propósito.
                 if (textoChat.text.length === 0) return;
-                redcliente.enviarChat(textoChat.text, "sala");
+                cajaChat.enviar(textoChat.text);
                 cajaChat.modelo.append({
                     autor: cajaChat.miNombre,
                     mensaje: textoChat.text,

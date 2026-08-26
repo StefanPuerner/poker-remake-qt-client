@@ -11,6 +11,11 @@ Rectangle {
     id: selector
     property var opciones: []
     property int seleccionado: 0
+    // Ver el comentario largo en la versión de escritorio de este mismo
+    // fichero -- este componente nunca escribe su propia "seleccionado"
+    // para no romper un binding declarativo externo (bug real:
+    // 2026-08-28).
+    signal elegido(int indice)
 
     width: parent.width
     height: 44 * Tema.escala
@@ -64,7 +69,7 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: selector.seleccionado = segmento.index
+                    onClicked: selector.elegido(segmento.index)
                 }
             }
         }

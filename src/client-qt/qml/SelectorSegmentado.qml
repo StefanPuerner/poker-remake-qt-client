@@ -14,6 +14,17 @@ Rectangle {
     id: selector
     property var opciones: []
     property int seleccionado: 0
+    // Emitida al pulsar un segmento -- el LLAMADOR decide el valor real de
+    // "seleccionado" (normalmente reasignándolo desde aquí mismo). Este
+    // componente NUNCA escribe su propia "seleccionado" -- si lo hiciera,
+    // cualquier binding declarativo del tipo "seleccionado: miPropiedad"
+    // quedaría roto para siempre en cuanto el usuario pulsara una vez (QML
+    // corta el binding en la primera asignación directa), así que un reset
+    // externo posterior de "miPropiedad" (p. ej. al reentrar en una
+    // pantalla) ya no se reflejaría aquí -- bug real en producción: Social
+    // se acordaba visualmente de la última pestaña pulsada aunque el
+    // código pusiera pestanaSocialActual a 0 al reentrar (2026-08-28).
+    signal elegido(int indice)
 
     width: parent.width
     height: 44 * Tema.escala
@@ -72,7 +83,7 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: selector.seleccionado = segmento.index
+                    onClicked: selector.elegido(segmento.index)
                 }
             }
         }

@@ -15,6 +15,25 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Tema.colorAccent
 
+    // Mismo motivo que escritorio (ver Main.qml de qml/): cualquier
+    // TextField enfocado se quedaba con el foco indefinidamente si dejabas
+    // de escribir y tocabas en otro sitio sin control propio, en vez de
+    // perderlo (y cerrar el teclado en pantalla) como en cualquier
+    // formulario normal. z explícito -- aquí no hay un único Rectangle
+    // raíz que envuelva todas las pantallas como en escritorio, así que no
+    // basta con ser "el primer hijo" para garantizar quedar debajo de
+    // todo.
+    Item {
+        id: capturaFocoFondoMovil
+        anchors.fill: parent
+        z: -1000
+        focus: true
+        MouseArea {
+            anchors.fill: parent
+            onClicked: capturaFocoFondoMovil.forceActiveFocus()
+        }
+    }
+
     // Igual que en escritorio (ver Binding en el Main.qml de ahí), pero
     // atado al tamaño real de la ventana en vez de a un factor de zoom
     // manual — en un móvil la "ventana" YA es la pantalla completa (o el
@@ -40,12 +59,18 @@ ApplicationWindow {
     // ── Navegación + gesto de atrás (Parte 7 del plan, punto 3) ─────────────
     // Mismo modelo de pantalla plana que escritorio. "mapaAtras" es el
     // mismo destino que ya usan los botones "Cancelar"/"Salir" de
-    // escritorio (Salas→Inicio, CrearSala→Salas, Fin→Salas) — Lobby/Partida
-    // quedan fuera a propósito: abandonar una partida en curso pasa por el
+    // escritorio -- las 4 pantallas "hub" con riel (Salas/Ranking/Torneos/
+    // Social) van a Inicio (pedido explícito 2026-08-28: antes solo Salas
+    // tenía salida por gesto de atrás, las otras tres se tragaban el back
+    // sin hacer nada), CrearSala→Salas, Fin→Salas. Lobby/Partida quedan
+    // fuera a propósito: abandonar una partida en curso pasa por el
     // overlay de voto, no por un back que se salte esa confirmación.
     property string pantalla: "Inicio"
     readonly property var mapaAtras: ({
         "Salas": "Inicio",
+        "Ranking": "Inicio",
+        "Torneos": "Inicio",
+        "Social": "Inicio",
         "CrearSala": "Salas",
         "Fin": "Salas"
     })
@@ -56,6 +81,13 @@ ApplicationWindow {
     onAjustesAbiertosChanged: {
         if (ajustesAbiertos && ventana.tokenSesion !== "") {
             redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+        // Al cerrar: vuelve a la pestaña "Ajustes" y al principio del
+        // scroll -- mismo criterio que escritorio (ver Main.qml de qml/),
+        // estado inicial de verdad la próxima vez que se abra.
+        if (!ajustesAbiertos) {
+            ventana.pestanaAjustesActual = 0;
+            if (scrollAjustesMovil.contentItem) scrollAjustesMovil.contentItem.contentY = 0;
         }
     }
 
@@ -236,6 +268,25 @@ ApplicationWindow {
     property string archivoARenombrar: ""
     ListModel { id: salasDisponibles }
     ListModel { id: guardadasDisponibles }
+    // Filas de hasta 3 salas cada una -- lo que de verdad pinta la lista
+    // de Salas (ver listaSalasMovil), reconstruida cada vez que cambia
+    // salasDisponibles (mismo patrón que modeloAmigosConChat). Necesario
+    // para poder seguir usando ListView (no GridView) como contenedor de
+    // scroll -- ver el comentario largo junto a listaSalasMovil.
+    ListModel { id: salasAgrupadasMovil }
+    function reconstruirSalasAgrupadas() {
+        salasAgrupadasMovil.clear();
+        var fila = [];
+        for (var i = 0; i < salasDisponibles.count; i++) {
+            var s = salasDisponibles.get(i);
+            fila.push({ id: s.id, conectados: s.conectados, esperados: s.esperados, nombre: s.nombre });
+            if (fila.length === 3) {
+                salasAgrupadasMovil.append({ salas: fila });
+                fila = [];
+            }
+        }
+        if (fila.length > 0) salasAgrupadasMovil.append({ salas: fila });
+    }
 
     // ── Ranking global -- mismo criterio que escritorio (ver Main.qml de
     // qml/): rankingCrudo sin ordenar, reordenarRanking() reconstruye
@@ -262,6 +313,42 @@ ApplicationWindow {
     ListModel { id: modeloSolicitudes }
     property string pendienteSolicitudUsername: ""
     property string mensajeErrorSocial: ""
+    // ── Amigos + chat fusionados (Cerrar Social v1) ─────────────────────
+    // Mismo criterio que escritorio (ver Main.qml de qml/): "Chats" no es
+    // una pestaña aparte, cada fila de Amigos ya muestra presencia Y el
+    // último mensaje. modeloResumenChats es la fuente cruda; modeloAmigosConChat
+    // es el cruce por accountId que de verdad pinta la lista.
+    ListModel { id: modeloResumenChats }
+    ListModel { id: modeloAmigosConChat }
+    function reconstruirModeloAmigosConChat() {
+        var resumenPorId = {};
+        for (var i = 0; i < modeloResumenChats.count; i++) {
+            var r = modeloResumenChats.get(i);
+            resumenPorId[r.accountId] = r;
+        }
+        modeloAmigosConChat.clear();
+        for (var j = 0; j < modeloAmigos.count; j++) {
+            var a = modeloAmigos.get(j);
+            var r2 = resumenPorId[a.accountId];
+            modeloAmigosConChat.append({
+                accountId: a.accountId,
+                username: a.username,
+                estado: a.estado,
+                ultimoTexto: r2 ? r2.ultimoTexto : "",
+                // !! fuerza booleano de verdad -- mismo bug/arreglo que
+                // escritorio (parsearFilasChat() en C++ manda "0"/"1" como
+                // número, no bool; sin el !!, el primer amigo sin chat aún
+                // fija el rol de ListModel como Bool y el siguiente con
+                // chat rompe "Can't assign to existing role... of
+                // different type").
+                ultimoEsMio: r2 ? !!r2.ultimoEsMio : false,
+                noLeidos: r2 ? r2.noLeidos : 0
+            });
+            // Cabecera del chat flotante al día si está abierta justo para
+            // este amigo -- mismo criterio que escritorio (chatAmigoSeleccionadoEstado).
+            if (popupChatDirecto.accountId === a.accountId) popupChatDirecto.estado = a.estado;
+        }
+    }
     // El estado "pendiente" viene del SERVIDOR (ver el comentario largo en
     // Main.qml de qml/) -- esta función solo hace la actualización
     // optimista de la fila recién mandada, sin esperar a la próxima
@@ -297,6 +384,10 @@ ApplicationWindow {
 
     // ── Lobby ────────────────────────────────────────────────────────────
     property string codigoSalaPropia: ""
+    // El sala_id propio -- mismo motivo que en escritorio: antes solo lo
+    // conocía quien CREABA la sala (SALA_CREADA); ahora también llega al
+    // unirse (SALA_UNIDA). Necesario para invitarASala() desde el Lobby.
+    property string salaIdPropia: ""
     property string nombresEsperadosLobby: ""
     property string hostActual: ""
     // soyHost es SIEMPRE verdad de servidor (ver Main.qml de qml/, mismo
@@ -534,6 +625,7 @@ ApplicationWindow {
         function onAmigosActualizados(amigos) {
             modeloAmigos.clear();
             for (var i = 0; i < amigos.length; i++) modeloAmigos.append(amigos[i]);
+            reconstruirModeloAmigosConChat();
         }
         function onSolicitudesActualizadas(solicitudes) {
             modeloSolicitudes.clear();
@@ -542,6 +634,22 @@ ApplicationWindow {
         function onJugadoresRecientesActualizados(recientes) {
             modeloRecientes.clear();
             for (var i = 0; i < recientes.length; i++) modeloRecientes.append(recientes[i]);
+        }
+        function onResumenChatsActualizado(chats) {
+            modeloResumenChats.clear();
+            for (var i = 0; i < chats.length; i++) modeloResumenChats.append(chats[i]);
+            reconstruirModeloAmigosConChat();
+        }
+        // PUSH por el socket de presencia: si estamos mirando Amigos,
+        // refresca el resumen para que el último mensaje/badge se pongan
+        // al día sin salir y volver a entrar en la pestaña.
+        function onMensajeDirectoRecibido(fromAccountId, fromUsername, texto, creadoEn, mensajeId) {
+            if (pestanaSocialActual === 0) {
+                redcliente.listarResumenChats(servidorHost, servidorPuerto);
+            }
+        }
+        function onInvitacionSalaRecibida(fromAccountId, fromUsername, salaId, codigo, nombreSala) {
+            bannerInvitacionSala.mostrar(fromAccountId, fromUsername, salaId, codigo, nombreSala);
         }
         function onSolicitudAmistadEnviada() {
             mensajeErrorSocial = "";
@@ -575,6 +683,7 @@ ApplicationWindow {
         }
         function onSalaCreada(salaId, codigo) {
             codigoSalaPropia = codigo;
+            salaIdPropia = salaId;
         }
         function onLobbyActualizado(jugadoresCsv, listos, esperados, host, esperadosNombresCsv) {
             jugadoresConectados.clear();
@@ -910,7 +1019,7 @@ ApplicationWindow {
         function onSalasActualizadas(salasCsv) {
             ventana.refrescandoSalas = false;
             salasDisponibles.clear();
-            if (salasCsv.length === 0) return;
+            if (salasCsv.length === 0) { reconstruirSalasAgrupadas(); return; }
             var salas = salasCsv.split(";");
             for (var i = 0; i < salas.length; i++) {
                 var campos = salas[i].split(":");
@@ -921,6 +1030,7 @@ ApplicationWindow {
                     nombre: campos.slice(3).join(":")
                 });
             }
+            reconstruirSalasAgrupadas();
         }
         function onGuardadasActualizadas(guardadasCsv) {
             ventana.refrescandoGuardadas = false;
@@ -943,10 +1053,13 @@ ApplicationWindow {
                 var partes = rankingCsv.split(";");
                 for (var i = 0; i < partes.length; i++) {
                     var campos = partes[i].split(":");
+                    // accountId antepuesto (Cerrar Social v1) -- abre el
+                    // perfil público de cada fila.
                     filas.push({
-                        partidasJugadas: parseInt(campos[0]),
-                        partidasGanadas: parseInt(campos[1]),
-                        username: campos.slice(2).join(":")
+                        accountId: parseInt(campos[0]),
+                        partidasJugadas: parseInt(campos[1]),
+                        partidasGanadas: parseInt(campos[2]),
+                        username: campos.slice(3).join(":")
                     });
                 }
             }
@@ -1528,21 +1641,33 @@ ApplicationWindow {
         anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         anchors.top: barraSalasMovil.bottom
         anchors.topMargin: 22 * Tema.escala
+        // Mismo ancho que la caja de salas/guardadas de debajo (ver
+        // cajaSalasMovil más abajo) -- antes esta fila solo se centraba por
+        // el ancho implícito de sus hijos (SelectorPildoras se ajustaba al
+        // texto); SelectorSegmentado necesita un ancho explícito, ver el
+        // comentario largo en Main.qml de qml/ (mismo cambio ahí).
+        width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
         spacing: 10 * Tema.escala
-        SelectorPildoras {
+        SelectorSegmentado {
             id: tabsSalas
             anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - botonCrearSalaMovil.width - parent.spacing
             opciones: ["Salas públicas", "Partidas guardadas", "Sala privada"]
-            onSeleccionadoChanged: {
-                ventana.viendoGuardadas = seleccionado === 1;
-                ventana.viendoPrivada = seleccionado === 2;
+            onElegido: (indice) => {
+                seleccionado = indice;
+                ventana.viendoGuardadas = indice === 1;
+                ventana.viendoPrivada = indice === 2;
                 if (ventana.viendoGuardadas)
                     redcliente.listarGuardadas(ventana.servidorHost, ventana.servidorPuerto);
             }
         }
         BotonContorno {
+            id: botonCrearSalaMovil
             anchors.verticalCenter: parent.verticalCenter
-            text: "Crear sala nueva"
+            // "Crear sala nueva" se comía la barra en pantallas landscape
+            // compactas (rediseño 2026-08-28, ver el mockup) -- acortado a
+            // "+ Sala", el segmentado ya deja claro el contexto ("Salas").
+            text: "+ Sala"
             onClicked: {
                 ventana.mensajeErrorConexion = "";
                 ventana.pantalla = "CrearSala";
@@ -1594,11 +1719,19 @@ ApplicationWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
-        height: 220 * Tema.escala
-        radius: 8 * Tema.escala
-        color: Tema.colorPanel
+        // Un poco más alta que antes (220 -> 248) -- las tarjetas nuevas
+        // necesitan algo más de aire que las filas finas de antes, pero
+        // sigue acotada: el alto es el recurso escaso en landscape corto
+        // (ver el comentario del riel), así que 3+ salas que no quepan
+        // hacen scroll dentro de la caja, no la agrandan sin límite.
+        height: 248 * Tema.escala
+        radius: 10 * Tema.escala
         border.width: 1
-        border.color: Tema.colorBorde
+        border.color: Qt.rgba(0, 0, 0, 0.35)
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+            GradientStop { position: 1.0; color: Tema.colorPanel }
+        }
 
             Text {
                 anchors.centerIn: parent
@@ -1621,6 +1754,23 @@ ApplicationWindow {
                 font.pixelSize: 13 * Tema.escala
             }
 
+            // Tarjetas en filas de 3 (rediseño 2026-08-28, ver el mockup
+            // aprobado), pero sobre un ListView de FILAS (cada delegate es
+            // una fila con hasta 3 tarjetas dentro, vía Repeater), NO un
+            // GridView -- GridView complicaba la rejilla sin necesidad real
+            // (Row+Repeater ya da 3 por fila) y además impide el header
+            // nativo del scroll -- ver el motivo real del bug de abajo
+            // (no era cosa de GridView en sí, la misma rotura reapareció en
+            // Guardadas -- que SIEMPRE fue ListView -- en cuanto llevaba el
+            // mismo envoltorio). CabeceraPullRefrescar necesita ser el
+            // header DIRECTO, sin envolver en un Column con nada más al
+            // lado (ver el comentario largo junto al header de Guardadas):
+            // su altura depende de contentY y da por hecho una altura de
+            // reposo EXACTAMENTE 0 -- cualquier otro hijo con altura fija
+            // en el mismo Column rompe esa invariante y el header se
+            // realimenta con la propia reposición de contentY (bug real,
+            // reportado dos veces: 2026-08-28). salasAgrupadasMovil se
+            // reconstruye junto con salasDisponibles, ver onSalasActualizadas.
             ListView {
                 id: listaSalasMovil
                 visible: !ventana.viendoGuardadas && !ventana.viendoPrivada
@@ -1628,7 +1778,7 @@ ApplicationWindow {
                 anchors.margins: 10 * Tema.escala
                 clip: true
                 spacing: 8 * Tema.escala
-                model: salasDisponibles
+                model: salasAgrupadasMovil
                 header: CabeceraPullRefrescar {
                     vista: listaSalasMovil
                     refrescando: ventana.refrescandoSalas
@@ -1637,47 +1787,78 @@ ApplicationWindow {
                         redcliente.refrescarSalas(ventana.servidorHost, ventana.servidorPuerto);
                     }
                 }
-                delegate: Rectangle {
-                    id: filaSalaMovil
-                    required property string id
-                    required property string nombre
-                    required property int conectados
-                    required property int esperados
+                delegate: Row {
+                    id: filaDeSalasMovil
+                    required property var salas
                     width: ListView.view.width
-                    height: Tema.tamanoMinTactil + 12 * Tema.escala
-                    radius: 6 * Tema.escala
-                    color: Tema.colorFondo
-                    border.width: 1
-                    border.color: Tema.colorBorde
+                    spacing: 8 * Tema.escala
+                    // Sin botón "Unirse" aparte -- la tarjeta entera es el
+                    // objetivo táctil (de sobra por encima de
+                    // Tema.tamanoMinTactil), atenuada y sin toque si la
+                    // sala ya está llena.
+                    Repeater {
+                        model: filaDeSalasMovil.salas
+                        delegate: Rectangle {
+                            id: tarjetaSalaMovil
+                            required property var modelData
+                            width: (filaDeSalasMovil.width - 2 * filaDeSalasMovil.spacing) / 3
+                            height: 78 * Tema.escala
+                            radius: 8 * Tema.escala
+                            border.width: 1
+                            border.color: Qt.rgba(0, 0, 0, 0.35)
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                GradientStop { position: 1.0; color: Tema.colorPanel }
+                            }
+                            opacity: tarjetaSalaMovil.modelData.conectados < tarjetaSalaMovil.modelData.esperados ? 1.0 : 0.55
 
-                    Column {
-                        anchors.left: parent.left
-                        anchors.right: botonUnirseMovil.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: 12 * Tema.escala
-                        anchors.rightMargin: 10 * Tema.escala
-                        Text {
-                            width: parent.width
-                            elide: Text.ElideRight
-                            text: filaSalaMovil.nombre !== "" ? filaSalaMovil.nombre : filaSalaMovil.id
-                            color: Tema.colorTexto
-                            font.pixelSize: 14 * Tema.escala
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.margins: 8 * Tema.escala
+                                spacing: 4 * Tema.escala
+                                Text {
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                    text: tarjetaSalaMovil.modelData.nombre !== "" ? tarjetaSalaMovil.modelData.nombre : tarjetaSalaMovil.modelData.id
+                                    color: Tema.colorTexto
+                                    font.bold: true
+                                    font.pixelSize: 12 * Tema.escala
+                                }
+                                Row {
+                                    width: parent.width
+                                    spacing: 6 * Tema.escala
+                                    Rectangle {
+                                        id: pistaOcupacionMovil
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - textoOcupacionMovil.width - parent.spacing
+                                        height: 4 * Tema.escala
+                                        radius: height / 2
+                                        color: Qt.rgba(1, 1, 1, 0.08)
+                                        Rectangle {
+                                            width: pistaOcupacionMovil.width * (tarjetaSalaMovil.modelData.esperados > 0
+                                                       ? Math.min(1.0, tarjetaSalaMovil.modelData.conectados / tarjetaSalaMovil.modelData.esperados) : 0)
+                                            height: parent.height
+                                            radius: height / 2
+                                            color: Tema.colorAccent
+                                        }
+                                    }
+                                    Text {
+                                        id: textoOcupacionMovil
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: tarjetaSalaMovil.modelData.conectados + "/" + tarjetaSalaMovil.modelData.esperados
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 9 * Tema.escala
+                                    }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: tarjetaSalaMovil.modelData.conectados < tarjetaSalaMovil.modelData.esperados
+                                onClicked: ventana.unirse(tarjetaSalaMovil.modelData.id, "")
+                            }
                         }
-                        Text {
-                            width: parent.width
-                            elide: Text.ElideRight
-                            text: filaSalaMovil.conectados + " / " + filaSalaMovil.esperados + " jugadores"
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 11 * Tema.escala
-                        }
-                    }
-                    BotonRelleno {
-                        id: botonUnirseMovil
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.rightMargin: 10 * Tema.escala
-                        text: "Unirse"
-                        onClicked: ventana.unirse(filaSalaMovil.id, "")
                     }
                 }
             }
@@ -1690,6 +1871,15 @@ ApplicationWindow {
                 clip: true
                 spacing: 8 * Tema.escala
                 model: guardadasDisponibles
+                // SIN envolver en un Column con una pista de texto al lado
+                // -- eso le daba al header una altura de reposo != 0 (antes
+                // era EXACTAMENTE 0 sin arrastrar), y esa invariante es de
+                // lo que depende CabeceraPullRefrescar para no
+                // realimentarse con la propia reposición de contentY al
+                // animar su cierre -- mismo bug que en Salas, reportado de
+                // nuevo aquí 2026-08-28 (la causa real nunca fue GridView
+                // en sí, sino este envoltorio, que Salas ya perdió al
+                // reestructurarse en filas).
                 header: CabeceraPullRefrescar {
                     vista: listaGuardadasMovil
                     refrescando: ventana.refrescandoGuardadas
@@ -1707,10 +1897,13 @@ ApplicationWindow {
                     property bool confirmandoBorrado: false
                     width: ListView.view.width
                     height: Tema.tamanoMinTactil + 12 * Tema.escala
-                    radius: 6 * Tema.escala
-                    color: Tema.colorFondo
+                    radius: 8 * Tema.escala
                     border.width: 1
-                    border.color: Tema.colorBorde
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
 
                     Column {
                         anchors.left: parent.left
@@ -1843,14 +2036,21 @@ ApplicationWindow {
         anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         anchors.top: barraRankingMovil.bottom
         anchors.topMargin: 12 * Tema.escala
+        // Mismo ancho tope que la caja de Salas -- SelectorSegmentado (a
+        // diferencia de SelectorPildoras) necesita uno explícito, ver el
+        // comentario largo en filaTabsSalasMovil.
+        width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
         spacing: 10 * Tema.escala
-        SelectorPildoras {
+        // Unificado con Salas/Social (rediseño 2026-08-28) -- antes era el
+        // único selector que seguía en píldoras sueltas.
+        SelectorSegmentado {
             id: tabsRankingMovil
             anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - iconoInfoRankingMovil.width - parent.spacing
             opciones: ["Más victorias", "Mejor ratio"]
             seleccionado: ventana.ordenRankingActual
-            onSeleccionadoChanged: {
-                ventana.ordenRankingActual = seleccionado;
+            onElegido: (indice) => {
+                ventana.ordenRankingActual = indice;
                 ventana.reordenarRanking();
             }
         }
@@ -1994,6 +2194,7 @@ ApplicationWindow {
             }
             delegate: Rectangle {
                 id: filaRankingMovil
+                required property int accountId
                 required property string username
                 required property int partidasJugadas
                 required property int partidasGanadas
@@ -2044,6 +2245,12 @@ ApplicationWindow {
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                     }
+                }
+                // Fila completa abre el perfil público -- mismo criterio
+                // que en escritorio.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: popupPerfilJugador.abrir(filaRankingMovil.accountId)
                 }
             }
         }
@@ -2121,12 +2328,18 @@ ApplicationWindow {
         anchors.margins: 16 * Tema.escala
         opciones: ["Amigos", "Buscar", "Recientes", "Solicitudes"]
         seleccionado: ventana.pestanaSocialActual
-        onSeleccionadoChanged: {
-            ventana.pestanaSocialActual = seleccionado;
+        onElegido: (indice) => {
+            ventana.pestanaSocialActual = indice;
             ventana.mensajeErrorSocial = "";
-            if (seleccionado === 0) redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto);
-            else if (seleccionado === 2) redcliente.listarJugadoresRecientes(ventana.servidorHost, ventana.servidorPuerto);
-            else if (seleccionado === 3) redcliente.listarSolicitudesPendientes(ventana.servidorHost, ventana.servidorPuerto);
+            // Amigos fusiona presencia + último mensaje en la misma fila
+            // (ya no hay pestaña "Chats" aparte) -- pide las dos listas
+            // juntas.
+            if (indice === 0) {
+                redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto);
+                redcliente.listarResumenChats(ventana.servidorHost, ventana.servidorPuerto);
+            }
+            else if (indice === 2) redcliente.listarJugadoresRecientes(ventana.servidorHost, ventana.servidorPuerto);
+            else if (indice === 3) redcliente.listarSolicitudesPendientes(ventana.servidorHost, ventana.servidorPuerto);
         }
     }
 
@@ -2188,60 +2401,148 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             font.pixelSize: 12 * Tema.escala
         }
-        ListView {
+        // Rejilla de tarjetas (rediseño 2026-08-28, mismo criterio que
+        // Salas) -- ahora SÍ con Avatar (antes ninguna fila de Social en
+        // móvil lo mostraba) y con el estado (punto + palabra) de vuelta,
+        // pedido explícito tras ver el primer mockup sin él.
+        GridView {
+            id: gridAmigosMovil
             visible: ventana.pestanaSocialActual === 0 && modeloAmigos.count > 0
-            anchors.fill: parent
-            anchors.margins: 12 * Tema.escala
+            // Ancho tope (no anchors.fill sin más) -- panelSocialMovil llena
+            // TODO el resto del ancho tras el riel, sin límite; sin este
+            // tope, en una pantalla ancha de verdad el mismo umbral de
+            // columna daba 4 tarjetas en vez de 3 (bug real reportado
+            // 2026-08-28) -- mismo criterio de ancho que la caja de Salas.
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 12 * Tema.escala
+            anchors.bottomMargin: 12 * Tema.escala
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(560 * Tema.escala, panelSocialMovil.width - 24 * Tema.escala)
             clip: true
-            spacing: 6 * Tema.escala
-            model: modeloAmigos
-            delegate: Rectangle {
-                id: filaAmigoMovil
+            // Umbral subido (165 -> 175) para que 3 sea el número de
+            // verdad con este ancho tope, no 4 -- tarjetas más grandes de
+            // paso (pedido explícito).
+            cellWidth: Math.floor(width / Math.max(1, Math.floor(width / (175 * Tema.escala))))
+            cellHeight: 78 * Tema.escala
+            model: modeloAmigosConChat
+            delegate: Item {
+                id: celdaAmigoMovil
                 required property int accountId
                 required property string estado
                 required property string username
-                width: ListView.view.width
-                height: Tema.tamanoMinTactil
-                radius: 6 * Tema.escala
-                color: Tema.colorFondo
-                border.width: 1
-                border.color: Tema.colorBorde
+                required property string ultimoTexto
+                required property bool ultimoEsMio
+                required property int noLeidos
+                width: gridAmigosMovil.cellWidth
+                height: gridAmigosMovil.cellHeight
 
-                Row {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 10 * Tema.escala
-                    spacing: 8 * Tema.escala
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 7 * Tema.escala
-                        height: 7 * Tema.escala
-                        radius: width / 2
-                        color: filaAmigoMovil.estado === "CONECTADO" ? "#7FAE7A"
-                               : filaAmigoMovil.estado === "EN_PARTIDA" ? Tema.colorAccent
-                               : Tema.colorTextoMuyTenue
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: filaAmigoMovil.username
-                        color: Tema.colorTexto
-                        font.pixelSize: 12 * Tema.escala
-                    }
-                }
-                Text {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.rightMargin: 10 * Tema.escala
-                    text: filaAmigoMovil.estado === "CONECTADO" ? "Conectado"
-                          : filaAmigoMovil.estado === "EN_PARTIDA" ? "En partida"
-                          : "Desconectado"
-                    color: Tema.colorTextoMuyTenue
-                    font.pixelSize: 10 * Tema.escala
-                }
-                MouseArea {
+                Rectangle {
                     anchors.fill: parent
-                    // fase 2: abrir chat directo con este amigo
-                    onClicked: {}
+                    anchors.margins: 4 * Tema.escala
+                    radius: 8 * Tema.escala
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
+
+                    // Avatar como hijo DIRECTO de la tarjeta (no anidado en
+                    // el Row de abajo) a propósito: la MouseArea de perfil
+                    // más abajo ancla "centerIn: avatarCeldaAmigoMovil", y
+                    // QML solo permite anclar contra el propio padre o un
+                    // hermano directo -- anidado dentro de un Row sería
+                    // hermano DEL ROW, no del avatar (mismo bug ya
+                    // encontrado y corregido en escritorio, 2026-08-27).
+                    Avatar {
+                        id: avatarCeldaAmigoMovil
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        letra: celdaAmigoMovil.username.length > 0 ? celdaAmigoMovil.username.charAt(0).toUpperCase() : "?"
+                        tamano: 28 * Tema.escala
+                    }
+                    Column {
+                        anchors.left: avatarCeldaAmigoMovil.right
+                        anchors.leftMargin: 7 * Tema.escala
+                        anchors.right: badgeNoLeidosAmigoMovil.visible ? badgeNoLeidosAmigoMovil.left : parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 6 * Tema.escala
+                        spacing: 2 * Tema.escala
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: celdaAmigoMovil.username
+                            color: Tema.colorTexto
+                            font.pixelSize: 11 * Tema.escala
+                        }
+                        Row {
+                            width: parent.width
+                            spacing: 4 * Tema.escala
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 6 * Tema.escala
+                                height: 6 * Tema.escala
+                                radius: width / 2
+                                color: celdaAmigoMovil.estado === "CONECTADO" ? "#7FAE7A"
+                                       : celdaAmigoMovil.estado === "EN_PARTIDA" ? Tema.colorAccent
+                                       : Tema.colorTextoMuyTenue
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 6 * Tema.escala - 4 * Tema.escala
+                                elide: Text.ElideRight
+                                // Estado + último mensaje en la misma
+                                // línea, igual que antes del rediseño --
+                                // si todavía no hay conversación,
+                                // invitación explícita a chatear.
+                                text: (celdaAmigoMovil.estado === "CONECTADO" ? "Conectado"
+                                       : celdaAmigoMovil.estado === "EN_PARTIDA" ? "En partida"
+                                       : "Desconectado") +
+                                      " · " +
+                                      (celdaAmigoMovil.ultimoTexto !== ""
+                                           ? (celdaAmigoMovil.ultimoEsMio ? "Tú: " : "") + celdaAmigoMovil.ultimoTexto
+                                           : "Toca para chatear")
+                                color: Tema.colorTextoMuyTenue
+                                font.pixelSize: 8.5 * Tema.escala
+                            }
+                        }
+                    }
+                    Rectangle {
+                        id: badgeNoLeidosAmigoMovil
+                        visible: celdaAmigoMovil.noLeidos > 0
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 5 * Tema.escala
+                        width: 16 * Tema.escala
+                        height: 16 * Tema.escala
+                        radius: width / 2
+                        color: Tema.colorAccent
+                        Text {
+                            anchors.centerIn: parent
+                            text: celdaAmigoMovil.noLeidos > 9 ? "9+" : celdaAmigoMovil.noLeidos + ""
+                            color: Tema.colorTextoSobreOscuro
+                            font.pixelSize: 8.5 * Tema.escala
+                            font.bold: true
+                        }
+                    }
+                    // Hit-test dividido (pedido explícito 2026-08-28, mismo
+                    // criterio que escritorio): el resto de la tarjeta abre
+                    // el chat directo, un área de toque encima del avatar
+                    // (MÁS grande que su bounding box de 28px, declarada
+                    // DESPUÉS = prioridad de hit-test sobre la de abajo)
+                    // abre el perfil público.
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: popupChatDirecto.abrir(celdaAmigoMovil.accountId, celdaAmigoMovil.username, celdaAmigoMovil.estado)
+                    }
+                    MouseArea {
+                        width: Math.max(Tema.tamanoMinTactil, 40 * Tema.escala)
+                        height: width
+                        anchors.centerIn: avatarCeldaAmigoMovil
+                        onClicked: popupPerfilJugador.abrir(celdaAmigoMovil.accountId)
+                    }
                 }
             }
         }
@@ -2371,6 +2672,13 @@ ApplicationWindow {
                     color: Tema.colorTexto
                     font.pixelSize: 12 * Tema.escala
                 }
+                // Fila completa abre el perfil público -- declarada ANTES
+                // del botón para que este último tenga prioridad de
+                // hit-test en su propia área (mismo criterio que escritorio).
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: popupPerfilJugador.abrir(filaBusquedaMovil.accountId)
+                }
                 BotonContorno {
                     id: botonEnviarBusquedaMovil
                     anchors.right: parent.right
@@ -2428,6 +2736,12 @@ ApplicationWindow {
                     text: filaRecienteMovil.username
                     color: Tema.colorTexto
                     font.pixelSize: 12 * Tema.escala
+                }
+                // Fila completa abre el perfil público -- mismo criterio
+                // que filaBusquedaMovil.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: popupPerfilJugador.abrir(filaRecienteMovil.accountId)
                 }
                 BotonContorno {
                     id: botonEnviarRecienteMovil
@@ -2508,6 +2822,7 @@ ApplicationWindow {
                 }
             }
         }
+
     }
 
     // ── Pantalla CrearSala ───────────────────────────────────────────────
@@ -2695,6 +3010,7 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             opciones: ["Fácil", "Normal", "Experto"]
                             seleccionado: 0
+                            onElegido: (indice) => seleccionado = indice
                         }
                     }
 
@@ -2712,6 +3028,7 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             opciones: ["Sin límite", "Límite bote", "Límite fijo"]
                             seleccionado: 0
+                            onElegido: (indice) => seleccionado = indice
                         }
                     }
 
@@ -2998,6 +3315,15 @@ ApplicationWindow {
             onClicked: redcliente.empezarPartida()
         }
 
+        // Con sesión iniciada únicamente -- un invitado no tiene amigos
+        // que invitar. Funciona igual en sala pública o privada.
+        BotonContorno {
+            visible: ventana.tokenSesion !== "" && ventana.salaIdPropia !== ""
+            text: "Invitar amigos"
+            radioBorde: 999
+            onClicked: popupInvitarAmigos.abrir()
+        }
+
         BotonContorno {
             text: "Abandonar sala"
             radioBorde: 999
@@ -3041,6 +3367,7 @@ ApplicationWindow {
         activo: ventana.chatActive
         modelo: mensajesChatSala
         miNombre: ventana.nombreJugador
+        onEnviar: (texto) => redcliente.enviarChat(texto, "sala")
     }
 
     // ── Pantalla Partida ─────────────────────────────────────────────────
@@ -3564,6 +3891,7 @@ ApplicationWindow {
                     radioBorde: 999
                     onClicked: {
                         ventana.codigoSalaPropia = "";
+                        ventana.salaIdPropia = "";
                         ventana.pantalla = "Salas";
                         redcliente.refrescarSalas(ventana.servidorHost, ventana.servidorPuerto);
                     }
@@ -3604,6 +3932,7 @@ ApplicationWindow {
         color: Tema.colorPanel
 
         ScrollView {
+            id: scrollAjustesMovil
             anchors.fill: parent
             anchors.margins: 18 * Tema.escala
             clip: true
@@ -3620,7 +3949,7 @@ ApplicationWindow {
                     width: parent.width
                     opciones: ["Ajustes", "Cuenta"]
                     seleccionado: ventana.pestanaAjustesActual
-                    onSeleccionadoChanged: ventana.pestanaAjustesActual = seleccionado
+                    onElegido: (indice) => ventana.pestanaAjustesActual = indice
                 }
 
                 // ── Tema de color ────────────────────────────────────────
@@ -4104,6 +4433,40 @@ ApplicationWindow {
                 color: Tema.colorTextoTenueSobreOscuro
                 font.pixelSize: 12 * Tema.escala
             }
+        }
+    }
+
+    // ── Cerrar Social v1: perfil público, invitar a sala, banner ──────────
+    // Instancias únicas a nivel de ventana raíz -- mismo motivo que en
+    // escritorio (ver Main.qml de qml/): el perfil se abre desde varias
+    // pantallas (Social, Ranking), y el banner puede llegar en cualquier
+    // pantalla de menú.
+    PopupPerfilJugador {
+        id: popupPerfilJugador
+        servidorHost: ventana.servidorHost
+        servidorPuerto: ventana.servidorPuerto
+    }
+    // Overlay, no un panel embebido en una pestaña -- se abre desde
+    // cualquier fila de Amigos, ver el comentario largo en
+    // VistaChatDirecto.qml.
+    VistaChatDirecto {
+        id: popupChatDirecto
+        miUsername: ventana.nombreJugador
+        servidorHost: ventana.servidorHost
+        servidorPuerto: ventana.servidorPuerto
+    }
+    PopupInvitarAmigos {
+        id: popupInvitarAmigos
+        servidorHost: ventana.servidorHost
+        servidorPuerto: ventana.servidorPuerto
+        salaId: ventana.salaIdPropia
+        listaAmigos: modeloAmigos
+    }
+    BannerInvitacionSala {
+        id: bannerInvitacionSala
+        onUnirse: (salaId, codigo) => {
+            redcliente.unirseASala(ventana.servidorHost, ventana.servidorPuerto,
+                                    ventana.nombreJugador, salaId, codigo);
         }
     }
 

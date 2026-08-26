@@ -68,6 +68,9 @@ qt_add_qml_module(PokerClientQt
         src/client-qt/qml/RielNavegacion.qml
         src/client-qt/qml/Proximamente.qml
         src/client-qt/qml/Avatar.qml
+        src/client-qt/qml/PopupPerfilJugador.qml
+        src/client-qt/qml/PopupInvitarAmigos.qml
+        src/client-qt/qml/BannerInvitacionSala.qml
     RESOURCES
         # EB Garamond (SIL Open Font License) empaquetada con el binario —
         # los nombres de fuente del sistema no son fiables entre plataformas.
@@ -171,6 +174,10 @@ qt_add_qml_module(PokerClientMobile
         src/client-qt/qml-mobile/RielNavegacion.qml
         src/client-qt/qml-mobile/Proximamente.qml
         src/client-qt/qml-mobile/Avatar.qml
+        src/client-qt/qml-mobile/VistaChatDirecto.qml
+        src/client-qt/qml-mobile/PopupPerfilJugador.qml
+        src/client-qt/qml-mobile/PopupInvitarAmigos.qml
+        src/client-qt/qml-mobile/BannerInvitacionSala.qml
     RESOURCES
         assets/fonts/EBGaramond.ttf
 )
