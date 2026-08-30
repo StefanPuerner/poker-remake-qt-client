@@ -1,6 +1,9 @@
 # Igual que build-windows.yml/build-linux.yml, pero para Android: compila
-# PokerClientMobile cross-compilado y lo empaqueta como .apk dentro de un
-# .zip descargable, adjunto al Release al subir una etiqueta v*.
+# PokerClientMobile cross-compilado y sube el .apk DIRECTO como asset del
+# Release al subir una etiqueta v* -- Linux/Windows se quedan en .zip (no
+# son un formato instalable de un solo fichero como el .apk), pero forzar
+# a pasar por un .zip aquí solo añade un paso de descomprimir a mano sin
+# ningún beneficio real.
 #
 # Por qué dos instalaciones de Qt6 (desktop Y android): androiddeployqt
 # cross-compila el binario para el móvil, pero moc/rcc/qmlcachegen (las
@@ -233,24 +236,25 @@ jobs:
         run: cmake --build build --target PokerClientMobile_make_apk -j$(nproc)
 
       # Un solo .apk esperado bajo build/ -- se copia con un nombre fijo y
-      # legible antes de comprimir, en vez de arrastrar la ruta larga que
-      # genera Gradle (.../build/outputs/apk/debug/android-build-debug.apk).
-      - name: Empaquetar el APK en un .zip descargable
+      # legible en vez de arrastrar la ruta larga que genera Gradle
+      # (.../build/outputs/apk/debug/android-build-debug.apk). Ya NO se
+      # comprime en .zip (ver la nota de cabecera) -- el .apk se sube tal
+      # cual, tanto como artefacto de build como asset del Release.
+      - name: Preparar el APK con un nombre fijo
         run: |
           APK=$(find build -iname "*.apk" | head -1)
           if [ -z "$APK" ]; then echo "No se encontró ningún .apk bajo build/"; exit 1; fi
           mkdir -p dist-android
           cp "$APK" dist-android/PokerRemake.apk
-          cd dist-android && zip -r ../PokerRemake-Android-arm64.zip PokerRemake.apk
 
-      - name: Subir el .zip como artefacto
+      - name: Subir el APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: PokerRemake-Android
-          path: PokerRemake-Android-arm64.zip
+          path: dist-android/PokerRemake.apk
 
       - name: Adjuntar al Release de GitHub
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: PokerRemake-Android-arm64.zip
+          files: dist-android/PokerRemake.apk
