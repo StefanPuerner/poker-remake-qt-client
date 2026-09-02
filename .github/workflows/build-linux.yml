@@ -17,10 +17,20 @@ permissions:
 
 jobs:
   build:
-    # A diferencia de "windows-latest", este es Ubuntu — más parecido al
-    # tipo de sistema que probablemente usen tus amigos en Linux (o no,
-    # el AppImage no depende de qué distro sea, esa es la idea).
-    runs-on: ubuntu-latest
+    # ubuntu-latest -> ubuntu-22.04 (2026-09-02, mismo arreglo que
+    # build-appimage-dev.yml del repo privado -- ver el comentario largo
+    # ahí para el razonamiento completo). Resumen: "el AppImage no
+    # depende de la distro" (comentario viejo de esta misma línea) era
+    # incorrecto -- linuxdeploy bundlea Qt y terceros, pero NO la glibc
+    # del sistema. Compilar contra la glibc de "ubuntu-latest" (la LTS
+    # más reciente que GitHub rote) exige esa misma glibc o más nueva en
+    # cualquier máquina que ejecute el AppImage -- justo el "pedía
+    # dependencias" que se reportó en real. glibc es compatible hacia
+    # ADELANTE, así que compilar contra la LTS soportada más vieja
+    # disponible (22.04, ya que 20.04 perdió soporte estándar en abril
+    # 2025 y sus mirrors de apt pueden fallar) baja el suelo real de
+    # compatibilidad sin más cambios.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Clonar el repositorio
@@ -55,6 +65,15 @@ jobs:
 
       - name: Compilar
         run: cmake --build build -j$(nproc)
+
+      # Diagnóstico, no falla el build -- deja constancia en el log de
+      # qué versión de glibc exige de verdad el binario compilado, para
+      # poder confirmar la mejora (o detectar una regresión futura) sin
+      # depender de que alguien lo pruebe a mano en otra distro.
+      - name: 'Diagnóstico: versión mínima de glibc que exige el binario'
+        run: |
+          echo "glibc máxima requerida por PokerClientQt:"
+          objdump -T build/PokerClientQt | grep -oP 'GLIBC_[0-9.]+' | sort -V | uniq | tail -1
 
       # linuxdeploy no viene instalado en el runner (a diferencia de Inno
       # Setup en Windows) — se descarga como los AppImage que son, se

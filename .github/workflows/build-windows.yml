@@ -41,7 +41,14 @@ jobs:
       - name: Instalar Qt6
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.*'
+          # 6.8.* → 6.10.* (2026-09-02): QTBUG-135079 -- windeployqt en
+          # 6.8.1-6.8.3 no copiaba plugins\tls\ (el backend Schannel que
+          # main.cpp fuerza vía QSslSocket::setActiveBackend) al paquete
+          # final -- causa real de que Windows no conectara pese al fix
+          # de Schannel en el código. Arreglado oficialmente en
+          # 6.8.4/6.9.1/6.10.0. Se copia también a mano más abajo (paso
+          # "Asegurar el plugin TLS"), como defensa extra.
+          version: '6.10.*'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
@@ -70,6 +77,26 @@ jobs:
       # windeployqt.exe en el PATH, así que se puede llamar directo.
       - name: Empaquetar dependencias de Qt (windeployqt)
         run: windeployqt --qmldir src\client-qt\qml build\RelWithDebInfo\PokerClientQt.exe
+
+      # QTBUG-135079 (ver el comentario junto a "Instalar Qt6") -- copia a
+      # mano el backend TLS por si windeployqt no lo trajo solo. Busca
+      # windeployqt.exe en el PATH para deducir la raíz de la instalación
+      # de Qt sin depender de una variable de entorno concreta de la
+      # acción que lo instaló.
+      - name: Asegurar el plugin TLS (Schannel) en el paquete final
+        shell: pwsh
+        run: |
+          $windeployqt = (Get-Command windeployqt.exe).Source
+          $qtRoot = Split-Path (Split-Path $windeployqt -Parent) -Parent
+          $tlsSrc = Join-Path $qtRoot "plugins\tls"
+          if (-not (Test-Path $tlsSrc)) {
+            throw "No se encontró plugins\tls en la instalación de Qt ($tlsSrc) -- no se puede garantizar TLS."
+          }
+          $tlsDst = "build\RelWithDebInfo\tls"
+          New-Item -ItemType Directory -Force -Path $tlsDst | Out-Null
+          Copy-Item "$tlsSrc\*.dll" $tlsDst -Force
+          Write-Host "Backend(s) TLS copiados a $tlsDst :"
+          Get-ChildItem $tlsDst
 
       # Paso 6: comprimir la carpeta ya empaquetada en un .zip portable, en
       # vez de envolverla en un instalador de Inno Setup.
