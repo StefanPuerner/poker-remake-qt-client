@@ -63,8 +63,13 @@ jobs:
       - name: Configurar CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
+      # --target PokerClientQt: el CMakeLists también define
+      # PokerClientMobile (binario de escritorio normal cuando no se
+      # cross-compila para Android), que este workflow no empaqueta ni
+      # sube a ningún lado -- sin acotar el target se compilaba igualmente,
+      # tirando minutos de CI.
       - name: Compilar
-        run: cmake --build build -j$(nproc)
+        run: cmake --build build --target PokerClientQt -j$(nproc)
 
       # Diagnóstico, no falla el build -- deja constancia en el log de
       # qué versión de glibc exige de verdad el binario compilado, para

@@ -65,9 +65,13 @@ jobs:
       - name: Configurar CMake
         run: cmake -B build
 
-      # Paso 4: compilar de verdad.
+      # Paso 4: compilar de verdad. --target PokerClientQt: el CMakeLists
+      # también define PokerClientMobile (binario de escritorio normal
+      # cuando no se cross-compila para Android), que este workflow no
+      # empaqueta ni sube a ningún lado -- sin acotar el target se
+      # compilaba igualmente, tirando minutos de CI.
       - name: Compilar
-        run: cmake --build build --config RelWithDebInfo
+        run: cmake --build build --target PokerClientQt --config RelWithDebInfo
 
       # Paso 5: windeployqt — la herramienta oficial de Qt para "empaquetado
       # in situ": analiza el .exe, ve qué DLLs de Qt usa de verdad, y las
