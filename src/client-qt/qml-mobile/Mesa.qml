@@ -106,6 +106,9 @@ Item {
             required property string decoracionLateral1
             required property string decoracionLateral2
             required property string decoracionSuperior
+            required property string acabadoLateral1
+            required property string acabadoLateral2
+            required property string acabadoSuperior
             required property int index
 
             property int indiceRelativo: (index - mesa.miIndice + mesa.jugadores.count) % mesa.jugadores.count
@@ -135,6 +138,9 @@ Item {
                 decoracionLateral1: posicionador.decoracionLateral1
                 decoracionLateral2: posicionador.decoracionLateral2
                 decoracionSuperior: posicionador.decoracionSuperior
+                acabadoLateral1: posicionador.acabadoLateral1
+                acabadoLateral2: posicionador.acabadoLateral2
+                acabadoSuperior: posicionador.acabadoSuperior
                 activo: posicionador.nombre === mesa.turnoNombre
                 fraccionTiempo: posicionador.nombre === mesa.turnoNombre ? mesa.fraccionTiempo : 1.0
                 retirado: mesa.retirados.indexOf(posicionador.nombre) !== -1

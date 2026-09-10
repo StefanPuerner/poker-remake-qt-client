@@ -138,6 +138,9 @@ Item {
             required property string decoracionLateral1
             required property string decoracionLateral2
             required property string decoracionSuperior
+            required property string acabadoLateral1
+            required property string acabadoLateral2
+            required property string acabadoSuperior
             required property int index
 
             // Ángulo de este asiento en radianes. 2*PI repartido entre
@@ -172,6 +175,9 @@ Item {
                 decoracionLateral1: posicionador.decoracionLateral1
                 decoracionLateral2: posicionador.decoracionLateral2
                 decoracionSuperior: posicionador.decoracionSuperior
+                acabadoLateral1: posicionador.acabadoLateral1
+                acabadoLateral2: posicionador.acabadoLateral2
+                acabadoSuperior: posicionador.acabadoSuperior
                 activo: posicionador.nombre === mesa.turnoNombre
                 // Antes solo se animaba el aro en el propio asiento
                 // (era la única aproximación posible sin timeout_ms real

@@ -335,7 +335,7 @@ class LocalGameClient : public QObject {
   Q_INVOKABLE void exportarEstadisticas(const QString&, quint16, QString) {}
   Q_INVOKABLE void sincronizarXpOffline(const QString&, quint16, QString, int) {}
   Q_INVOKABLE void comprarObjeto(const QString&, quint16, QString, QString) {}
-  Q_INVOKABLE void equiparObjeto(const QString&, quint16, QString, QString, QString) {}
+  Q_INVOKABLE void equiparObjeto(const QString&, quint16, QString, QString, QString, QString = QString()) {}
   // Ranking / social / perfiles ajenos
   Q_INVOKABLE void consultarRanking(const QString&, quint16) {}
   Q_INVOKABLE void consultarPerfilJugador(const QString&, quint16, int) {}
@@ -541,7 +541,7 @@ class LocalGameClient : public QObject {
   void guardadaBorrada(QString mensaje);
   void hostCambiado(QString host);
   void esperandoEleccionManos(QString mensaje, QString host);
-  void rankingActualizado(QString rankingCsv);
+  void rankingActualizado(QString rankingCsv, QString acabadosCsv);
   void estadisticasExportadas(QString archivo);
   void estadisticasExportadasError(QString mensaje);
   void objetoComprado(QString codigo);

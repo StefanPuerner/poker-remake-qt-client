@@ -150,7 +150,7 @@ enum class MsgType {
     // "codigo\x1Fcategoria\x1FprecioTreboles\x1FnivelMinimo\x1FesDeLogro\x1Fposeido\x1Fequipado\x1Fnombre\x1E..."
     TIENDA_LISTA,                ///< Respuesta a CONSULTAR_TIENDA.
     COMPRAR_OBJETO,              ///< "token","codigo" -- ack vía GAME_EVENT (OBJETO_COMPRADO/OBJETO_COMPRA_ERROR).
-    EQUIPAR_OBJETO,              ///< "token","slot","codigo" ("codigo" vacío desequipa) -- ack vía GAME_EVENT.
+    EQUIPAR_OBJETO,              ///< "token","slot","codigo" ("codigo" vacío desequipa), "acabado" opcional (decoraciones) -- ack vía GAME_EVENT.
     CONSULTAR_LOADOUT,           ///< "token" -- el marco equipado de la propia cuenta.
     LOADOUT_ACTUAL,              ///< Respuesta a CONSULTAR_LOADOUT -- campos JSON sueltos (textura/efecto/decoracion_lateral_1/decoracion_lateral_2/decoracion_superior/titulo).
 

@@ -20,6 +20,11 @@
 #include "../../include/net-qt/VersionChecker.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
+// Lo pone cmake/ClientesQt.cmake (POKER_TORNEOS); 0 si no llega.
+#ifndef POKER_TORNEOS
+#define POKER_TORNEOS 0
+#endif
+
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
 #include <QtCore/qnativeinterface.h>
@@ -153,6 +158,9 @@ int main(int argc, char* argv[]) {
   engine->rootContext()->setContextProperty("redcliente", &client);
   engine->rootContext()->setContextProperty("modoJuego", &modoJuego);
   engine->rootContext()->setContextProperty("versionChecker", &versionChecker);
+  // Pestaña Torneos en desarrollo: apagada en los releases (ver
+  // POKER_TORNEOS en cmake/ClientesQt.cmake).
+  engine->rootContext()->setContextProperty("torneosHabilitados", POKER_TORNEOS != 0);
   engine->rootContext()->setContextProperty("SERVER_HOST_DEFAULT",
                                             QString::fromUtf8(net::SERVER_HOST));
   engine->rootContext()->setContextProperty("SERVER_PORT_DEFAULT",

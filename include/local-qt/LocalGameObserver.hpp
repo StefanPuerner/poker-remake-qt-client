@@ -523,7 +523,7 @@ class LocalGameObserver : public QObject, public IGameObserver {
       // por defecto (0/false/""), igual que NetworkObserver cuando
       // cuentas_ es nullptr (ver su comentario en emitirGameState()).
       datos.push_back({p->getNombre(), p->getSaldo(), p->getApuestaAcumuladaMano(),
-                       0, false, "", "", "", "", ""});
+                       0, false, "", "", "", "", "", "", "", ""});
     }
     int boteTotal = 0;
     for (int b : botes) boteTotal += b;

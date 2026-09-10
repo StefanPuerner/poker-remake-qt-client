@@ -206,7 +206,8 @@ class NetworkClient : public QObject {
     enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::CONSULTAR_RANKING),
         [this](const std::string& payload) {
           emit rankingActualizado(
-              QString::fromStdString(net::jsonGetStr(payload, "ranking")));
+              QString::fromStdString(net::jsonGetStr(payload, "ranking")),
+              QString::fromStdString(net::jsonGetStr(payload, "acabados")));
         });
   }
 
@@ -506,12 +507,15 @@ class NetworkClient : public QObject {
   }
 
   /// @param codigo vacío desequipa ese slot.
+  /// @param acabado solo para decoraciones: un metal de marco igual o por
+  /// debajo del propio, o "" = sigue al marco (fase 2 del material).
   Q_INVOKABLE void equiparObjeto(const QString& host, quint16 puerto, QString token,
-                                  QString slot, QString codigo) {
+                                  QString slot, QString codigo, QString acabado = QString()) {
     enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::EQUIPAR_OBJETO, {
-        {"token",  token.toStdString()},
-        {"slot",   slot.toStdString()},
-        {"codigo", codigo.toStdString()},
+        {"token",   token.toStdString()},
+        {"slot",    slot.toStdString()},
+        {"codigo",  codigo.toStdString()},
+        {"acabado", acabado.toStdString()},
     }), [this](const std::string& payload) {
       if (net::jsonGetStr(payload, "evento") == "OBJETO_EQUIPADO") {
         emit objetoEquipado(QString::fromStdString(net::jsonGetStr(payload, "slot")),
@@ -534,6 +538,9 @@ class NetworkClient : public QObject {
           m["decoracionLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_lateral_2"));
           m["decoracionSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_superior"));
           m["titulo"] = QString::fromStdString(net::jsonGetStr(payload, "titulo"));
+          m["acabadoLateral1"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_lateral_1"));
+          m["acabadoLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_lateral_2"));
+          m["acabadoSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_superior"));
           loadoutMarco_ = m;
           emit loadoutMarcoCambiaron();
         });
@@ -789,6 +796,9 @@ class NetworkClient : public QObject {
           m["decoracionLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_lateral_2"));
           m["decoracionSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_superior"));
           m["titulo"] = QString::fromStdString(net::jsonGetStr(payload, "titulo"));
+          m["acabadoLateral1"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_lateral_1"));
+          m["acabadoLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_lateral_2"));
+          m["acabadoSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_superior"));
           m["logrosDesbloqueados"] = net::jsonGetInt(payload, "logros_desbloqueados");
           m["logrosTotal"] = net::jsonGetInt(payload, "logros_total");
           perfilJugador_ = m;
@@ -1056,8 +1066,11 @@ class NetworkClient : public QObject {
   /// decoracionSuperior:titulo:username;..." (puede ser ""). El loadout
   /// completo se añadió 2026-09-01 para el podio de Ranking (ver memoria
   /// qt_progression_review_2026_09_01) -- username se queda el último a
-  /// propósito, por si acaso lleva ':'.
-  void rankingActualizado(QString rankingCsv);
+  /// propósito, por si acaso lleva ':'. @p acabadosCsv: "accountId:
+  /// acabadoLateral1:acabadoLateral2:acabadoSuperior;..." -- aparte y no en
+  /// rankingCsv para no mover el username (ver CONSULTAR_RANKING en el
+  /// servidor); "" con un servidor anterior a la fase 2 del material.
+  void rankingActualizado(QString rankingCsv, QString acabadosCsv);
   /// Avisa de que la propiedad estadisticasCuenta ya está al día --
   /// respuesta a consultarEstadisticas() (las propias). Ver el comentario
   /// largo junto a consultarEstadisticas() para el porqué de un

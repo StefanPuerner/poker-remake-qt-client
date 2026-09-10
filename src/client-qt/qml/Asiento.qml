@@ -23,6 +23,9 @@ Column {
     property string decoracionLateral1: ""
     property string decoracionLateral2: ""
     property string decoracionSuperior: ""
+    property string acabadoLateral1: ""
+    property string acabadoLateral2: ""
+    property string acabadoSuperior: ""
     // "activo": este asiento tiene el turno ahora mismo (lo sabe
     // cualquiera, viene de GAME_STATE). "fraccionTiempo": 1.0 = tiempo
     // completo, 0.0 = agotado — el servidor difunde el mismo timeout_ms
@@ -140,6 +143,9 @@ Column {
             decoracionLateral1: asiento.decoracionLateral1
             decoracionLateral2: asiento.decoracionLateral2
             decoracionSuperior: asiento.decoracionSuperior
+            acabadoLateral1: asiento.acabadoLateral1
+            acabadoLateral2: asiento.acabadoLateral2
+            acabadoSuperior: asiento.acabadoSuperior
             // Dorado solo cuando de verdad es tu turno — antes era
             // dorado siempre, así que "activo" no se distinguía de un
             // asiento cualquiera más que por el aro del tiempo.

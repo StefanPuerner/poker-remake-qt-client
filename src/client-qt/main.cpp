@@ -20,6 +20,11 @@
 #include "../../include/net-qt/VersionChecker.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
+// Lo pone cmake/ClientesQt.cmake (POKER_TORNEOS); 0 si no llega.
+#ifndef POKER_TORNEOS
+#define POKER_TORNEOS 0
+#endif
+
 int main(int argc, char* argv[]) {
 #ifdef Q_OS_WIN
   // Windows no trae OpenSSL instalado por defecto (a diferencia de Linux)
@@ -95,6 +100,9 @@ int main(int argc, char* argv[]) {
   engine->rootContext()->setContextProperty("redcliente", &client);
   engine->rootContext()->setContextProperty("modoJuego", &modoJuego);
   engine->rootContext()->setContextProperty("versionChecker", &versionChecker);
+  // Pestaña Torneos en desarrollo: apagada en los releases (ver
+  // POKER_TORNEOS en cmake/ClientesQt.cmake).
+  engine->rootContext()->setContextProperty("torneosHabilitados", POKER_TORNEOS != 0);
   // Mismo punto único de configuración que el cliente ncurses (ver
   // ServerConfig.hpp) — editar ahí la IP/puerto por defecto, no aquí.
   engine->rootContext()->setContextProperty("SERVER_HOST_DEFAULT",

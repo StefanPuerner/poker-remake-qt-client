@@ -140,7 +140,9 @@ ApplicationWindow {
         nombreJugador = usarCuenta ? modoJuego.usernameCacheado
                                    : "Invitado" + Math.floor(Math.random() * 100000);
         mensajeErrorConexion = "";
-        pantalla = "Torneos";
+        // Ver el comentario gemelo en qml/Main.qml: Torneos solo donde está
+        // habilitado (POKER_TORNEOS); si no, Salas.
+        pantalla = torneosHabilitados ? "Torneos" : "Salas";
     }
 
     onPantallaChanged: {
@@ -467,6 +469,29 @@ ApplicationWindow {
         previewCodigo = "";
         previewCategoria = categoria;
         previewCodigo = codigo;
+    }
+    // Acabado en la vista previa: el de la decoración que llevas puesta,
+    // salvo que estés previsualizando OTRA de esa categoría -- entonces el
+    // del marco (""), que es con el que se equiparía por defecto.
+    function acabadoPreview(categoria, codigoReal, acabadoReal) {
+        if (previewCategoria === categoria && previewCodigo !== "" && previewCodigo !== codigoReal) return "";
+        return acabadoReal || "";
+    }
+
+    // ── Acabado al equipar (fase 2 del material) ─────────────────────────
+    // Pedido del usuario (2026-09-10): "al equipar un cosmético que tiene
+    // color intercambiable, antes de equiparse salta una ventana flotante
+    // donde eliges el color, y luego sigue la asignación normal". Solo si es
+    // una decoración de metal y hay de verdad dónde elegir (con marco de
+    // hierro solo cabe el hierro); quitar (codigo "") nunca pregunta. Para
+    // cambiarle el metal a una que ya llevas: quitarla y volver a equiparla.
+    readonly property string marcoPropio: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
+    function equiparConAcabado(slot, codigo) {
+        if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
+            return;
+        }
+        popupAcabado.abrir(slot, codigo, marcoPropio);
     }
     ListModel { id: tiendaModel }
     function reordenarTienda() {
@@ -1203,7 +1228,10 @@ ApplicationWindow {
                     efecto: campos.length > 6 ? campos[6] : "",
                     decoracionLateral1: campos.length > 7 ? campos[7] : "",
                     decoracionLateral2: campos.length > 8 ? campos[8] : "",
-                    decoracionSuperior: campos.length > 9 ? campos[9] : ""
+                    decoracionSuperior: campos.length > 9 ? campos[9] : "",
+                    acabadoLateral1: campos.length > 10 ? campos[10] : "",
+                    acabadoLateral2: campos.length > 11 ? campos[11] : "",
+                    acabadoSuperior: campos.length > 12 ? campos[12] : ""
                 });
                 if (campos[0] === nombreJugador) {
                     // Mismo bug que en escritorio: miSaldoActual solo se
@@ -1466,7 +1494,7 @@ ApplicationWindow {
             // para siempre tras abandonar -- ver Main.qml de qml/.
             soyHost = false;
             // Ver el comentario gemelo en qml/Main.qml.
-            pantalla = ventana.sesionOffline ? "Torneos" : "Salas";
+            pantalla = (ventana.sesionOffline && torneosHabilitados) ? "Torneos" : "Salas";
             // Ver el comentario en onFinDePartida -- aquí va ANTES de las
             // llamadas de red porque ninguna lee nada de LocalGameClient primero.
             if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
@@ -1526,8 +1554,19 @@ ApplicationWindow {
                 });
             }
         }
-        function onRankingActualizado(rankingCsv) {
+        function onRankingActualizado(rankingCsv, acabadosCsv) {
             var filas = [];
+            // Acabados (fase 2 del material): llegan en una lista aparte, por
+            // accountId -- ver CONSULTAR_RANKING en el servidor. "" con un
+            // servidor anterior, y entonces todo sigue al marco.
+            var acabadosPorCuenta = ({});
+            if (acabadosCsv) {
+                var filasAcabado = acabadosCsv.split(";");
+                for (var k = 0; k < filasAcabado.length; k++) {
+                    var ca = filasAcabado[k].split(":");
+                    acabadosPorCuenta[ca[0]] = ca;
+                }
+            }
             if (rankingCsv.length > 0) {
                 var partes = rankingCsv.split(";");
                 for (var i = 0; i < partes.length; i++) {
@@ -1548,6 +1587,9 @@ ApplicationWindow {
                         decoracionLateral1: campos[7],
                         decoracionLateral2: campos[8],
                         decoracionSuperior: campos[9],
+                        acabadoLateral1: acabadosPorCuenta[campos[0]] ? acabadosPorCuenta[campos[0]][1] || "" : "",
+                        acabadoLateral2: acabadosPorCuenta[campos[0]] ? acabadosPorCuenta[campos[0]][2] || "" : "",
+                        acabadoSuperior: acabadosPorCuenta[campos[0]] ? acabadosPorCuenta[campos[0]][3] || "" : "",
                         titulo: campos[10],
                         username: campos.slice(11).join(":")
                     });
@@ -2921,6 +2963,9 @@ ApplicationWindow {
                                     decoracionLateral1: columnaPodioMovil.fila ? columnaPodioMovil.fila.decoracionLateral1 : ""
                                     decoracionLateral2: columnaPodioMovil.fila ? columnaPodioMovil.fila.decoracionLateral2 : ""
                                     decoracionSuperior: columnaPodioMovil.fila ? columnaPodioMovil.fila.decoracionSuperior : ""
+                                    acabadoLateral1: columnaPodioMovil.fila ? columnaPodioMovil.fila.acabadoLateral1 : ""
+                                    acabadoLateral2: columnaPodioMovil.fila ? columnaPodioMovil.fila.acabadoLateral2 : ""
+                                    acabadoSuperior: columnaPodioMovil.fila ? columnaPodioMovil.fila.acabadoSuperior : ""
                                 }
                                 // Tocar el avatar abre el perfil público --
                                 // pedido explícito 2026-09-02 ("importante"),
@@ -3117,11 +3162,22 @@ ApplicationWindow {
         textoCentro: "Torneos"
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
+    // Torneos bloqueado (los releases, ver POKER_TORNEOS en
+    // cmake/ClientesQt.cmake): lo mismo que había antes de Solitario.
+    Proximamente {
+        visible: ventana.pantalla === "Torneos" && !torneosHabilitados
+        anchors.top: barraTorneosMovil.bottom
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        titulo: "Torneos"
+        descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
+    }
     // Torneos Solitario (Fase 6, ver CLAUDE.md) -- mismo contenido que
     // qml/Main.qml (escritorio), ver el comentario largo ahí. "Multijugador"
     // sigue siendo un placeholder puro.
     Item {
-        visible: ventana.pantalla === "Torneos"
+        visible: ventana.pantalla === "Torneos" && torneosHabilitados
         anchors.top: barraTorneosMovil.bottom
         anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
@@ -3987,6 +4043,9 @@ ApplicationWindow {
                             decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
                             decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                             decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                            acabadoLateral1: redcliente.loadoutMarco.acabadoLateral1 || ""
+                            acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                            acabadoSuperior: redcliente.loadoutMarco.acabadoSuperior || ""
                         }
                     }
                     Text {
@@ -4307,6 +4366,9 @@ ApplicationWindow {
                                 decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
                                 decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                                 decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                                acabadoLateral1: redcliente.loadoutMarco.acabadoLateral1 || ""
+                                acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                                acabadoSuperior: redcliente.loadoutMarco.acabadoSuperior || ""
                             }
                         }
 
@@ -4974,12 +5036,10 @@ ApplicationWindow {
                                                 var libre1 = (redcliente.loadoutMarco.decoracionLateral1 || "") === "";
                                                 var libre2 = (redcliente.loadoutMarco.decoracionLateral2 || "") === "";
                                                 var slotDestino = libre1 ? "decoracion_lateral_1" : (libre2 ? "decoracion_lateral_2" : "decoracion_lateral_1");
-                                                redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
-                                                    slotDestino, celdaPersonalizarMovil.codigo);
+                                                ventana.equiparConAcabado(slotDestino, celdaPersonalizarMovil.codigo);
                                             }
                                         } else {
-                                            redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
-                                                celdaPersonalizarMovil.categoria,
+                                            ventana.equiparConAcabado(celdaPersonalizarMovil.categoria,
                                                 celdaPersonalizarMovil.equipado === 1 ? "" : celdaPersonalizarMovil.codigo);
                                         }
                                     }
@@ -5076,6 +5136,9 @@ ApplicationWindow {
                             decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
                             decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                             decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                            acabadoLateral1: redcliente.loadoutMarco.acabadoLateral1 || ""
+                            acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                            acabadoSuperior: redcliente.loadoutMarco.acabadoSuperior || ""
                         }
                     }
                     CajaTitulo {
@@ -5612,6 +5675,9 @@ ApplicationWindow {
                             decoracionLateral1: ventana.valorPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1)
                             decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                             decoracionSuperior: ventana.valorPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior)
+                            acabadoLateral1: ventana.acabadoPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1, redcliente.loadoutMarco.acabadoLateral1)
+                            acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                            acabadoSuperior: ventana.acabadoPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior, redcliente.loadoutMarco.acabadoSuperior)
                         }
                     }
                     CajaTitulo {
@@ -5623,6 +5689,11 @@ ApplicationWindow {
                 }
             }
         }
+    }
+    PopupAcabado {
+        id: popupAcabado
+        onAcabadoElegido: (slot, codigo, acabado) =>
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo, acabado)
     }
     PopupSeleccionCarta {
         id: popupSeleccionCartaMovil

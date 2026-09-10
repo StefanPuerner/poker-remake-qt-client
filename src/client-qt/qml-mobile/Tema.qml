@@ -98,6 +98,33 @@ QtObject {
     // el propio tier "hierro" (marco básico, se gana con CUALQUIER
     // partida ganada, también contra bots -- antes de esto no existía
     // ningún marco por debajo de Bronce en móvil).
+    // ── Acabado de las decoraciones (fase 2 del material, ver
+    // docs/plan-material-cosmeticos.md) ─────────────────────────────────
+    // Metales de marco de menos a más: el orden de los umbrales de
+    // marcoPorPartidasGanadas(), justo debajo, y el de rangoMetal() en el
+    // servidor (AccountManager.cpp).
+    readonly property var metalesMarco: ["hierro", "bronce", "plata", "oro", "platino"]
+    readonly property var nombresMetal: ({
+        "hierro": "Hierro", "bronce": "Bronce", "plata": "Plata", "oro": "Oro", "platino": "Platino"
+    })
+    // Las decoraciones de METAL, las únicas con acabado: el resto conserva su
+    // color (un naipe es rojo y negro, una gema es su piedra). Vive aquí y no
+    // en Avatar.qml porque Main.qml también la consulta, para saber si al
+    // equipar hay que preguntar el acabado. ⚠️ Tiene que coincidir con
+    // METALICOS de scripts/generar_iconos.sh y con ICONOS_METALICOS de
+    // cmake/ClientesQt.cmake (hay un PNG por metal).
+    readonly property var decoracionesMetalicas: ({
+        "corona_inicial": true, "corona_laurel": true, "corona_real": true,
+        "cinta_ondulada": true, "constelacion": true, "ojo_vigilante": true
+    })
+    // Los acabados que puede elegir quien lleva el marco @p marco: del hierro
+    // al suyo, "solo se puede bajar, nunca subir" (el servidor lo vuelve a
+    // comprobar). Vacío si @p marco no es de metal.
+    function metalesHasta(marco) {
+        var i = metalesMarco.indexOf(marco);
+        return i < 0 ? [] : metalesMarco.slice(0, i + 1);
+    }
+
     function marcoPorPartidasGanadas(n, tieneMarcoBasico) {
         if (n >= 50) return "platino";
         if (n >= 25) return "oro";

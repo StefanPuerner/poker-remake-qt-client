@@ -55,6 +55,11 @@ Item {
     property string decoracionLateral1: ""
     property string decoracionLateral2: ""
     property string decoracionSuperior: ""
+    // Acabado de cada decoración (fase 2 del material): "hierro"..
+    // "platino", o "" = sigue al marco. Ver sufijoAcabado().
+    property string acabadoLateral1: ""
+    property string acabadoLateral2: ""
+    property string acabadoSuperior: ""
 
     // "hierro" -- marco básico, desde tu primera partida GANADA.
     readonly property bool esTierMetalico: marco === "hierro" || marco === "bronce" ||
@@ -596,7 +601,7 @@ Item {
     // oscuro + degradado, no un color plano. El color plano hacía
     // desaparecer los iconos claros sobre el tema claro (constelación era
     // blanco puro) y los dejaba sin volumen.
-    function rutaIconoDecoracion(codigo) {
+    function rutaIconoDecoracion(codigo, acabado) {
         var base = "qrc:/qt/qml/PokerQuickMobile/assets/iconos/";
         // Regla: "el nombre del fichero es el propio código" -- solo
         // hacen falta casos especiales para lo que NO sigue esa regla:
@@ -610,7 +615,7 @@ Item {
         if (codigo === "" || avatar.esComposicionDeCartas(codigo)) {
             return "";
         }
-        return base + codigo + avatar.sufijoAcabado(codigo) + ".png";
+        return base + codigo + avatar.sufijoAcabado(codigo, acabado || "") + ".png";
     }
     // ── Acabado por material (fase 1 del plan, 2026-09-10) ────────────────
     // Las decoraciones METÁLICAS se pintan en el metal del marco que lleva el
@@ -626,18 +631,17 @@ Item {
     // scripts/generar_iconos.sh), no un tinte por shader: así se ve
     // EXACTAMENTE lo que se aprobó, y aquí no cuesta más que cambiar la ruta
     // de una Image -- un shader obligaría a meter una capa en cada decoración
-    // de cada avatar de la app. ⚠️ Esta lista, METALICOS del script e
-    // ICONOS_METALICOS de cmake/ClientesQt.cmake tienen que coincidir.
-    readonly property var decoracionesMetalicas: ({
-        "corona_inicial": true, "corona_laurel": true, "corona_real": true,
-        "cinta_ondulada": true, "constelacion": true, "ojo_vigilante": true
-    })
-    function sufijoAcabado(codigo) {
-        // El oro usa el fichero base, que ya es dorado. Sin marco de metal
-        // (campeón, o ninguno) también el base: es como se veía siempre.
-        if (!avatar.decoracionesMetalicas[codigo] || !avatar.esTierMetalico || avatar.marco === "oro")
-            return "";
-        return "_" + avatar.marco;
+    // de cada avatar de la app. ⚠️ La lista está en
+    // Tema.qml (decoracionesMetalicas) y tiene que coincidir con METALICOS del
+    // script y con ICONOS_METALICOS de cmake/ClientesQt.cmake.
+    function sufijoAcabado(codigo, acabado) {
+        // Solo las decoraciones de metal cambian de fichero. Manda el acabado
+        // elegido; sin él ("" = sigue al marco), el metal del marco. El oro
+        // usa el fichero base, que ya es dorado, y sin ningún metal (campeón,
+        // o sin marco) también: es como se veía siempre.
+        if (!Tema.decoracionesMetalicas[codigo]) return "";
+        var metal = acabado !== "" ? acabado : (avatar.esTierMetalico ? avatar.marco : "");
+        return (metal === "" || metal === "oro") ? "" : "_" + metal;
     }
     // Gemas -- engaste de metal en forma de rombo (como la propia gema)
     // detrás del icono, del color del marco.
@@ -679,6 +683,7 @@ Item {
     Item {
         id: decoLateralIzq
         property string codigo: avatar.decoracionLateral1
+        property string acabado: avatar.acabadoLateral1
         visible: codigo !== ""
         width: avatar.tamano * 0.46
         height: width
@@ -743,12 +748,13 @@ Item {
             // decoración deja bordes dentados: ESO, y no la resolución
             // del fichero, es lo que se veía "pixelado".
             mipmap: true
-            source: avatar.rutaIconoDecoracion(decoLateralIzq.codigo)
+            source: avatar.rutaIconoDecoracion(decoLateralIzq.codigo, decoLateralIzq.acabado)
         }
     }
     Item {
         id: decoLateralDer
         property string codigo: avatar.decoracionLateral2
+        property string acabado: avatar.acabadoLateral2
         visible: codigo !== ""
         width: avatar.tamano * 0.46
         height: width
@@ -808,7 +814,7 @@ Item {
             // decoración deja bordes dentados: ESO, y no la resolución
             // del fichero, es lo que se veía "pixelado".
             mipmap: true
-            source: avatar.rutaIconoDecoracion(decoLateralDer.codigo)
+            source: avatar.rutaIconoDecoracion(decoLateralDer.codigo, decoLateralDer.acabado)
         }
     }
     // Toda decoración superior que sea UNA imagen se pinta aquí; las
@@ -824,6 +830,7 @@ Item {
     Item {
         id: decoSuperior
         property string codigo: avatar.decoracionSuperior
+        property string acabado: avatar.acabadoSuperior
         visible: codigo !== "" && !avatar.esComposicionDeCartas(codigo)
         width: avatar.tamano * 0.85
         height: avatar.tamano * 0.42
@@ -836,7 +843,7 @@ Item {
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true
-            source: avatar.rutaIconoDecoracion(decoSuperior.codigo)
+            source: avatar.rutaIconoDecoracion(decoSuperior.codigo, decoSuperior.acabado)
         }
     }
 

@@ -17,6 +17,9 @@ project(PokerRemakeQtClient VERSION 0.1.0 LANGUAGES CXX)
 #    * PokerNetClient     -- protocolo y serialización de la parte de red.
 #    * AvatarTest y LocalOfflineSmokeTest -- bancos de prueba del desarrollo.
 #                            Los workflows no los compilan (usan --target).
+#
+#  La pestaña Torneos sale como "Próximamente" mientras está en desarrollo
+#  (POKER_TORNEOS, apagada por defecto en cmake/ClientesQt.cmake).
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Comun.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/BibliotecasCliente.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClientesQt.cmake)

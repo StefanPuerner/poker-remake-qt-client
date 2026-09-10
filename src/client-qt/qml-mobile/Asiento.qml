@@ -29,6 +29,9 @@ Column {
     property string decoracionLateral1: ""
     property string decoracionLateral2: ""
     property string decoracionSuperior: ""
+    property string acabadoLateral1: ""
+    property string acabadoLateral2: ""
+    property string acabadoSuperior: ""
     property bool activo: false
     property real fraccionTiempo: 1.0
     property bool retirado: false
@@ -117,6 +120,9 @@ Column {
             decoracionLateral1: asiento.decoracionLateral1
             decoracionLateral2: asiento.decoracionLateral2
             decoracionSuperior: asiento.decoracionSuperior
+            acabadoLateral1: asiento.acabadoLateral1
+            acabadoLateral2: asiento.acabadoLateral2
+            acabadoSuperior: asiento.acabadoSuperior
             colorBorde: activo ? Tema.colorAccent : Tema.colorBorde
         }
 

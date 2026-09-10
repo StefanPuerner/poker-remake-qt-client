@@ -115,6 +115,9 @@ Popup {
                     decoracionLateral1: popup.perfil.decoracionLateral1 || ""
                     decoracionLateral2: popup.perfil.decoracionLateral2 || ""
                     decoracionSuperior: popup.perfil.decoracionSuperior || ""
+                    acabadoLateral1: popup.perfil.acabadoLateral1 || ""
+                    acabadoLateral2: popup.perfil.acabadoLateral2 || ""
+                    acabadoSuperior: popup.perfil.acabadoSuperior || ""
                 }
             }
             Text {

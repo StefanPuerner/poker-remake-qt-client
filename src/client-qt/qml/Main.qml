@@ -567,6 +567,29 @@ ApplicationWindow {
         previewCategoria = categoria;
         previewCodigo = codigo;
     }
+    // Acabado en la vista previa: el de la decoración que llevas puesta,
+    // salvo que estés previsualizando OTRA de esa categoría -- entonces el
+    // del marco (""), que es con el que se equiparía por defecto.
+    function acabadoPreview(categoria, codigoReal, acabadoReal) {
+        if (previewCategoria === categoria && previewCodigo !== "" && previewCodigo !== codigoReal) return "";
+        return acabadoReal || "";
+    }
+
+    // ── Acabado al equipar (fase 2 del material) ─────────────────────────
+    // Pedido del usuario (2026-09-10): "al equipar un cosmético que tiene
+    // color intercambiable, antes de equiparse salta una ventana flotante
+    // donde eliges el color, y luego sigue la asignación normal". Solo si es
+    // una decoración de metal y hay de verdad dónde elegir (con marco de
+    // hierro solo cabe el hierro); quitar (codigo "") nunca pregunta. Para
+    // cambiarle el metal a una que ya llevas: quitarla y volver a equiparla.
+    readonly property string marcoPropio: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
+    function equiparConAcabado(slot, codigo) {
+        if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
+            return;
+        }
+        popupAcabado.abrir(slot, codigo, marcoPropio);
+    }
 
     // ── Progreso de marco de avatar (pestaña Cuenta > Progreso) ──────────
     // Mismos umbrales que Tema.marcoPorPartidasGanadas() -- duplicados a
@@ -655,10 +678,10 @@ ApplicationWindow {
         nombreUsuario.text = usarCuenta ? modoJuego.usernameCacheado
                                         : "Invitado" + Math.floor(Math.random() * 100000);
         mensajeErrorConexion = "";
-        // Torneos porque hoy es la única superficie jugable sin servidor
-        // (Solitario). Cuando exista el formulario de sala LOCAL, el destino
-        // natural pasa a ser "Salas" -- ver el TODO en RielNavegacion.qml.
-        pantalla = "Torneos";
+        // Torneos (Solitario) donde está habilitado. Si no -- los releases, ver
+        // POKER_TORNEOS en cmake/ClientesQt.cmake --, Salas, que ya crea la
+        // sala local.
+        pantalla = torneosHabilitados ? "Torneos" : "Salas";
     }
 
     // Volver a Inicio desde una sesión offline la termina: se recupera el
@@ -2453,6 +2476,9 @@ ApplicationWindow {
                                         decoracionLateral1: columnaPodio.fila ? columnaPodio.fila.decoracionLateral1 : ""
                                         decoracionLateral2: columnaPodio.fila ? columnaPodio.fila.decoracionLateral2 : ""
                                         decoracionSuperior: columnaPodio.fila ? columnaPodio.fila.decoracionSuperior : ""
+                                        acabadoLateral1: columnaPodio.fila ? columnaPodio.fila.acabadoLateral1 : ""
+                                        acabadoLateral2: columnaPodio.fila ? columnaPodio.fila.acabadoLateral2 : ""
+                                        acabadoSuperior: columnaPodio.fila ? columnaPodio.fila.acabadoSuperior : ""
                                     }
                                     // Tocar el avatar abre el perfil público
                                     // -- pedido explícito 2026-09-02
@@ -2716,6 +2742,17 @@ ApplicationWindow {
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
             onSalir: ventana.pantalla = "Inicio"
         }
+        // Torneos bloqueado (los releases, ver POKER_TORNEOS en
+        // cmake/ClientesQt.cmake): lo mismo que había antes de Solitario.
+        Proximamente {
+            visible: ventana.pantalla === "Torneos" && !torneosHabilitados
+            anchors.top: barraTorneos.bottom
+            anchors.left: rielNavegacion.right
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            titulo: "Torneos"
+            descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
+        }
         // Torneos Solitario (Fase 6, ver CLAUDE.md) -- primer desafío fijo
         // de lo que será una escalera completa (diseño de la escalera
         // todavía sin cerrar, ver el propio CLAUDE.md: "hay que pulirlo").
@@ -2729,7 +2766,7 @@ ApplicationWindow {
         // jugadores reales) sigue siendo un placeholder puro -- ni
         // diseñado, ver CLAUDE.md.
         Item {
-            visible: pantalla === "Torneos"
+            visible: pantalla === "Torneos" && torneosHabilitados
             anchors.top: barraTorneos.bottom
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
@@ -5242,8 +5279,19 @@ ApplicationWindow {
                     });
                 }
             }
-            function onRankingActualizado(rankingCsv) {
+            function onRankingActualizado(rankingCsv, acabadosCsv) {
                 var filas = [];
+                // Acabados (fase 2 del material): llegan en una lista aparte, por
+                // accountId -- ver CONSULTAR_RANKING en el servidor. "" con un
+                // servidor anterior, y entonces todo sigue al marco.
+                var acabadosPorCuenta = ({});
+                if (acabadosCsv) {
+                    var filasAcabado = acabadosCsv.split(";");
+                    for (var k = 0; k < filasAcabado.length; k++) {
+                        var ca = filasAcabado[k].split(":");
+                        acabadosPorCuenta[ca[0]] = ca;
+                    }
+                }
                 if (rankingCsv.length > 0) {
                     var partes = rankingCsv.split(";");
                     for (var i = 0; i < partes.length; i++) {
@@ -5266,6 +5314,9 @@ ApplicationWindow {
                             decoracionLateral1: campos[7],
                             decoracionLateral2: campos[8],
                             decoracionSuperior: campos[9],
+                            acabadoLateral1: acabadosPorCuenta[campos[0]] ? acabadosPorCuenta[campos[0]][1] || "" : "",
+                            acabadoLateral2: acabadosPorCuenta[campos[0]] ? acabadosPorCuenta[campos[0]][2] || "" : "",
+                            acabadoSuperior: acabadosPorCuenta[campos[0]] ? acabadosPorCuenta[campos[0]][3] || "" : "",
                             titulo: campos[10],
                             username: campos.slice(11).join(":")
                         });
@@ -5428,7 +5479,10 @@ ApplicationWindow {
                         efecto: campos.length > 6 ? campos[6] : "",
                         decoracionLateral1: campos.length > 7 ? campos[7] : "",
                         decoracionLateral2: campos.length > 8 ? campos[8] : "",
-                        decoracionSuperior: campos.length > 9 ? campos[9] : ""
+                        decoracionSuperior: campos.length > 9 ? campos[9] : "",
+                        acabadoLateral1: campos.length > 10 ? campos[10] : "",
+                        acabadoLateral2: campos.length > 11 ? campos[11] : "",
+                        acabadoSuperior: campos.length > 12 ? campos[12] : ""
                     });
                     if (campos[0] === nombreUsuario.text) {
                         // BUG real encontrado en vivo: miSaldoActual (el de
@@ -5754,7 +5808,7 @@ ApplicationWindow {
                 // Sin conexión, "Salas" está oculta del riel (lista salas
                 // del servidor) -- volver a Torneos, que es de donde se
                 // sale a jugar en local.
-                pantalla = ventana.sesionOffline ? "Torneos" : "Salas";
+                pantalla = (ventana.sesionOffline && torneosHabilitados) ? "Torneos" : "Salas";
                 // Ver el comentario gemelo en onFinDePartida -- aquí va
                 // ANTES de las llamadas de red porque ninguna lee nada de
                 // LocalGameClient primero.
@@ -6026,6 +6080,9 @@ ApplicationWindow {
                             decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
                             decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                             decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                            acabadoLateral1: redcliente.loadoutMarco.acabadoLateral1 || ""
+                            acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                            acabadoSuperior: redcliente.loadoutMarco.acabadoSuperior || ""
                         }
                     }
                     Column {
@@ -6476,6 +6533,9 @@ ApplicationWindow {
                             decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
                             decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                             decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                            acabadoLateral1: redcliente.loadoutMarco.acabadoLateral1 || ""
+                            acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                            acabadoSuperior: redcliente.loadoutMarco.acabadoSuperior || ""
                         }
                     }
 
@@ -7074,8 +7134,7 @@ ApplicationWindow {
                                             width: parent.width
                                             text: celdaPersonalizar.equipado === 1 ? "Quitar" : "Equipar"
                                             colorBorde: celdaPersonalizar.equipado === 1 ? Tema.colorPeligro : Tema.colorBorde
-                                            onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
-                                                celdaPersonalizar.categoria,
+                                            onClicked: equiparConAcabado(celdaPersonalizar.categoria,
                                                 celdaPersonalizar.equipado === 1 ? "" : celdaPersonalizar.codigo)
                                         }
                                         // Decoraciones laterales -- DOS huecos (izq./der.),
@@ -7089,16 +7148,14 @@ ApplicationWindow {
                                                 width: (parent.width - parent.spacing) / 2
                                                 text: aqui ? "Quitar izq." : "A la izq."
                                                 colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
-                                                onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
-                                                    "decoracion_lateral_1", aqui ? "" : celdaPersonalizar.codigo)
+                                                onClicked: equiparConAcabado("decoracion_lateral_1", aqui ? "" : celdaPersonalizar.codigo)
                                             }
                                             BotonContorno {
                                                 readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral2 === celdaPersonalizar.codigo
                                                 width: (parent.width - parent.spacing) / 2
                                                 text: aqui ? "Quitar der." : "A la der."
                                                 colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
-                                                onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
-                                                    "decoracion_lateral_2", aqui ? "" : celdaPersonalizar.codigo)
+                                                onClicked: equiparConAcabado("decoracion_lateral_2", aqui ? "" : celdaPersonalizar.codigo)
                                             }
                                         }
                                     }
@@ -7136,6 +7193,9 @@ ApplicationWindow {
                                 decoracionLateral1: valorPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1)
                                 decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                                 decoracionSuperior: valorPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior)
+                                acabadoLateral1: acabadoPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1, redcliente.loadoutMarco.acabadoLateral1)
+                                acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                                acabadoSuperior: acabadoPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior, redcliente.loadoutMarco.acabadoSuperior)
                             }
                         }
                         // Los títulos no son una decoración del anillo --
@@ -7684,6 +7744,9 @@ ApplicationWindow {
                             decoracionLateral1: valorPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1)
                             decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
                             decoracionSuperior: valorPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior)
+                            acabadoLateral1: acabadoPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1, redcliente.loadoutMarco.acabadoLateral1)
+                            acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
+                            acabadoSuperior: acabadoPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior, redcliente.loadoutMarco.acabadoSuperior)
                         }
                     }
                     // Los títulos no son una decoración del anillo -- el
@@ -8037,6 +8100,11 @@ ApplicationWindow {
         servidorPuerto: ventana.servidorPuerto
         salaId: ventana.salaIdPropia
         listaAmigos: modeloAmigos
+    }
+    PopupAcabado {
+        id: popupAcabado
+        onAcabadoElegido: (slot, codigo, acabado) =>
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo, acabado)
     }
     PopupSeleccionCarta {
         id: popupSeleccionCarta

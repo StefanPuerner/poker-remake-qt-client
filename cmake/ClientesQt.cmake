@@ -58,6 +58,20 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     # construye aquí una vez y la usan los dos clientes. ⚠️ Esta lista,
     # METALICOS del script y decoracionesMetalicas en los dos Avatar.qml
     # tienen que coincidir.
+    # ── Pestaña Torneos, solo mientras está en desarrollo ────────────────
+    #  OFF por defecto: los releases (repo público) enseñan "Próximamente",
+    #  como antes de que existiera Solitario. El CMakeLists.txt del repo
+    #  privado la enciende para seguir desarrollándola. Pedido del usuario
+    #  (2026-09-10): "hasta que esté listo, bloquear en el público de nuevo
+    #  la sección de torneos". Llega al QML como la propiedad de contexto
+    #  "torneosHabilitados" (ver los dos main). Variable normal y no
+    #  option(): el repo privado pide CMake 3.10, y ahí option() pisaría un
+    #  set() hecho antes (política CMP0077).
+    if(NOT DEFINED POKER_TORNEOS)
+        set(POKER_TORNEOS OFF)
+    endif()
+    message(STATUS "Pestaña Torneos en los clientes: ${POKER_TORNEOS}")
+
     set(ICONOS_METALICOS corona_inicial corona_laurel corona_real cinta_ondulada constelacion ojo_vigilante)
     set(ICONOS_ACABADO)
     foreach(icono IN LISTS ICONOS_METALICOS)
@@ -160,6 +174,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PopupInvitarAmigos.qml
             src/client-qt/qml/BannerInvitacionSala.qml
             src/client-qt/qml/PopupSeleccionCarta.qml
+            src/client-qt/qml/PopupAcabado.qml
             src/client-qt/qml/CajaTitulo.qml
         RESOURCES
             # EB Garamond (SIL Open Font License) empaquetada con el binario:
@@ -319,7 +334,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qmlcache/PokerClientQt_qmlcache_loader.cpp"
             PROPERTIES COMPILE_OPTIONS -Wno-variadic-macro-arguments-omitted)
     endif()
-    target_compile_definitions(PokerClientQt PRIVATE POKER_APP_VERSION="${POKER_APP_VERSION_STRING}")
+    target_compile_definitions(PokerClientQt PRIVATE POKER_APP_VERSION="${POKER_APP_VERSION_STRING}"
+                                                 POKER_TORNEOS=$<BOOL:${POKER_TORNEOS}>)
 
     # Sonido de notificación ("tu turno") — Multimedia es un módulo
     # ADICIONAL de Qt6 (no viene con Quick), y solo hace falta para
@@ -448,6 +464,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/CajaTitulo.qml
             src/client-qt/qml-mobile/AnilloNivel.qml
             src/client-qt/qml-mobile/PopupSeleccionCarta.qml
+            src/client-qt/qml-mobile/PopupAcabado.qml
         RESOURCES
             # Mismo motivo que PokerClientQt más arriba -- se quedó fuera
             # al principio, sin darse cuenta: sin esto, Tema.fuenteElegante
@@ -593,7 +610,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     # Ver el comentario gemelo en PokerClientQt más arriba.
     target_link_libraries(PokerClientMobile PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network PokerNetClient PokerEngine)
     target_compile_options(PokerClientMobile PRIVATE ${POKER_WARN_FLAGS})
-    target_compile_definitions(PokerClientMobile PRIVATE POKER_APP_VERSION="${POKER_APP_VERSION_STRING}")
+    target_compile_definitions(PokerClientMobile PRIVATE POKER_APP_VERSION="${POKER_APP_VERSION_STRING}"
+                                                     POKER_TORNEOS=$<BOOL:${POKER_TORNEOS}>)
 
     # ── OpenSSL para Android (rama feature/red-segura) ─────────────────────
     #  QSslSocket (usado por NetworkClient.hpp para el TLS del servidor)

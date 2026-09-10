@@ -80,12 +80,19 @@ struct DatosJugadorMesa {
   std::string decoracionLateral1;
   std::string decoracionLateral2;
   std::string decoracionSuperior;
+  // Acabado de cada decoración (fase 2 del material) -- "" = sigue al marco.
+  std::string acabadoLateral1;
+  std::string acabadoLateral2;
+  std::string acabadoSuperior;
 };
 
 /// Formato: "nombre:saldo:apuesta:partidasGanadas:tieneMarco:textura:efecto:
-/// decoLat1:decoLat2:decoSup;..." (un bloque de 10 campos por jugador,
-/// jugadores separados por ';'). Ej: "Alice:580:200:25:1:pulido_bronce:
-/// brillo:hoja::corona;Bot1:420:150:0:0:::::".
+/// decoLat1:decoLat2:decoSup:acabLat1:acabLat2:acabSup;..." (un bloque de 13
+/// campos por jugador, jugadores separados por ';'). Ej: "Alice:580:200:25:1:
+/// pulido_bronce:brillo:hoja::corona:::plata;Bot1:420:150:0:0::::::::".
+/// Los tres acabados van AL FINAL a propósito: los clientes leen por
+/// posición, y uno ya instalado sigue encontrando los 10 primeros donde
+/// estaban.
 std::string jugadoresMesaToStr(const std::vector<DatosJugadorMesa>& jugadores);
 
 // ── Saldos (campo "jugadores" de SALDOS_UPDATE) ───────────────────────────────
