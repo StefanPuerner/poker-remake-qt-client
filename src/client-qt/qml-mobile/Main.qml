@@ -1703,7 +1703,7 @@ ApplicationWindow {
         function onReconectado() {
             reconectandoAhora = false;
         }
-        function onReconexionFallida() {
+        function onReconexionFallida(motivo) {
             reconectandoAhora = false;
             // Mismo motivo que onAbandonaste/onFinDePartida/
             // onPartidaGuardada: sin esto, un showdown/voto que seguía
@@ -1718,7 +1718,9 @@ ApplicationWindow {
             esperandoManosExtra = false;
             soyYoQuienElige = false;
             pantalla = "Inicio";
-            mensajeErrorConexion = "Se perdió la conexión con el servidor.";
+            // Con motivo, el servidor dijo por qué (p. ej. la partida terminó
+            // mientras estabas fuera); sin él, se agotó el minuto de reintentos.
+            mensajeErrorConexion = motivo ? motivo : "Se perdió la conexión con el servidor.";
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
     }

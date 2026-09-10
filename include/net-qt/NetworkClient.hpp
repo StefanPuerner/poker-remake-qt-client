@@ -1063,7 +1063,9 @@ class NetworkClient : public QObject {
   /// Reconexión conseguida — la partida sigue igual, no hace falta volver al Lobby.
   void reconectado();
   /// Se agotó la ventana de reconexión (60s) sin éxito.
-  void reconexionFallida();
+  /// @p motivo: lo que contestó el servidor si dijo que no (la partida ya
+  /// no existe); vacío si solo se agotaron los 60 s.
+  void reconexionFallida(QString motivo);
   /// El servidor rechazó el nombre (hoy solo al cargar una partida guardada).
   void nombreRechazado(QString mensaje);
   /// El nombre efectivo con el que el servidor nos identifica (puede
@@ -1386,6 +1388,20 @@ class NetworkClient : public QObject {
     sock->connectToHostEncrypted(host, puerto);
   }
 
+  /// Da la reconexión por perdida: para los reintentos, olvida la sala
+  /// guardada y avisa a QML. @p motivo: lo que contestó el servidor si dijo
+  /// que no (la partida ya no existe); vacío si solo se agotó el minuto.
+  void rendirseReconexion(const QString& motivo) {
+    timerReintento_.stop();
+    reconectando_ = false;
+    esperandoConfirmacionTrasReconectar_ = false;
+    // Si esto venía de un arranque en frío (intentarRecuperarSesion()), la
+    // sala guardada ya no sirve para nada: olvidarla evita reintentar la
+    // misma sala muerta la próxima vez que se abra la app.
+    olvidarSesionEnDisco();
+    emit reconexionFallida(motivo);
+  }
+
   /// Arranca (o reinicia) la ventana de reintentos de 60s tras perder la conexión.
   void iniciarReconexion() {
     reconectando_ = true;
@@ -1430,15 +1446,7 @@ class NetworkClient : public QObject {
     if (!reconectando_) return;  // nada que reintentar ahora mismo
     int restantes = segundosRealesRestantes();
     if (restantes <= 0) {
-      timerReintento_.stop();
-      reconectando_ = false;
-      esperandoConfirmacionTrasReconectar_ = false;
-      // Se agotaron los 60s de verdad -- si esto venía de un arranque en
-      // frío (intentarRecuperarSesion()), la sala guardada ya no sirve
-      // para nada: olvidarla evita reintentar la misma sala muerta la
-      // próxima vez que se abra la app.
-      olvidarSesionEnDisco();
-      emit reconexionFallida();
+      rendirseReconexion(QString());  // se agotaron los 60s de verdad
       return;
     }
     segundosReconexionRestantes_ = restantes;
@@ -1598,6 +1606,12 @@ class NetworkClient : public QObject {
     nombre_ = nombre;
     hostGuardado_ = host;
     puertoGuardado_ = puerto;
+    // Sesión nueva: un "cierre a propósito" de la anterior (abandonar,
+    // guardar y salir) ya no pinta nada. Nada lo devolvía a false, así que
+    // tras salir de una partida una vez, cualquier caída en la siguiente se
+    // tomaba por un cierre a propósito y ni se intentaba reconectar
+    // (2026-09-11).
+    desconexionEsperada_ = false;
     // Nueva sesión de verdad (no un reintento de reconexión, que no pasa
     // por aquí -- ver intentarReconexionAhora()): todavía no hay
     // PARTIDA_INICIADA para ESTA sesión. salaIdActual_/codigoActual_ los
@@ -1674,16 +1688,22 @@ class NetworkClient : public QObject {
         // enPartida_ pasa a true y el resto de caídas usa JOIN_LOBBY como
         // siempre (ese camino ya funciona, no se toca).
         if (!enPartida_ && (!salaIdActual_.isEmpty() || !codigoActual_.isEmpty())) {
+          // "acepta_rechazo": este cliente entiende un "no" del servidor al
+          // reconectar (ver el bloque de confirmación en readyRead); sin él,
+          // el servidor cierra en silencio, que es lo único que sabe llevar
+          // un cliente anterior sin entrar en un bucle de reintentos.
           enviarMensaje(net::buildMsg(net::MsgType::JOIN_GAME, {
               {"nombre",  nombre_.toStdString()},
               {"sala_id", salaIdActual_.toStdString()},
               {"codigo",  codigoActual_.toStdString()},
               {"token",   token_.toStdString()},
+              {"acepta_rechazo", "1"},
           }));
         } else {
           enviarMensaje(net::buildMsg(net::MsgType::JOIN_LOBBY,
                                       {{"nombre", nombre_.toStdString()},
-                                       {"token", token_.toStdString()}}));
+                                       {"token", token_.toStdString()},
+                                       {"acepta_rechazo", "1"}}));
         }
       } else {
         conectadoAlgunaVez_ = true;
@@ -1737,6 +1757,21 @@ class NetworkClient : public QObject {
           // verdad llega del servidor tras el connected()+JOIN_LOBBY de
           // más arriba. Solo AQUÍ se puede dar la reconexión por buena
           // (ver el porqué en el comentario de connected()).
+          //
+          // Salvo que el servidor conteste al intento con un "no": la partida
+          // ya no existe (PARTIDA_NO_ENCONTRADA, por JOIN_LOBBY) o la sala no
+          // admite (ERROR_SALA, por JOIN_GAME). Antes cualquier primer
+          // mensaje contaba como "reconectado", también estos; y al cerrar el
+          // servidor el socket justo después, se tomaba por una caída nueva.
+          if (esperandoConfirmacionTrasReconectar_) {
+            const std::string eventoRecon = net::jsonGetStr(payload, "evento");
+            if (eventoRecon == "PARTIDA_NO_ENCONTRADA" || eventoRecon == "ERROR_SALA") {
+              desconexionEsperada_ = true;  // el cierre que viene es a propósito
+              socket_.abort();
+              rendirseReconexion(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+              return;
+            }
+          }
           if (esperandoConfirmacionTrasReconectar_) {
             esperandoConfirmacionTrasReconectar_ = false;
             reconectando_ = false;

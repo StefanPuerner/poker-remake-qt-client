@@ -571,7 +571,7 @@ class LocalGameClient : public QObject {
                               QString codigo, QString nombreSala);
   void reconectando(int segundosRestantes);
   void reconectado();
-  void reconexionFallida();
+  void reconexionFallida(QString motivo);
   void xpOfflineSincronizado(int acreditado, int reclamado, QString mensaje);
 
  private:
