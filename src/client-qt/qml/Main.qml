@@ -293,6 +293,12 @@ ApplicationWindow {
     // hay servidor", para no enseñar el aviso rojo un instante antes de
     // tener respuesta real.
     property bool conectadoAlServidor: false
+    // "Entrando…" en el botón mientras viaja el login: con el margen de 12 s
+    // de las peticiones de cuenta (NetworkClient::kTimeoutCuentaMs), sin esto
+    // parecía que el botón no hacía nada, y se pulsaba otra vez.
+    property bool enviandoLogin: false
+    // Ver onReautenticacionSinRespuesta.
+    property bool reautenticacionPendiente: false
     property bool comprobandoConexion: true
     // Sonda periódica mientras se está en Inicio -- host/puerto son fijos
     // en tiempo de ejecución (sin campo editable en la interfaz), así que
@@ -1496,9 +1502,11 @@ ApplicationWindow {
             BotonRelleno {
                 id: botonEntrarLogin
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Entrar"
+                text: enviandoLogin ? "Entrando…" : "Entrar"
+                enabled: !enviandoLogin
                 radioBorde: 999
-                // Siempre pulsable -- ver el comentario largo en
+                // Siempre pulsable (salvo mientras viaja el login, que dice
+                // "Entrando…") -- ver el comentario largo en
                 // botonCrearCuenta sobre por qué un botón atenuado y mudo
                 // no basta como mensaje de error.
                 onClicked: {
@@ -1511,6 +1519,7 @@ ApplicationWindow {
                         return;
                     }
                     mensajeErrorLogin = "";
+                    enviandoLogin = true;
                     redcliente.iniciarSesion(servidorHost, servidorPuerto,
                                              campoUsuarioLogin.text, campoPasswordLogin.text);
                 }
@@ -5076,6 +5085,8 @@ ApplicationWindow {
                 mensajeErrorLogin = mensaje;
             }
             function onLoginOk(accountId, username, token) {
+                enviandoLogin = false;
+                reautenticacionPendiente = false;
                 nombreUsuario.text = username;
                 tokenSesion = token;
                 mensajeErrorLogin = "";
@@ -5087,6 +5098,7 @@ ApplicationWindow {
                 ventana.pedirDatosDeCuenta();
             }
             function onLoginError(mensaje) {
+                enviandoLogin = false;
                 mensajeErrorLogin = mensaje;
             }
             function onSesionInvalida(mensaje) {
@@ -5096,6 +5108,12 @@ ApplicationWindow {
                 // nunca llegó a pedir nada explícitamente, no hay nada que
                 // explicarle salvo que ya no está conectado con su cuenta.
                 tokenSesion = "";
+            }
+            // El login automático con el token guardado no tuvo respuesta (red caída
+            // o lenta). NO es una sesión inválida: el token se queda y se reintenta
+            // en cuanto el indicador de Inicio confirme servidor (onConexionComprobada).
+            function onReautenticacionSinRespuesta() {
+                reautenticacionPendiente = true;
             }
             function onLogoutOk() {
                 tokenSesion = "";
@@ -5284,6 +5302,13 @@ ApplicationWindow {
             function onConexionComprobada(conectado) {
                 comprobandoConexion = false;
                 conectadoAlServidor = conectado;
+                // Login automático que se quedó sin respuesta (onReautenticacionSinRespuesta):
+                // en cuanto vuelve a haber servidor, se reintenta con el mismo token.
+                if (conectado && reautenticacionPendiente) {
+                    reautenticacionPendiente = false;
+                    if (tokenSesion !== "" && pantalla === "Inicio")
+                        redcliente.iniciarSesionConToken(servidorHost, servidorPuerto, tokenSesion);
+                }
             }
             function onNombreRechazado(mensaje) {
                 // onConectado ya nos había pasado a "Lobby" (llega antes de

@@ -260,6 +260,12 @@ class NetworkClient : public QObject {
   }
 
   // ── Cuentas de usuario ────────────────────────────────────────────────────
+  // Margen de las tres peticiones de cuenta (login, registro, login con
+  // token): el servidor verifica la contraseña con PBKDF2, lento a propósito,
+  // y en el móvil se suman la red y el primer TLS. Con los 4 s de las demás
+  // consultas, el login a veces se cortaba antes de la respuesta -- y el
+  // servidor sí había abierto la sesión (visto en el móvil, 2026-09-11).
+  static constexpr int kTimeoutCuentaMs = 12000;
   //  Las seis, mismo patrón efímero que refrescarSalas()/listarGuardadas()
   //  (no tocan socket_, la conexión persistente de la partida) -- token_ se
   //  guarda internamente en las que dan sesión (registrar/iniciarSesion/
@@ -272,6 +278,9 @@ class NetworkClient : public QObject {
         {"username", username.toStdString()},
         {"password", password.toStdString()},
     }), [this](const std::string& payload) {
+      // Vacío = la red falló o no contestó a tiempo, no un "no" del servidor:
+      // sin mensaje propio, el error salía en blanco y parecía no hacer nada.
+      if (payload.empty()) { emit registroError(QStringLiteral("No se pudo conectar con el servidor. Inténtalo de nuevo.")); return; }
       if (net::jsonGetStr(payload, "evento") == "REGISTRO_OK") {
         token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
         nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
@@ -279,7 +288,7 @@ class NetworkClient : public QObject {
       } else {
         emit registroError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
       }
-    });
+    }, kTimeoutCuentaMs);
   }
 
   Q_INVOKABLE void iniciarSesion(const QString& host, quint16 puerto, QString username, QString password) {
@@ -287,6 +296,8 @@ class NetworkClient : public QObject {
         {"username", username.toStdString()},
         {"password", password.toStdString()},
     }), [this](const std::string& payload) {
+      // Ver registrar(): vacío = sin respuesta, no un error del servidor.
+      if (payload.empty()) { emit loginError(QStringLiteral("No se pudo conectar con el servidor. Inténtalo de nuevo.")); return; }
       if (net::jsonGetStr(payload, "evento") == "LOGIN_OK") {
         token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
         nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
@@ -294,7 +305,7 @@ class NetworkClient : public QObject {
       } else {
         emit loginError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
       }
-    });
+    }, kTimeoutCuentaMs);
   }
 
   /// Reautenticación silenciosa con el token que el cliente ya tenía
@@ -303,6 +314,10 @@ class NetworkClient : public QObject {
     enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::LOGIN_TOKEN, {
         {"token", token.toStdString()},
     }), [this](const std::string& payload) {
+      // Sin respuesta NO es un token inválido: tratarlo así borraba el token
+      // guardado ante un simple corte de red al arrancar. El token se queda
+      // y QML reintenta cuando haya servidor (reautenticacionSinRespuesta).
+      if (payload.empty()) { emit reautenticacionSinRespuesta(); return; }
       if (net::jsonGetStr(payload, "evento") == "LOGIN_OK") {
         token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
         nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
@@ -310,7 +325,7 @@ class NetworkClient : public QObject {
       } else {
         emit sesionInvalida(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
       }
-    });
+    }, kTimeoutCuentaMs);
   }
 
   /// Cierra sesión: revoca el token en el servidor y lo olvida aquí --
@@ -935,6 +950,10 @@ class NetworkClient : public QObject {
   /// Respuesta a iniciarSesionConToken() con un token caducado/inválido --
   /// limpiar el token guardado en Settings y quedarse en Inicio/Login.
   void sesionInvalida(QString mensaje);
+  /// iniciarSesionConToken() sin respuesta (red caída o lenta): el token
+  /// puede seguir siendo bueno, así que NO se olvida -- a diferencia de
+  /// sesionInvalida(). QML lo reintenta en cuanto vuelve a haber servidor.
+  void reautenticacionSinRespuesta();
   void logoutOk();
   void usernameCambiado(QString nuevoUsername);
   void usernameError(QString mensaje);
@@ -1314,7 +1333,8 @@ class NetworkClient : public QObject {
    */
   void enviarPeticionEfimera(const QString& host, quint16 puerto,
                              const net::Message& msgSaliente,
-                             std::function<void(const std::string&)> alRecibir) {
+                             std::function<void(const std::string&)> alRecibir,
+                             int timeoutMs = 4000) {
     auto* sock = new QSslSocket(this);
     auto buffer = std::make_shared<QByteArray>();
     // Evita que alRecibir() se dispare dos veces (p. ej. el timeout de
@@ -1355,7 +1375,9 @@ class NetworkClient : public QObject {
     // timeout se quedaba pegado en "conectado" mucho más de lo esperable
     // tras cortar la VPN (bug real reportado: quitar la VPN no hacía
     // volver el indicador a "sin conexión").
-    QTimer::singleShot(4000, sock, [sock, alRecibir, respondido]() {
+    // (4 s por defecto; las peticiones de cuenta piden más, ver
+    // kTimeoutCuentaMs.)
+    QTimer::singleShot(timeoutMs, sock, [sock, alRecibir, respondido]() {
       if (*respondido) return;
       *respondido = true;
       alRecibir("");

@@ -522,6 +522,7 @@ class LocalGameClient : public QObject {
   void registroError(QString mensaje);
   void logoutOk();
   void sesionInvalida(QString mensaje);
+  void reautenticacionSinRespuesta();
   void usernameCambiado(QString nuevoUsername);
   void usernameError(QString mensaje);
   void passwordCambiada();

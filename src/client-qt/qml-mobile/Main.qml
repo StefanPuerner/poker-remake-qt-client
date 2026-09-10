@@ -146,6 +146,12 @@ ApplicationWindow {
     }
 
     onPantallaChanged: {
+        // De vuelta en Inicio, la identidad está otra vez por decidir. Sin
+        // esto, tras una sesión sin conexión o de invitado, un login con
+        // éxito se descartaba en silencio: onLoginOk ignora las respuestas
+        // "tardías" mientras decisionInicioTomada sigue en true (visto en el
+        // móvil, 2026-09-11).
+        if (pantalla === "Inicio") decisionInicioTomada = false;
         if (pantalla === "Inicio" && sesionOffline) {
             sesionOffline = false;
             offlineConCuenta = false;
@@ -299,6 +305,12 @@ ApplicationWindow {
     // onLoginOk/onRegistroOk ignoran cualquier respuesta que llegue
     // después de eso.
     property bool decisionInicioTomada: false
+    // "Entrando…" en el botón mientras viaja el login: con el margen de 12 s
+    // de las peticiones de cuenta (NetworkClient::kTimeoutCuentaMs), sin esto
+    // parecía que el botón no hacía nada, y se pulsaba otra vez.
+    property bool enviandoLogin: false
+    // Ver onReautenticacionSinRespuesta.
+    property bool reautenticacionPendiente: false
     // Compartido por las pantallas Login y Registro, y por la sección
     // Cuenta del cajón de ajustes -- se limpia al entrar en cualquiera de
     // ellas o al reintentar, para no dejar visible el error de un intento
@@ -1007,6 +1019,8 @@ ApplicationWindow {
             mensajeErrorLogin = mensaje;
         }
         function onLoginOk(accountId, username, token) {
+            enviandoLogin = false;
+            reautenticacionPendiente = false;
             // Ver decisionInicioTomada más arriba -- si el usuario ya
             // eligió "Entrar como invitado" mientras esto viajaba, se
             // ignora: llega tarde y no debe suplantar esa elección.
@@ -1038,6 +1052,7 @@ ApplicationWindow {
             ventana.pedirDatosDeCuenta();
         }
         function onLoginError(mensaje) {
+            enviandoLogin = false;
             mensajeErrorLogin = mensaje;
         }
         // Fase M2 del port de progresión a móvil -- ver el comentario
@@ -1078,6 +1093,12 @@ ApplicationWindow {
             // cual (ya es la pantalla por defecto al arrancar, antes de
             // que esto pueda llegar).
             tokenSesion = "";
+        }
+        // El login automático con el token guardado no tuvo respuesta (red caída
+        // o lenta). NO es una sesión inválida: el token se queda y se reintenta
+        // en cuanto el indicador de Inicio confirme servidor (onConexionComprobada).
+        function onReautenticacionSinRespuesta() {
+            reautenticacionPendiente = true;
         }
         function onLogoutOk() {
             tokenSesion = "";
@@ -1524,6 +1545,13 @@ ApplicationWindow {
         function onConexionComprobada(conectado) {
             comprobandoConexion = false;
             conectadoAlServidor = conectado;
+            // Login automático que se quedó sin respuesta (onReautenticacionSinRespuesta):
+            // en cuanto vuelve a haber servidor, se reintenta con el mismo token.
+            if (conectado && reautenticacionPendiente) {
+                reautenticacionPendiente = false;
+                if (tokenSesion !== "" && pantalla === "Inicio" && !decisionInicioTomada)
+                    redcliente.iniciarSesionConToken(servidorHost, servidorPuerto, tokenSesion);
+            }
         }
         function onNombreRechazado(mensaje) {
             pantalla = "Inicio";
@@ -1965,9 +1993,11 @@ ApplicationWindow {
         }
         BotonRelleno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Entrar"
+            text: ventana.enviandoLogin ? "Entrando…" : "Entrar"
+            enabled: !ventana.enviandoLogin
             radioBorde: 999
-            // Siempre pulsable -- un botón atenuado y mudo no distingue
+            // Siempre pulsable (salvo mientras viaja el login, que dice
+            // "Entrando…") -- un botón atenuado y mudo no distingue
             // "te falta algo" de "esto está roto" (ver el mismo criterio
             // en el Main.qml de escritorio).
             onClicked: {
@@ -1980,6 +2010,10 @@ ApplicationWindow {
                     return;
                 }
                 ventana.mensajeErrorLogin = "";
+                // Pedirlo a mano es una decisión nueva: su respuesta tiene que
+                // contar aunque antes se entrara sin conexión o como invitado.
+                ventana.decisionInicioTomada = false;
+                ventana.enviandoLogin = true;
                 redcliente.iniciarSesion(ventana.servidorHost, ventana.servidorPuerto,
                                          cajaUsuarioLogin.valor, cajaPasswordLogin.valor);
             }
@@ -2155,6 +2189,8 @@ ApplicationWindow {
                     return;
                 }
                 ventana.mensajeErrorLogin = "";
+                // Ver el mismo comentario en el botón de Entrar.
+                ventana.decisionInicioTomada = false;
                 redcliente.registrar(ventana.servidorHost, ventana.servidorPuerto,
                                      cajaUsuarioRegistro.valor, cajaPasswordRegistro.valor);
             }
