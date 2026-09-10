@@ -54,18 +54,23 @@ class VersionChecker : public QObject {
   // cuenta borradores ni pre-releases). ⚠️ Los nombres los ponen los
   // workflows del repo público (build-android/linux/windows.yml): renombrar
   // un fichero allí rompe esto sin avisar. Sin fichero propio (macOS...), la
-  // página de la última release. Cuando la app esté en Google Play, en
-  // Android esto pasa a ser la ficha de la app.
+  // página de la última release -- y el cliente móvil también, ver abajo el
+  // porqué. Cuando la app esté en Google Play, en Android esto pasa a ser la
+  // ficha de la app.
   QString urlDescarga() const {
     const QString ultima =
         QStringLiteral("https://github.com/StefanPuerner/poker-remake-qt-client/releases/latest");
-    // El cliente MÓVIL da siempre el APK, también cuando corre en un PC para
-    // probar la interfaz táctil: el AppImage y el zip llevan el cliente de
-    // escritorio, que es otro programa (pedido del usuario, 2026-09-10).
-    // POKER_CLIENTE_MOVIL lo pone cmake/ClientesQt.cmake solo en ese target.
-    // Y Android antes que Linux: en Android también está definido Q_OS_LINUX.
+    // El cliente MÓVIL abre la PÁGINA de la última release, no el .apk: en
+    // Brave para Android, un enlace que va directo a un fichero se abre en una
+    // vista de solo descarga que llega al 100% y nunca termina (visto en real
+    // en v0.8.0, 2026-09-10; en Chrome sí terminaba). Desde la página, la
+    // descarga va por la pestaña normal del navegador. También en un PC: el
+    // AppImage y el zip llevan el cliente de escritorio, que es otro
+    // programa. POKER_CLIENTE_MOVIL lo pone cmake/ClientesQt.cmake solo en
+    // ese target. Y Android antes que Linux: en Android también está
+    // definido Q_OS_LINUX.
 #if defined(Q_OS_ANDROID) || defined(POKER_CLIENTE_MOVIL)
-    return ultima + QStringLiteral("/download/PokerRemake.apk");
+    return ultima;
 #elif defined(Q_OS_WIN)
     return ultima + QStringLiteral("/download/PokerRemake-Windows-x86_64.zip");
 #elif defined(Q_OS_LINUX)

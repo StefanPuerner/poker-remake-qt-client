@@ -86,7 +86,12 @@ Item {
     readonly property var tierActual: coloresTier[marco] || ["", "", "", ""]
     // Alias -- se queda solo por compatibilidad con el resto del fichero
     // (gradiente/marcas cardinales/capaTextura ya usan este nombre).
-    readonly property var tierActualColores: avatar.tierActual
+    // Para lo que se MONTA sobre el metal (engaste de las gemas, respaldo de
+    // los naipes, aro del efecto "pulso"...). Sin marco de metal (ninguno, o
+    // campeón) no hay metal, y Qt pinta negro un color vacío: ahí va el
+    // hierro, el montaje más básico. El aro en sí sigue sin pintarse
+    // (marcoMetalico solo es visible con tieneAlgoDeMarco).
+    readonly property var tierActualColores: avatar.esTierMetalico ? avatar.tierActual : avatar.coloresTier["hierro"]
     // Contorno del aro en tema claro -- ver marcoMetalico.
     readonly property real grosorContorno: Math.max(1, avatar.tamano * 0.016)
     // Solo el platino: el resto de metales se separa bien del fondo claro

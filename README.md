@@ -4,10 +4,21 @@ Clientes gráficos (Qt Quick/QML) para jugar Texas Hold'em en red contra un
 servidor [PokerRemake](https://github.com/StefanPuerner/poker-remake), o sin
 conexión contra bots. Este repo contiene **los clientes** — de escritorio y
 móvil — y todo lo que hace falta para compilarlos, incluido el motor de
-juego, que va embebido para el modo sin conexión: crea/lista salas, juega la
-partida, chatea, guarda/carga partidas y muestra estadísticas al terminar
-(manos disputadas, mejor mano de la partida, racha de eliminaciones)
-hablando el protocolo TCP/JSON del servidor. No incluye el servidor.
+juego, que va embebido para el modo sin conexión. No incluye el servidor.
+
+- **Partidas**: crea o lista salas (públicas o privadas por código), juega,
+  guarda y carga partidas, y ve las estadísticas al terminar (manos
+  disputadas, mejor mano, racha de eliminaciones).
+- **Progresión**: Tréboles (la moneda del juego), nivel y experiencia, Elo en
+  el Ranking, marcos de avatar que se ganan jugando, tienda de cosméticos y
+  logros con títulos.
+- **Social**: amigos, chat directo, invitaciones a sala y perfil de jugador.
+- **Sin conexión**: partidas contra bots aunque no haya servidor, con tu
+  cuenta o como invitado; la experiencia ganada se suma al volver a conectar.
+
+Las novedades de cada versión están en su
+[Release](https://github.com/StefanPuerner/poker-remake-qt-client/releases)
+(las de la próxima, en [`NOVEDADES.md`](NOVEDADES.md)).
 
 - **`PokerClientQt`** — interfaz de escritorio, ratón/teclado.
 - **`PokerClientMobile`** — interfaz táctil, pensada para landscape en
@@ -27,6 +38,12 @@ trae, listos para usar (sin compilar nada):
 | Linux | `PokerRemake-x86_64.AppImage` — dar permiso de ejecución y lanzar |
 | Android | `PokerRemake.apk` — instalar directamente, sin descomprimir nada (móviles arm64; hay que permitir orígenes desconocidos). Hasta la v0.7.1 venía dentro de `PokerRemake-Android-arm64.zip`. |
 
+También se puede llegar a la última versión desde la propia app:
+**Ajustes → VERSIÓN**. En escritorio descarga el fichero directamente; en el
+móvil abre la página del Release, porque en algunos navegadores de Android
+(Brave, por ejemplo) la descarga directa del APK se queda al 100% sin
+terminar. Si te pasa, descárgalo desde esa página o con otro navegador.
+
 El APK sale firmado con un keystore de release de verdad — Android seguirá
 avisando de "aplicación de un desarrollador desconocido" al instalarlo
 (normal para cualquier APK repartido fuera de Play Store), pero ya deja
@@ -36,14 +53,14 @@ instalar una versión nueva encima de la anterior sin desinstalar primero.
 
 - CMake ≥ 3.16
 - Compilador C++17
-- Qt6 (`Quick`, `QuickControls2`, `Network` y `ShaderTools`; además
-  `Multimedia` para `PokerClientQt`) — para `PokerClientMobile` en
+- Qt 6.7 o posterior (`Quick`, `QuickControls2`, `Network` y
+  `ShaderTools`; además `Multimedia` para `PokerClientQt`) — para `PokerClientMobile` en
   Android hace falta además el SDK/NDK de Android y un Qt cross-compilado
   para Android; la forma más simple de conseguir un APK es lanzar el
   workflow `Build Android` desde la pestaña Actions de GitHub (o esperar
   al siguiente Release) en vez de montar ese entorno en local.
 - Nada de OpenSSL que instalar a mano: en escritorio, `QSslSocket` usa el
-  backend TLS que ya trae Qt; en Android, `CMakeLists.txt` descarga solo
+  backend TLS que ya trae Qt; en Android, el build descarga solo
   (vía `FetchContent`, necesita internet la primera vez) las `.so` de
   OpenSSL prebuilt que hacen falta empaquetar dentro del APK.
 
@@ -93,8 +110,10 @@ solo un cliente: `cmake --build build --target PokerClientQt`.
 ./build/PokerClientMobile   # interfaz táctil, en una ventana de escritorio
 ```
 
-Desde "Inicio" → "Salas disponibles": crea una sala nueva o únete a una
-pública de la lista / privada por código.
+En "Inicio", entra con tu cuenta, crea una o juega como invitado. Con
+servidor, "Salas" lista las públicas, deja crear una nueva o unirse a una
+privada por código. Si no hay conexión con el servidor, Inicio ofrece jugar
+sin conexión contra bots. La pestaña Torneos está en "Próximamente".
 
 ## Estructura
 
@@ -110,6 +129,8 @@ include/net-qt/NetworkClient.hpp
 include/net/Protocol.hpp, src/net/Protocol.cpp
                                   — protocolo TCP/JSON compartido con el servidor
 include/net/ServerConfig.hpp     — host/puerto/pin del certificado TLS por defecto (ver arriba)
+include/net-qt/VersionChecker.hpp
+                                  — aviso de versión nueva y enlace a la última versión (Ajustes)
 include/local-qt/                — modo sin conexión: el motor en su propio hilo, hablando
                                     con el QML igual que lo haría el servidor
 include/*.hpp, src/*.cpp         — motor de juego (reglas, bote, bots, evaluación de manos)
@@ -117,6 +138,7 @@ cmake/                           — reglas de compilación de los clientes (ver
 assets/iconos/, assets/shaders/  — cosméticos del avatar y dithering de degradados
 assets/fonts/                    — EB Garamond (SIL Open Font License)
 docs/guia/                       — guía de Qt Quick/QML usada para construir este cliente
+NOVEDADES.md                     — descripción del próximo Release (la usan los workflows)
 ```
 
 ### De dónde sale el código
@@ -125,8 +147,9 @@ Este repo es una foto de los clientes del proyecto completo, sincronizada
 desde allí con un script. El código y `cmake/` se editan allí, no aquí: la
 siguiente sincronización pisaría cualquier cambio hecho en este repo.
 `.sincronizado-desde-privado` lista los ficheros sueltos que trae el
-script. Lo propio de este repo es el README, la licencia, los workflows de
-release y el `CMakeLists.txt`, que se limita a incluir `cmake/`.
+script. Lo propio de este repo es el README, `NOVEDADES.md`, la licencia,
+los workflows de release y el `CMakeLists.txt`, que se limita a incluir
+`cmake/`.
 
 ## Documentación
 

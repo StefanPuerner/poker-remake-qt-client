@@ -14,7 +14,7 @@
 # GitHub y avisar si el binario instalado se quedó atrás. Único sitio a
 # actualizar en cada release -- debe coincidir con el tag de git que se
 # publique (v0.7.1 → "0.7.1", sin la "v").
-set(POKER_APP_VERSION_STRING "0.8.0")
+set(POKER_APP_VERSION_STRING "0.8.1")
 
 # Sin esto, "cmake -B build" sin más deja CMAKE_BUILD_TYPE vacío: ni -O2 ni
 # -g, el peor de los dos mundos (lento de ejecutar y poco depurable). Solo

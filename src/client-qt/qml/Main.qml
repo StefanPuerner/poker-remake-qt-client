@@ -583,6 +583,15 @@ ApplicationWindow {
     // hierro solo cabe el hierro); quitar (codigo "") nunca pregunta. Para
     // cambiarle el metal a una que ya llevas: quitarla y volver a equiparla.
     readonly property string marcoPropio: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
+    // Sin marco todavía (ninguna partida ganada), los accesorios se
+    // previsualizan con Hierro -- el marco de la primera victoria -- y un
+    // aviso bajo el avatar lo dice (decisión del usuario, 2026-09-10). Antes
+    // salía el avatar sin marco, y todo lo que se monta sobre el metal
+    // (engaste de las gemas, respaldo de los naipes, aro del "pulso") se
+    // pintaba en negro. Los títulos no pasan por aquí: no van en el marco.
+    readonly property bool sinMarcoPropio: Tema.metalesHasta(marcoPropio).length === 0
+    readonly property bool previsualizandoConHierro: sinMarcoPropio && previewCodigo !== "" && previewCategoria !== "titulo"
+    readonly property string marcoPreview: previsualizandoConHierro ? "hierro" : marcoPropio
     function equiparConAcabado(slot, codigo) {
         if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
@@ -7203,7 +7212,7 @@ ApplicationWindow {
                                 anchors.bottom: parent.bottom
                                 letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
                                 tamano: 120 * Tema.escala
-                                marco: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
+                                marco: marcoPreview
                                 textura: valorPreview("textura", redcliente.loadoutMarco.textura)
                                 efecto: valorPreview("efecto", redcliente.loadoutMarco.efecto)
                                 decoracionLateral1: valorPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1)
@@ -7213,6 +7222,19 @@ ApplicationWindow {
                                 acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
                                 acabadoSuperior: acabadoPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior, redcliente.loadoutMarco.acabadoSuperior)
                             }
+                        }
+                        // Sin marco todavía: la vista previa usa Hierro (ver marcoPreview) y aquí
+                        // se dice. Solo ocupa sitio si no tienes marco, y se enciende al
+                        // previsualizar, así la columna no salta al pasar por los accesorios.
+                        Text {
+                            visible: sinMarcoPropio
+                            opacity: previsualizandoConHierro ? 1 : 0
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: "Así se verá con tu primer marco, Hierro. Gana una partida para desbloquear los accesorios."
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 11 * Tema.escala
                         }
                         // Los títulos no son una decoración del anillo --
                         // el Avatar de arriba no cambia al pasar el ratón
@@ -7754,7 +7776,7 @@ ApplicationWindow {
                             anchors.bottom: parent.bottom
                             letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
                             tamano: 120 * Tema.escala
-                            marco: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
+                            marco: marcoPreview
                             textura: valorPreview("textura", redcliente.loadoutMarco.textura)
                             efecto: valorPreview("efecto", redcliente.loadoutMarco.efecto)
                             decoracionLateral1: valorPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1)
@@ -7764,6 +7786,19 @@ ApplicationWindow {
                             acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
                             acabadoSuperior: acabadoPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior, redcliente.loadoutMarco.acabadoSuperior)
                         }
+                    }
+                    // Sin marco todavía: la vista previa usa Hierro (ver marcoPreview) y aquí
+                    // se dice. Solo ocupa sitio si no tienes marco, y se enciende al
+                    // previsualizar, así la columna no salta al pasar por los accesorios.
+                    Text {
+                        visible: sinMarcoPropio
+                        opacity: previsualizandoConHierro ? 1 : 0
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: "Así se verá con tu primer marco, Hierro. Gana una partida para desbloquear los accesorios."
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
                     }
                     // Los títulos no son una decoración del anillo -- el
                     // Avatar de arriba no reacciona al pasar el ratón por

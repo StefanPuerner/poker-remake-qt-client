@@ -155,3 +155,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: PokerRemake-x86_64.AppImage
+          # Descripción del release: NOVEDADES.md, en la raíz del repo. Se
+          # actualiza a mano antes de cada etiqueta. Los tres workflows la
+          # ponen igual, así que da igual cuál cree el release primero.
+          body_path: NOVEDADES.md
