@@ -43,7 +43,20 @@ include_directories(include)
 #  en cada target de más abajo.
 if(MSVC)
     set(POKER_WARN_FLAGS /W4)
-    set(POKER_WARN_FLAGS_ERROR /W4 /WX)
+    # SIN /WX en MSVC, a propósito (2026-09-10). El motor (PokerEngine) no se
+    # compilaba en Windows hasta que el modo offline lo metió en los clientes,
+    # y MSVC avisa a /W4 de cosas que GCC/Clang no (C4267/C4244: size_t o
+    # double a int, ~48 sitios estimados con los avisos equivalentes de clang;
+    # C4458, parámetros que tapan miembros...). Con /WX cada una tumbaría el
+    # build de release de Windows, el único CI que usa MSVC y que no se puede
+    # reproducir en local. Los avisos siguen saliendo en su log; -Werror se
+    # queda en GCC/Clang, que es donde se desarrolla.
+    set(POKER_WARN_FLAGS_ERROR /W4)
+    # /utf-8: los fuentes son UTF-8 sin BOM, con tildes en los textos. Sin
+    # esto MSVC los lee en la página de códigos del sistema (1252 en los
+    # runners): avisos C4819 y literales con caracteres rotos. Qt solo lo
+    # añade a los targets que enlazan Qt, y PokerEngine/PokerNetClient no.
+    add_compile_options(/utf-8)
 else()
     set(POKER_WARN_FLAGS -Wall -Wextra -Wpedantic)
     set(POKER_WARN_FLAGS_ERROR -Wall -Wextra -Wpedantic -Werror)
