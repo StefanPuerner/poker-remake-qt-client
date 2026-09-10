@@ -24,7 +24,7 @@ trae, listos para usar (sin compilar nada):
 |---|---|
 | Windows | `PokerRemake-Windows-x86_64.zip` — descomprimir y ejecutar `PokerClientQt.exe` |
 | Linux | `PokerRemake-x86_64.AppImage` — dar permiso de ejecución y lanzar |
-| Android | `PokerRemake-Android-arm64.zip` — descomprimir e instalar el `.apk` (`PokerClientMobile`, orígenes desconocidos) |
+| Android | `PokerRemake.apk` — instalar directamente, sin descomprimir nada (móviles arm64; hay que permitir orígenes desconocidos). Hasta la v0.7.1 venía dentro de `PokerRemake-Android-arm64.zip`. |
 
 El APK sale firmado con un keystore de release de verdad — Android seguirá
 avisando de "aplicación de un desarrollador desconocido" al instalarlo

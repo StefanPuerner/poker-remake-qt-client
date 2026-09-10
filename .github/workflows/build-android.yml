@@ -247,11 +247,19 @@ jobs:
           mkdir -p dist-android
           cp "$APK" dist-android/PokerRemake.apk
 
+      # archive: false -- sin él, upload-artifact entrega SIEMPRE un .zip al
+      # descargar el artefacto, aunque se suba un único fichero, así que la
+      # nota de arriba ("el .apk se sube tal cual") no era verdad para el
+      # artefacto, solo para el Release. Esa opción solo existe desde
+      # upload-artifact v7: en la v4 de antes se habría ignorado con un
+      # aviso y seguido saliendo .zip. Con archive: false el artefacto se
+      # llama como el fichero, así que "name" ya no pinta nada.
       - name: Subir el APK como artefacto
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: PokerRemake-Android
           path: dist-android/PokerRemake.apk
+          archive: false
+          if-no-files-found: error
 
       - name: Adjuntar al Release de GitHub
         if: startsWith(github.ref, 'refs/tags/')
