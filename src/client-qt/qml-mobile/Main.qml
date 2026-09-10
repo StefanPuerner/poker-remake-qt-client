@@ -1128,6 +1128,11 @@ ApplicationWindow {
         // refresca el resumen para que el último mensaje/badge se pongan
         // al día sin salir y volver a entrar en la pestaña.
         function onMensajeDirectoRecibido(fromAccountId, fromUsername, texto, creadoEn, mensajeId) {
+            // Con el chat de ese amigo abierto, VistaChatDirecto relee la
+            // conversación (la marca como leída) y su respuesta ya pide el
+            // resumen. Pedirlo aquí a la vez podía llegar antes y contar como
+            // no leído un mensaje que estás viendo.
+            if (popupChatDirecto.visible && popupChatDirecto.accountId === fromAccountId) return;
             if (pestanaSocialActual === 0) {
                 redcliente.listarResumenChats(servidorHost, servidorPuerto);
             }
@@ -2235,6 +2240,10 @@ ApplicationWindow {
                 ventana.pestanaSocialActual = 0;
                 ventana.mensajeErrorSocial = "";
                 redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto);
+                // El resumen trae los avisos de no leídos: sin pedirlo al
+                // entrar se veían los de la última visita, aunque esos
+                // mensajes ya estuvieran leídos (visto 2026-09-10).
+                redcliente.listarResumenChats(ventana.servidorHost, ventana.servidorPuerto);
             }
             if (nombre === "Cuenta") {
                 // Fase M1 del port de progresión a móvil (2026-09-01, ver

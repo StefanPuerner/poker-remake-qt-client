@@ -1226,6 +1226,10 @@ ApplicationWindow {
                     chatAmigoSeleccionado = -1;
                     mensajeErrorSocial = "";
                     redcliente.listarAmigos(servidorHost, servidorPuerto);
+                    // El resumen trae los avisos de no leídos: sin pedirlo al
+                    // entrar se veían los de la última visita, aunque esos
+                    // mensajes ya estuvieran leídos (visto 2026-09-10).
+                    redcliente.listarResumenChats(servidorHost, servidorPuerto);
                 }
                 if (nombre === "Cuenta") {
                     // Mismo criterio de reset-al-reentrar que Social:
@@ -2976,7 +2980,15 @@ ApplicationWindow {
                     // dos listas juntas.
                     if (indice === 0) {
                         redcliente.listarAmigos(servidorHost, servidorPuerto);
-                        redcliente.listarResumenChats(servidorHost, servidorPuerto);
+                        // Con un chat abierto, recargarlo marca sus mensajes
+                        // como leídos y su respuesta ya pide el resumen (ver
+                        // onConversacionActualizada). Pedir las dos cosas a
+                        // la vez podía traer antes el resumen, con mensajes
+                        // que sí estás viendo contados como no leídos.
+                        if (chatAmigoSeleccionado !== -1)
+                            redcliente.listarConversacion(servidorHost, servidorPuerto, chatAmigoSeleccionado);
+                        else
+                            redcliente.listarResumenChats(servidorHost, servidorPuerto);
                     }
                     else if (indice === 2) redcliente.listarJugadoresRecientes(servidorHost, servidorPuerto);
                     else if (indice === 3) redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
@@ -5197,14 +5209,28 @@ ApplicationWindow {
             // panel derecho, releer también esa -- más barato que tocar el
             // modelo a mano y de paso marca leído server-side.
             function onMensajeDirectoRecibido(fromAccountId, fromUsername, texto, creadoEn, mensajeId) {
-                if (pestanaSocialActual === 0) {
-                    redcliente.listarResumenChats(servidorHost, servidorPuerto);
-                }
-                if (chatAmigoSeleccionado === fromAccountId) {
+                // Releer la conversación la marca como leída, así que solo se
+                // hace si se está VIENDO: chatAmigoSeleccionado sigue puesto
+                // aunque estés en otra pantalla, y antes el mensaje quedaba
+                // leído sin que nadie lo viera. Y en ese caso el resumen lo
+                // pide la respuesta (onConversacionActualizada), ya con el
+                // mensaje leído -- pedirlo aquí a la vez podía llegar antes.
+                var viendoEseChat = pantalla === "Social" && pestanaSocialActual === 0
+                                    && chatAmigoSeleccionado === fromAccountId;
+                if (viendoEseChat) {
                     redcliente.listarConversacion(servidorHost, servidorPuerto, chatAmigoSeleccionado);
+                } else if (pestanaSocialActual === 0) {
+                    redcliente.listarResumenChats(servidorHost, servidorPuerto);
                 }
             }
             function onConversacionActualizada(mensajes) {
+                // El servidor marca como leídos los mensajes de esta
+                // conversación ANTES de devolverla
+                // (AccountManager::listarConversacion), así que ahora el
+                // resumen sí sale con el aviso de no leídos al día. Sin esto,
+                // abrir un chat no quitaba su aviso de la lista (visto
+                // 2026-09-10).
+                redcliente.listarResumenChats(servidorHost, servidorPuerto);
                 modeloConversacionAmigos.clear();
                 for (var i = 0; i < mensajes.length; i++) {
                     var m = mensajes[i];

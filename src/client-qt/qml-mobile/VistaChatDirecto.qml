@@ -43,6 +43,12 @@ Popup {
     Connections {
         target: redcliente
         function onConversacionActualizada(mensajes) {
+            // El servidor marca como leídos los mensajes de esta conversación
+            // ANTES de devolverla, así que ahora el resumen (el aviso de no
+            // leídos de la lista de Amigos, en Main.qml) sale al día. Sin esto,
+            // abrir el chat y cerrarlo dejaba el aviso puesto (visto
+            // 2026-09-10).
+            redcliente.listarResumenChats(popup.servidorHost, popup.servidorPuerto);
             modeloConversacion.clear();
             for (var i = 0; i < mensajes.length; i++) {
                 var m = mensajes[i];
