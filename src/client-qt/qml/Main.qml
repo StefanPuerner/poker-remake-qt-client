@@ -1266,6 +1266,22 @@ ApplicationWindow {
             }
         }
 
+        // Versión instalada, discreta, en la esquina (pendiente 9 de CLAUDE.md,
+        // 2026-09-10). Si hay una más nueva lo dice aquí mismo, además del banner.
+        Text {
+            visible: pantalla === "Inicio"
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 14 * Tema.escala
+            textFormat: Text.StyledText
+            text: "v" + versionChecker.versionActual
+                  + (versionChecker.hayVersionNueva
+                     ? " · <font color=\"" + Tema.colorHex(Tema.colorAccent) + "\">hay una nueva: v"
+                       + versionChecker.versionRemota + "</font>"
+                     : "")
+            color: Tema.colorTextoMuyTenue
+            font.pixelSize: 11 * Tema.escala
+        }
         // ── Pantalla 1: conectar ──────────────────────────
         Column {
             visible: pantalla === "Inicio"
@@ -8390,6 +8406,33 @@ ApplicationWindow {
                         text: "+"
                         onClicked: Tema.subirZoom()
                     }
+                }
+            }
+
+            // ── Versión (pendiente 9 de CLAUDE.md, 2026-09-10) ──────────────────
+            // Descarga DIRECTA del fichero de esta plataforma en la última release
+            // pública -- ver VersionChecker::urlDescarga().
+            Column {
+                width: parent.width
+                spacing: 10 * Tema.escala
+                Text {
+                    text: "VERSIÓN"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 11 * Tema.escala
+                    font.letterSpacing: 1
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Instalada: v" + versionChecker.versionActual
+                          + (versionChecker.hayVersionNueva ? " · hay una nueva: v" + versionChecker.versionRemota : "")
+                    color: versionChecker.hayVersionNueva ? Tema.colorAccent : Tema.colorTextoTenue
+                    font.pixelSize: 13 * Tema.escala
+                }
+                BotonContorno {
+                    width: parent.width
+                    text: "Descargar la última versión"
+                    onClicked: Qt.openUrlExternally(versionChecker.urlDescarga)
                 }
             }
         }

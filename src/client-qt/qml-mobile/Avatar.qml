@@ -87,6 +87,20 @@ Item {
     // Alias -- se queda solo por compatibilidad con el resto del fichero
     // (gradiente/marcas cardinales/capaTextura ya usan este nombre).
     readonly property var tierActualColores: avatar.tierActual
+    // Contorno del aro en tema claro -- ver marcoMetalico.
+    readonly property real grosorContorno: Math.max(1, avatar.tamano * 0.016)
+    // Solo el platino: el resto de metales se separa bien del fondo claro
+    // (confirmado por el usuario, 2026-09-10).
+    readonly property bool conContornoClaro: Tema.esTemaClaro && avatar.esPlatino
+    readonly property color colorContorno: avatar.esTierMetalico
+                                           ? Qt.darker(avatar.tierActualColores[3], 1.1) : "transparent"
+    // La letra del núcleo va en el color del marco, salvo el platino en tema
+    // claro: su casi-blanco (#eef3ff) desaparecía sobre un núcleo también
+    // claro. Ahí, el tono oscuro del propio platino.
+    readonly property color colorLetraTier: !avatar.esTierMetalico ? Tema.colorAccent
+                                            : (Tema.esTemaClaro && avatar.esPlatino)
+                                              ? Qt.darker(avatar.tierActualColores[3], 1.35)
+                                              : avatar.tierActual[0]
 
     // ── Podio (campeón) -- puesto 1/2/3, dos categorías ─────────────────
     readonly property int posicionPodio: {
@@ -119,6 +133,16 @@ Item {
         width: Math.round(avatar.tamano * 1.16)
         height: width
         radius: width / 2
+        // Tema claro (pendiente 8 de CLAUDE.md, 2026-09-10): el platino es
+        // casi blanco arriba y se perdía contra el fondo y contra el núcleo,
+        // los dos claros. Contorno por fuera (este borde) y por dentro (el
+        // Rectangle de antes de las marcas cardinales) en el tono oscuro del
+        // propio metal -- el mismo recurso que ya salvó a los iconos. En los
+        // temas oscuros no se pinta: allí el aro se separa solo, y es lo que
+        // se aprobó. Y solo en el platino: los demás metales se separan bien
+        // del fondo claro (confirmado por el usuario, 2026-09-10).
+        border.width: avatar.conContornoClaro ? avatar.grosorContorno : 0
+        border.color: avatar.colorContorno
         gradient: Gradient {
             GradientStop { position: 0.0; color: avatar.tierActualColores[1] }
             GradientStop { position: 0.45; color: avatar.tierActualColores[2] }
@@ -130,6 +154,19 @@ Item {
             property variant source
             property real amplitud: 3.0
             fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+        }
+        // Contorno interior en tema claro -- ver el borde de marcoMetalico.
+        // Justo por fuera del núcleo, que lo tapa por dentro: se ve como una
+        // línea fina entre el aro y el núcleo.
+        Rectangle {
+            visible: avatar.conContornoClaro
+            anchors.centerIn: parent
+            width: Math.round(avatar.tamano) + 2 * avatar.grosorContorno
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.width: avatar.grosorContorno
+            border.color: avatar.colorContorno
         }
         // Cuatro marcas cardinales -- ocultas si hay una Textura puesta
         // (los 4 rombos y el patrón grabado/trenzado/facetado compiten
@@ -451,7 +488,7 @@ Item {
             anchors.centerIn: parent
             text: avatar.letra
             color: avatar.esCampeon ? avatar.colorCampeon
-                   : avatar.esTierMetalico ? avatar.tierActual[0]
+                   : avatar.esTierMetalico ? avatar.colorLetraTier
                    : Tema.colorAccent
             font.pixelSize: avatar.tamano * 0.36
             font.family: Tema.fuenteElegante

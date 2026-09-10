@@ -56,6 +56,11 @@ QtObject {
     property int temaActual: 0
 
     readonly property color colorFondo: temas[temaActual].fondo
+    // Tema claro (hoy solo "Porcelana dorada"): lo que se pinta casi blanco --
+    // el platino, sobre todo -- necesita ahí un contorno que en los temas
+    // oscuros sobra. Por la luminosidad del fondo y no por el nombre, para
+    // que valga igual si algún día hay otro tema claro.
+    readonly property bool esTemaClaro: colorFondo.hslLightness > 0.5
     readonly property color colorTapete: temas[temaActual].tapete
     readonly property color colorPanel: temas[temaActual].panel
     readonly property color colorBorde: temas[temaActual].borde

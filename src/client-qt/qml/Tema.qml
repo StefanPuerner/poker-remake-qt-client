@@ -54,6 +54,11 @@ QtObject {
     property int temaActual: 0
 
     readonly property color colorFondo: temas[temaActual].fondo // fondo general de la ventana
+    // Tema claro (hoy solo "Porcelana dorada"): lo que se pinta casi blanco --
+    // el platino, sobre todo -- necesita ahí un contorno que en los temas
+    // oscuros sobra. Por la luminosidad del fondo y no por el nombre, para
+    // que valga igual si algún día hay otro tema claro.
+    readonly property bool esTemaClaro: colorFondo.hslLightness > 0.5
     readonly property color colorTapete: temas[temaActual].tapete // paño de la mesa, el más saturado de los tres
     readonly property color colorPanel: temas[temaActual].panel // paneles (chat/historial, avatares, cartas comunitarias de fondo)
     readonly property color colorBorde: temas[temaActual].borde // línea sutil entre paños/paneles

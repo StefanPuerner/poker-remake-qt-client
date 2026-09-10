@@ -610,8 +610,11 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     # Ver el comentario gemelo en PokerClientQt más arriba.
     target_link_libraries(PokerClientMobile PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network PokerNetClient PokerEngine)
     target_compile_options(PokerClientMobile PRIVATE ${POKER_WARN_FLAGS})
+    # POKER_CLIENTE_MOVIL: el enlace de descarga de Ajustes da siempre el APK
+    # en este cliente, también en un PC -- ver VersionChecker::urlDescarga().
     target_compile_definitions(PokerClientMobile PRIVATE POKER_APP_VERSION="${POKER_APP_VERSION_STRING}"
-                                                     POKER_TORNEOS=$<BOOL:${POKER_TORNEOS}>)
+                                                     POKER_TORNEOS=$<BOOL:${POKER_TORNEOS}>
+                                                     POKER_CLIENTE_MOVIL=1)
 
     # ── OpenSSL para Android (rama feature/red-segura) ─────────────────────
     #  QSslSocket (usado por NetworkClient.hpp para el TLS del servidor)
