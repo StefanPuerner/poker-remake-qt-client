@@ -56,7 +56,14 @@ if(MSVC)
     # esto MSVC los lee en la página de códigos del sistema (1252 en los
     # runners): avisos C4819 y literales con caracteres rotos. Qt solo lo
     # añade a los targets que enlazan Qt, y PokerEngine/PokerNetClient no.
-    add_compile_options(/utf-8)
+    #
+    # /bigobj: el C++ que genera qmlcachegen para qml/Main.qml (8400 líneas,
+    # 2026-09-10) define ~17 600 funciones, y MSVC pone cada una en varias
+    # secciones COFF (código, tablas de excepciones y, en RelWithDebInfo,
+    # depuración): pasa del tope de 65 279 secciones de un .obj normal
+    # (error C1128). Con las 5 364 líneas de la v0.7.1 aún cabía. /bigobj
+    # solo cambia el formato del objeto; no afecta al programa.
+    add_compile_options(/utf-8 /bigobj)
 else()
     set(POKER_WARN_FLAGS -Wall -Wextra -Wpedantic)
     set(POKER_WARN_FLAGS_ERROR -Wall -Wextra -Wpedantic -Werror)
