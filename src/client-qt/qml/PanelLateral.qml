@@ -19,6 +19,13 @@ Rectangle {
         GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
         GradientStop { position: 1.0; color: Tema.colorPanel }
     }
+    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+    layer.enabled: true
+    layer.effect: ShaderEffect {
+        property variant source
+        property real amplitud: 30.0
+        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+    }
 
     // El historial usa Text.RichText para colorear el punto y el nombre
     // del jugador dentro de la misma línea — escapar por si un nombre de
@@ -248,11 +255,9 @@ Rectangle {
                 // Antes sin "background": salía con el estilo por
                 // defecto de Qt Quick Controls (gris claro), fuera de
                 // sitio en este tema oscuro — mismo fondo que ChatBox.
-                background: Rectangle {
-                    color: Tema.colorFondo
+                background: MarcoHueco {
                     radius: 8 * Tema.escala
-                    border.width: 1
-                    border.color: campoChatPanel.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                    activo: campoChatPanel.activeFocus
                 }
                 // Antes había que Tab + Espacio hasta "Enviar" tras
                 // escribir — Enter manda el mensaje directamente.

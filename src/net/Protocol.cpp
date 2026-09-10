@@ -1,6 +1,7 @@
 #include "../../include/net/Protocol.hpp"
 
 #include <cctype>
+#include <cstddef>
 #include <stdexcept>
 
 // writeAll/readAll/sendMsg/recvMsg (las únicas cuatro funciones de este
@@ -69,6 +70,10 @@ const char* msgTypeStr(MsgType t) {
       return "CONSULTAR_RANKING";
     case MsgType::CONSULTAR_ESTADISTICAS:
       return "CONSULTAR_ESTADISTICAS";
+    case MsgType::SINCRONIZAR_XP_OFFLINE:
+      return "SINCRONIZAR_XP_OFFLINE";
+    case MsgType::XP_OFFLINE_SINCRONIZADO:
+      return "XP_OFFLINE_SINCRONIZADO";
     case MsgType::PRESENCIA_CONECTAR:
       return "PRESENCIA_CONECTAR";
     case MsgType::BUSCAR_JUGADORES:
@@ -111,6 +116,28 @@ const char* msgTypeStr(MsgType t) {
       return "MENSAJE_DIRECTO_ENTRANTE";
     case MsgType::INVITACION_SALA_ENTRANTE:
       return "INVITACION_SALA_ENTRANTE";
+    case MsgType::EXPORTAR_ESTADISTICAS:
+      return "EXPORTAR_ESTADISTICAS";
+    case MsgType::CONSULTAR_LOGROS:
+      return "CONSULTAR_LOGROS";
+    case MsgType::LOGROS_LISTA:
+      return "LOGROS_LISTA";
+    case MsgType::CONSULTAR_TIENDA:
+      return "CONSULTAR_TIENDA";
+    case MsgType::TIENDA_LISTA:
+      return "TIENDA_LISTA";
+    case MsgType::COMPRAR_OBJETO:
+      return "COMPRAR_OBJETO";
+    case MsgType::EQUIPAR_OBJETO:
+      return "EQUIPAR_OBJETO";
+    case MsgType::CONSULTAR_LOADOUT:
+      return "CONSULTAR_LOADOUT";
+    case MsgType::LOADOUT_ACTUAL:
+      return "LOADOUT_ACTUAL";
+    case MsgType::ADMIN_CONCEDER_ITEM:
+      return "ADMIN_CONCEDER_ITEM";
+    case MsgType::ADMIN_FABRICAR_CUENTAS:
+      return "ADMIN_FABRICAR_CUENTAS";
     default:
       return "UNKNOWN";
   }
@@ -143,6 +170,8 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "CHANGE_PASSWORD") return MsgType::CHANGE_PASSWORD;
   if (s == "CONSULTAR_RANKING") return MsgType::CONSULTAR_RANKING;
   if (s == "CONSULTAR_ESTADISTICAS") return MsgType::CONSULTAR_ESTADISTICAS;
+  if (s == "SINCRONIZAR_XP_OFFLINE") return MsgType::SINCRONIZAR_XP_OFFLINE;
+  if (s == "XP_OFFLINE_SINCRONIZADO") return MsgType::XP_OFFLINE_SINCRONIZADO;
   if (s == "PRESENCIA_CONECTAR") return MsgType::PRESENCIA_CONECTAR;
   if (s == "BUSCAR_JUGADORES") return MsgType::BUSCAR_JUGADORES;
   if (s == "ENVIAR_SOLICITUD_AMISTAD") return MsgType::ENVIAR_SOLICITUD_AMISTAD;
@@ -164,6 +193,17 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "PERFIL_JUGADOR") return MsgType::PERFIL_JUGADOR;
   if (s == "MENSAJE_DIRECTO_ENTRANTE") return MsgType::MENSAJE_DIRECTO_ENTRANTE;
   if (s == "INVITACION_SALA_ENTRANTE") return MsgType::INVITACION_SALA_ENTRANTE;
+  if (s == "EXPORTAR_ESTADISTICAS") return MsgType::EXPORTAR_ESTADISTICAS;
+  if (s == "CONSULTAR_LOGROS") return MsgType::CONSULTAR_LOGROS;
+  if (s == "LOGROS_LISTA") return MsgType::LOGROS_LISTA;
+  if (s == "CONSULTAR_TIENDA") return MsgType::CONSULTAR_TIENDA;
+  if (s == "TIENDA_LISTA") return MsgType::TIENDA_LISTA;
+  if (s == "COMPRAR_OBJETO") return MsgType::COMPRAR_OBJETO;
+  if (s == "EQUIPAR_OBJETO") return MsgType::EQUIPAR_OBJETO;
+  if (s == "CONSULTAR_LOADOUT") return MsgType::CONSULTAR_LOADOUT;
+  if (s == "LOADOUT_ACTUAL") return MsgType::LOADOUT_ACTUAL;
+  if (s == "ADMIN_CONCEDER_ITEM") return MsgType::ADMIN_CONCEDER_ITEM;
+  if (s == "ADMIN_FABRICAR_CUENTAS") return MsgType::ADMIN_FABRICAR_CUENTAS;
   return MsgType::UNKNOWN;
 }
 

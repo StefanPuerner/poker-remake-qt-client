@@ -56,7 +56,10 @@ jobs:
           # secas) -- PokerClientQt lo necesita para el sonido de "tu
           # turno" (ver CMakeLists.txt). Sin esto, find_package(Qt6
           # REQUIRED COMPONENTS Multimedia) aborta el configure entero.
-          modules: 'qtmultimedia'
+          # qtshadertools: compila assets/shaders/dither.frag a .qsb (el dithering
+          # de degradados que usa el QML). Sin él, CMake se para con un FATAL_ERROR
+          # que dice qué falta (ver cmake/ClientesQt.cmake).
+          modules: 'qtmultimedia qtshadertools'
 
       # Paso 3: configurar el proyecto con CMake — igual que
       # "cmake -B build" en Linux, pero MSVC es un generador de "varios

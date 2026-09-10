@@ -31,6 +31,13 @@ Rectangle {
         GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
         GradientStop { position: 1.0; color: Tema.colorPanel }
     }
+    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+    layer.enabled: true
+    layer.effect: ShaderEffect {
+        property variant source
+        property real amplitud: 30.0
+        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+    }
 
     // Ver cabecera: sube la caja entera cuando el teclado tapa el campo de
     // entrada. Sin verificar todavía contra un teclado de Android real
@@ -122,7 +129,7 @@ Rectangle {
         TextField {
             id: textoChat
             width: parent.width - botonEnviar.width - parent.spacing
-            height: Tema.tamanoMinTactil
+            height: Tema.tactil
             color: Tema.colorTexto
             font.pixelSize: 13 * Tema.escala
             // Ver CampoEmergente.qml: sin esto, borrar una letra solo
@@ -130,17 +137,15 @@ Rectangle {
             inputMethodHints: Qt.ImhNoPredictiveText
             placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
             placeholderTextColor: Tema.colorTextoTenue
-            background: Rectangle {
-                color: Tema.colorFondo
+            background: MarcoHueco {
                 radius: 8 * Tema.escala
-                border.width: 1
-                border.color: textoChat.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                activo: textoChat.activeFocus
             }
             onAccepted: botonEnviar.clicked()
         }
         BotonRelleno {
             id: botonEnviar
-            height: Tema.tamanoMinTactil
+            height: Tema.tactil
             text: "Enviar"
             onClicked: {
                 if (textoChat.text.length === 0) return;

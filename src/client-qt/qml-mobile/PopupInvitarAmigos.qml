@@ -83,7 +83,7 @@ Popup {
             delegate: Row {
                 required property var modelData
                 width: 284 * Tema.escala
-                height: Tema.tamanoMinTactil
+                height: Tema.tactil
                 spacing: 8 * Tema.escala
                 Text {
                     anchors.verticalCenter: parent.verticalCenter

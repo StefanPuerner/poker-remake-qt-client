@@ -3,7 +3,20 @@ import QtQuick
 import PokerQuickMobile
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import Qt.labs.settings
+// QtCore en vez de Qt.labs.settings (2026-09-10): el de labs está
+// obsoleto y avisaba en cada arranque. Mismo backend -- comprobado con
+// el runtime de Qt 6 que QtCore.Settings lee lo que escribió el viejo
+// con la misma category, así que nadie pierde su sesión al actualizar.
+// Existe desde Qt 6.5; el CI más viejo (Android) usa 6.7.3.
+import QtCore
+// SOLO para el brillo del botón activo del mini-riel de Personalizar
+// (2026-09-02, "en el riel... en el artifact se simula un brillo desde
+// el boton"). Nativo de Qt 6.5+ (viene con el propio módulo Quick, no
+// hace falta enlazar nada nuevo en CMake) -- a diferencia del resto de
+// "sombras baratas" del proyecto (Rectangle desplazado, sin blur real),
+// aquí sí compensa: son como mucho 4 botones en pantalla a la vez, no
+// una rejilla de decenas de tarjetas.
+import QtQuick.Effects
 
 ApplicationWindow {
     id: ventana
@@ -59,22 +72,85 @@ ApplicationWindow {
     // ── Navegación + gesto de atrás (Parte 7 del plan, punto 3) ─────────────
     // Mismo modelo de pantalla plana que escritorio. "mapaAtras" es el
     // mismo destino que ya usan los botones "Cancelar"/"Salir" de
-    // escritorio -- las 4 pantallas "hub" con riel (Salas/Ranking/Torneos/
-    // Social) van a Inicio (pedido explícito 2026-08-28: antes solo Salas
-    // tenía salida por gesto de atrás, las otras tres se tragaban el back
-    // sin hacer nada), CrearSala→Salas, Fin→Salas. Lobby/Partida quedan
-    // fuera a propósito: abandonar una partida en curso pasa por el
-    // overlay de voto, no por un back que se salte esa confirmación.
+    // escritorio -- las 6 pantallas "hub" con riel (Salas/Ranking/Torneos/
+    // Social/Tienda/Cuenta) van a Inicio (pedido explícito 2026-08-28:
+    // antes solo Salas tenía salida por gesto de atrás, las otras se
+    // tragaban el back sin hacer nada; "Tienda"/"Cuenta" llegaron después
+    // -- Fases M1/M2 del port de progresión -- y se quedaron fuera de
+    // este mapa por descuido, bug real reportado 2026-09-02: "no funciona
+    // en las secciones nuevas"), CrearSala→Salas, Fin→Salas. Lobby/Partida
+    // quedan fuera a propósito: abandonar una partida en curso pasa por
+    // el overlay de voto, no por un back que se salte esa confirmación.
     property string pantalla: "Inicio"
     readonly property var mapaAtras: ({
         "Salas": "Inicio",
         "Ranking": "Inicio",
         "Torneos": "Inicio",
         "Social": "Inicio",
+        "Tienda": "Inicio",
+        "Cuenta": "Inicio",
         "CrearSala": "Salas",
         "Fin": "Salas"
     })
     property bool ajustesAbiertos: false
+    // Modo offline (Torneos > Solitario) -- ver el comentario gemelo en
+    // qml/Main.qml (escritorio).
+    property bool modoOfflineActivo: false
+    property bool sesionOffline: false
+    property bool offlineConCuenta: false
+    // "¿Hay cuenta detrás de esta sesión?" para decidir qué PINTAR -- ver
+    // el comentario gemelo en qml/Main.qml (escritorio). No sustituye a
+    // tokenSesion en los guards de llamadas de red.
+    readonly property bool hayCuenta: tokenSesion !== "" || offlineConCuenta
+
+    // Estadísticas y loadout propios al autenticarse -- ver el comentario
+    // gemelo en qml/Main.qml (escritorio): sin esto la caché offline se
+    // quedaba solo con el nombre y la sesión sin conexión entraba con tu
+    // cuenta pero sin nivel, XP ni cosméticos.
+    function pedirDatosDeCuenta() {
+        if (tokenSesion === "") return;
+        redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+        redcliente.consultarLoadout(servidorHost, servidorPuerto, tokenSesion);
+        // Logros también: la pestaña Logros es accesible sin conexión, y
+        // solo se cachea lo que el servidor haya llegado a mandar.
+        redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+        // XP ganado sin conexión desde la última vez que hubo servidor. El
+        // servidor lo acota (ver AccountManager::sincronizarXpOffline()), así
+        // que la bolsa local solo se vacía al confirmar cuánto acreditó.
+        if (modoJuego.xpOfflinePendiente > 0) {
+            redcliente.sincronizarXpOffline(servidorHost, servidorPuerto, tokenSesion,
+                                            modoJuego.xpOfflinePendiente);
+        }
+    }
+
+    // Entra en una sesión sin conexión completa -- ver el comentario
+    // gemelo en qml/Main.qml (escritorio).
+    function entrarSinConexion(conCuenta) {
+        var usarCuenta = conCuenta && modoJuego.usernameCacheado !== "";
+        modoJuego.activarModoLocal();
+        sesionOffline = true;
+        modoOfflineActivo = true;
+        offlineConCuenta = usarCuenta;
+        // redcliente ya es el cliente local (activarModoLocal() arriba), así
+        // que este método existe. Solo se acumula XP con cuenta: de invitado
+        // no hay a quién acreditárselo.
+        redcliente.setAcumularXpOffline(usarCuenta);
+        decisionInicioTomada = true;
+        tokenSesion = "";
+        nombreJugador = usarCuenta ? modoJuego.usernameCacheado
+                                   : "Invitado" + Math.floor(Math.random() * 100000);
+        mensajeErrorConexion = "";
+        pantalla = "Torneos";
+    }
+
+    onPantallaChanged: {
+        if (pantalla === "Inicio" && sesionOffline) {
+            sesionOffline = false;
+            offlineConCuenta = false;
+            modoOfflineActivo = false;
+            modoJuego.activarModoRed();
+        }
+    }
     // Refresca las estadísticas propias cada vez que se abre el cajón --
     // mismo criterio que escritorio (ver Main.qml de qml/). No-op sin
     // sesión (consultarEstadisticas() descarta un token vacío por su cuenta).
@@ -155,10 +231,22 @@ ApplicationWindow {
         if (tokenSesion !== "") {
             redcliente.iniciarSesionConToken(servidorHost, servidorPuerto, tokenSesion);
         }
+        // Aviso de versión antigua: en segundo plano, sin bloquear nada de
+        // lo de arriba -- si falla (sin red, API caída) no pasa nada, ver
+        // VersionChecker.hpp.
+        versionChecker.comprobar();
     }
     Connections {
         target: Tema
         function onTemaActualChanged() { ajustesPersistentesMovil.temaGuardado = Tema.temaActual; }
+    }
+    Connections {
+        target: versionChecker
+        function onHayVersionNuevaChanged() {
+            if (versionChecker.hayVersionNueva) {
+                bannerVersionNueva.mostrar(versionChecker.versionRemota, versionChecker.urlRelease);
+            }
+        }
     }
     // ── Ajustes ──────────────────────────────────────────────────────────
     // Desactivado por defecto (misma decisión que en escritorio).
@@ -167,9 +255,26 @@ ApplicationWindow {
     // pedía confirmación SIEMPRE, sin ajuste que lo controle). Mismo
     // criterio que escritorio: desactivado por defecto, sin persistir.
     property bool confirmarAllIn: false
-    // Pestaña activa del cajón lateral: 0 = Ajustes, 1 = Cuenta. Mismo
-    // criterio que escritorio (ver Main.qml de qml/).
+    // Cajón lateral: SOLO Ajustes desde 2026-09-01 (Fase M1 del port de
+    // progresión a móvil -- "Cuenta" se mudó a su propia pantalla en el
+    // riel, mismo criterio ya aprobado en escritorio 2026-08-31). El
+    // valor en sí ya no distingue nada (una sola pestaña), se deja para
+    // no romper los bindings que ya lo usan.
     property int pestanaAjustesActual: 0
+    // Pestaña activa de la pantalla Cuenta (riel): 0=Perfil, 1=Progreso,
+    // 2=Logros, 3=Personalizar. Mismo criterio que escritorio.
+    property int pestanaCuentaActual: 0
+    // Bug real reportado 2026-09-02: Perfil/Progreso/Logros comparten el
+    // MISMO ScrollView (scrollCuentaMovil) -- solo cambia qué Column
+    // interna es visible, la instancia nunca se destruye. Sin esto, si
+    // bajabas del todo en una pestaña y cambiabas a otra, esa otra se
+    // abría igual de bajada (contentY sobrevive al cambio de pestaña).
+    // "if (contentItem)" -- mismo guard que scrollAjustesMovil, la
+    // primera vez que corre este handler el ScrollView puede no tener
+    // contentItem todavía.
+    onPestanaCuentaActualChanged: {
+        if (scrollCuentaMovil.contentItem) scrollCuentaMovil.contentItem.contentY = 0;
+    }
     // Pestaña activa de la pantalla Social: 0=Amigos, 1=Buscar jugadores,
     // 2=Jugadores Recientes, 3=Solicitudes. Mismo criterio que escritorio.
     property int pestanaSocialActual: 0
@@ -293,18 +398,203 @@ ApplicationWindow {
     // rankingModel según la pestaña elegida sin volver a preguntar al
     // servidor.
     property var rankingCrudo: []
-    property int ordenRankingActual: 0  // 0 = más victorias, 1 = mejor ratio
+    // 0 = más victorias, 1 = mejor ratio, 2 = Elo (Fase M3 del port de
+    // progresión a móvil, 2026-09-01) -- pestaña por defecto al ENTRAR
+    // (mide habilidad, no dedicación), mismo criterio que escritorio.
+    property int ordenRankingActual: 2
     ListModel { id: rankingModel }
+    // Podio (Fase M3) -- top 3 de la pestaña activa, mismo criterio que
+    // escritorio: array de JS normal (máx. 3), "" si aún no hay 3
+    // cuentas en el ranking.
+    property var rankingPodio: []
+
+    // ── Logros (Fase 4 del sistema de progresión) -- Fase M1 del port a
+    // móvil (2026-09-01, ver memoria qt_mobile_progression_port_plan).
+    ListModel { id: logrosModel }
+
+    // ── Tienda (Fase 5) -- catálogo crudo + los 2 helpers para resolver
+    // un título ajeno (ver PopupPerfilJugador.qml), Fase M0 del port de
+    // progresión a móvil (2026-09-01, ver memoria
+    // qt_mobile_progression_port_plan). La pantalla Tienda en sí
+    // (comprar/equipar, pestaña propia en el riel) es la Fase M2, mismo
+    // turno -- port directo de escritorio (catálogo + búsqueda + selector
+    // de carta), con la MISMA diferencia deliberada que Personalizar: sin
+    // previsualización al pasar el dedo.
+    property var tiendaCrudo: []
+    function objetoTiendaPorCodigo(codigo) {
+        if (codigo === "") return null;
+        for (var i = 0; i < tiendaCrudo.length; i++) {
+            if (tiendaCrudo[i].codigo === codigo) return tiendaCrudo[i];
+        }
+        return null;
+    }
+    function colorRareza(r) {
+        return r === "oro" ? "#e3bb82" : r === "plata" ? "#9aa4ab" : r === "bronce" ? "#c98f5f" : "#7d848f";
+    }
+    property int pestanaTiendaActual: 0  // 0 = Marco (textura/efecto/decoraciones), 1 = Perfil (títulos)
+    // Búsqueda en vivo del catálogo -- mismo criterio que escritorio,
+    // filtra sobre tiendaCrudo sin pedir nada nuevo al servidor.
+    property string busquedaTienda: ""
+    // Carta elegida en PopupSeleccionCarta -- "" = ninguna. Solo ELIGE
+    // (y se cierra); comprar/equipar de verdad pasa por los botones de
+    // la propia tarjeta "Carta de póker" de la Tienda, que miran esta
+    // property para saber cuál es "la elegida".
+    property string cartaSeleccionada: ""
+    function infoCartaSeleccionada() {
+        for (var i = 0; i < tiendaCrudo.length; i++) {
+            if (tiendaCrudo[i].codigo === cartaSeleccionada) return tiendaCrudo[i];
+        }
+        return null;
+    }
+    // Previsualización en vivo del avatar (Fase M2.1, 2026-09-02, pedido
+    // explícito: "no existe preview en tienda... en movil pulsar en el
+    // cuadro" -- port directo de escritorio, mismo criterio SIN estado
+    // pegajoso). En escritorio se dispara con el ratón encima
+    // (hoverEnabled + onEntered/onExited); en móvil no hay hover táctil,
+    // así que el equivalente real es "mientras el dedo está apoyado"
+    // (MouseArea.pressed) -- se ve mientras tocas la tarjeta, desaparece
+    // al soltar, igual de efímera que el hover.
+    property string previewCodigo: ""
+    property string previewCategoria: ""
+    function valorPreview(categoria, valorReal) {
+        if (previewCategoria === categoria && previewCodigo !== "") return previewCodigo;
+        return valorReal || "";
+    }
+    // Cambia el objeto en preview de una sola vez -- ver el comentario gemelo
+    // en qml/Main.qml: con la categoría nueva y el código viejo todavía
+    // puesto, valorPreview() le pasaba un instante ese código a otra capa.
+    function fijarPreview(categoria, codigo) {
+        previewCodigo = "";
+        previewCategoria = categoria;
+        previewCodigo = codigo;
+    }
+    ListModel { id: tiendaModel }
+    function reordenarTienda() {
+        var categoriasMarco = ["textura", "efecto", "decoracion_lateral", "decoracion_superior"];
+        var busqueda = busquedaTienda.trim().toLowerCase();
+        var esCartaBaraja = function(o) { return o.codigo.indexOf("carta_") === 0; };
+
+        // Las 52 cartas sueltas no se listan como tarjetas propias -- van
+        // todas dentro del selector "+" (PopupSeleccionCarta).
+        var filas = tiendaCrudo.filter(function(o) {
+            if (esCartaBaraja(o)) return false;
+            var pasaPestana = ventana.pestanaTiendaActual === 0
+                   ? categoriasMarco.indexOf(o.categoria) >= 0
+                   : o.categoria === "titulo";
+            var pasaBusqueda = busqueda === "" || o.nombre.toLowerCase().indexOf(busqueda) >= 0;
+            return pasaPestana && pasaBusqueda;
+        });
+
+        // Tarjeta sintética representando la baraja entera -- mismo
+        // criterio que escritorio.
+        if (ventana.pestanaTiendaActual === 0) {
+            var cartas = tiendaCrudo.filter(esCartaBaraja);
+            var nombreBaraja = "Carta de póker";
+            var pasaBusquedaBaraja = busqueda === "" || nombreBaraja.toLowerCase().indexOf(busqueda) >= 0;
+            if (pasaBusquedaBaraja && cartas.length > 0) {
+                var algunaPoseida = cartas.some(function(c) { return c.poseido === 1; });
+                var lateral1 = redcliente.loadoutMarco.decoracionLateral1 || "";
+                var lateral2 = redcliente.loadoutMarco.decoracionLateral2 || "";
+                var algunaEquipada = cartas.some(function(c) {
+                    return c.codigo === lateral1 || c.codigo === lateral2;
+                });
+                filas.push({
+                    codigo: "_baraja",
+                    categoria: "decoracion_lateral",
+                    nombre: nombreBaraja,
+                    precioTreboles: 30,
+                    nivelMinimo: 1,
+                    esDeLogro: 0,
+                    poseido: algunaPoseida ? 1 : 0,
+                    equipado: algunaEquipada ? 1 : 0
+                });
+            }
+        }
+
+        tiendaModel.clear();
+        for (var i = 0; i < filas.length; i++) tiendaModel.append(filas[i]);
+    }
+
+    // ── Cuenta > Personalizar (Fase M1 del port a móvil, 2026-09-01) ────
+    property int pestanaPersonalizarActual: 0  // 0=Texturas,1=Efectos,2=Decoraciones,3=Títulos
+    property string mensajeTienda: ""
+    // Categoría(s) de shop_items que corresponde a cada pestaña -- port
+    // directo de escritorio.
+    function categoriasPersonalizar(indice) {
+        if (indice === 0) return ["textura"];
+        if (indice === 1) return ["efecto"];
+        if (indice === 2) return ["decoracion_lateral", "decoracion_superior"];
+        if (indice === 3) return ["titulo"];
+        return [];
+    }
+    // Objetos YA POSEÍDOS de la pestaña activa -- Personalizar solo
+    // equipa, nunca compra (comprar es la Tienda, pantalla propia en el
+    // riel desde la Fase M2).
+    readonly property var itemsPersonalizar: {
+        var cats = categoriasPersonalizar(pestanaPersonalizarActual);
+        return tiendaCrudo.filter(function(o) {
+            return o.poseido === 1 && cats.indexOf(o.categoria) >= 0;
+        });
+    }
+    // Iconos de decoración -- mismo criterio que Avatar.qml::
+    // rutaIconoDecoracion() (el nombre de fichero es el propio código).
+    function rutaIconoObjetoTienda(codigo, categoria) {
+        var base = "qrc:/qt/qml/PokerQuickMobile/assets/iconos/";
+        // "palos_en_fila" tenía aquí su propio case (devolvía suit_club.png
+        // como representante de los cuatro palos). Desde 2026-09-09 la
+        // placa con los cuatro va compuesta en el propio PNG
+        // (scripts/generar_iconos.sh), así que cumple la regla del nombre
+        // y cae sola en el return de más abajo -- un caso especial menos.
+        switch (codigo) {
+        case "": return "";
+        case "mano_real":
+            return base + "carta_ace_picas.png";
+        case "escalera_diamantes":
+            return base + "carta_7_diamantes.png";
+        case "cuatro_ases":
+            return base + "carta_ace_corazones.png";
+        }
+        if (categoria === "decoracion_lateral" || categoria === "decoracion_superior") {
+            return base + codigo + ".png";
+        }
+        // Un símbolo genérico por categoría (no por objeto suelto, a
+        // diferencia de las decoraciones) -- pedido explícito 2026-09-02:
+        // "necesitamos un simbolo de efecto y textura para poner en las
+        // esquinas de las tarjetas que ahora mismo estan vacias". Gema
+        // facetada (lorc_gems, game-icons.net) para textura, llama
+        // (carl-olsen_flame, game-icons.net) para efecto -- las dos
+        // recoloreadas al dorado del tema al convertirlas, igual que el
+        // resto del catálogo de iconos.
+        if (categoria === "textura") return base + "textura_generica.png";
+        if (categoria === "efecto") return base + "efecto_generico.png";
+        return "";
+    }
     function reordenarRanking() {
         var filas = rankingCrudo.slice();
         if (ordenRankingActual === 0) {
             filas.sort((a, b) => b.partidasGanadas - a.partidasGanadas);
-        } else {
+        } else if (ordenRankingActual === 1) {
             filas.sort((a, b) => (b.partidasGanadas / b.partidasJugadas) -
                                   (a.partidasGanadas / a.partidasJugadas));
+        } else {
+            filas.sort((a, b) => b.elo - a.elo);
         }
+        // "posicion" es el puesto REAL -- se guarda ANTES de repartir
+        // entre podio/resto, mismo motivo que escritorio: la lista de
+        // abajo empieza en el 4º puesto pero debe seguir mostrando "4",
+        // "5"... no reiniciar en "1".
+        for (var i = 0; i < filas.length; i++) filas[i].posicion = i + 1;
+
+        // Podio: top 3 aparte, la lista de siempre sigue desde el 4º
+        // puesto -- mismo criterio que escritorio, sin duplicar el top 3.
+        rankingPodio = filas.length >= 3 ? filas.slice(0, 3) : [];
+        var resto = filas.length >= 3 ? filas.slice(3) : filas;
         rankingModel.clear();
-        for (var i = 0; i < filas.length; i++) rankingModel.append(filas[i]);
+        for (var i = 0; i < resto.length; i++) rankingModel.append(resto[i]);
+        // Reactiva el "pin" de contentY=0 (ver el comentario grande junto
+        // a listaRankingMovil.anclarArriba) para este reordenamiento.
+        listaRankingMovil.anclarArriba = true;
+        Qt.callLater(() => { listaRankingMovil.contentY = 0; });
     }
     // ── Social -- mismo criterio que escritorio (ver Main.qml de qml/) ──
     ListModel { id: modeloAmigos }
@@ -366,6 +656,15 @@ ApplicationWindow {
     property int statsManosGanadas: 0
     property int statsPartidasJugadas: 0
     property int statsPartidasGanadas: 0
+    // Fase M0 del port de progresión a móvil (2026-09-01, ver memoria
+    // qt_mobile_progression_port_plan) -- sin esto, el marco Hierro
+    // (ganado también contra bots) nunca se activaba en el propio avatar
+    // de Cuenta, solo el tier real desde partidasGanadas.
+    property bool statsTieneMarcoBasico: false
+    // Fase M1 del port de progresión a móvil (2026-09-01) -- XP total,
+    // para la pestaña Progreso (Cuenta). Sin esto móvil no tenía forma
+    // de saber en qué nivel está el jugador.
+    property int statsXpTotal: 0
     property int statsRachaActual: 0
     property int statsRachaMaxima: 0
     property int statsMayorBote: 0
@@ -381,6 +680,108 @@ ApplicationWindow {
     property int statsVecesPoker: 0
     property int statsVecesEscaleraColor: 0
     property int statsVecesEscaleraReal: 0
+    // Fase M1 del port de progresión a móvil (2026-09-01) -- para
+    // progresoLogro() en la pestaña Logros ("cuánto te queda").
+    property int statsVecesGanoSinShowdown: 0
+    property int statsRachaManosGanadas: 0
+    // Fase M2 del port de progresión a móvil (2026-09-01) -- saldo de
+    // Tréboles (precio de la Tienda) y si la cuenta es admin (código de
+    // objeto visible en las tarjetas, mismo criterio que escritorio).
+    property int statsTreboles: 0
+    property bool statsEsAdmin: false
+
+    // Fase 4 del sistema de progresión: colores/etiquetas de rareza --
+    // port directo de escritorio, sin diferencias.
+    function etiquetaRareza(r) {
+        return r === "oro" ? "Oro" : r === "plata" ? "Plata" : r === "bronce" ? "Bronce" : "";
+    }
+    function logrosDesbloqueados() {
+        var n = 0;
+        for (var i = 0; i < logrosModel.count; i++) {
+            if (logrosModel.get(i).desbloqueado) n++;
+        }
+        return n;
+    }
+    // Orden fijo Bronce→Plata→Oro, desbloqueados siempre al final.
+    function ordenarLogros(logros) {
+        var rango = { "bronce": 0, "plata": 1, "oro": 2 };
+        var copia = logros.slice();
+        copia.sort(function(a, b) {
+            if (a.desbloqueado !== b.desbloqueado) return a.desbloqueado ? 1 : -1;
+            var ra = rango[a.rareza] !== undefined ? rango[a.rareza] : 99;
+            var rb = rango[b.rareza] !== undefined ? rango[b.rareza] : 99;
+            return ra - rb;
+        });
+        return copia;
+    }
+    // "Cuánto te queda" -- solo para los logros con un contador numérico
+    // de verdad ya expuesto al cliente, el resto son eventos puntuales.
+    function progresoLogro(codigo) {
+        if (codigo === "primera_sangre") {
+            return Math.min(statsPartidasGanadas, 1) + " / 1";
+        }
+        if (codigo === "club_de_los_cien") {
+            return Math.min(statsManosJugadas, 100) + " / 100";
+        }
+        // "Centurión" (2026-09-09) -- manos GANADAS, el contrapeso del
+        // Club de los Cien, que cuenta las jugadas.
+        if (codigo === "centurion") {
+            return Math.min(statsManosGanadas, 100) + " / 100";
+        }
+        if (codigo === "el_farolero") {
+            return Math.min(statsVecesGanoSinShowdown, 15) + " / 15";
+        }
+        if (codigo === "manos_de_hierro") {
+            return Math.min(statsRachaManosGanadas, 5) + " / 5";
+        }
+        return "Puntual";
+    }
+
+    // ── Progreso de marco de avatar + nivel (pestaña Cuenta > Progreso) ──
+    // Fase M1 del port de progresión a móvil (2026-09-01, ver memoria
+    // qt_mobile_progression_port_plan) -- port directo de las mismas
+    // funciones de escritorio (Main.qml de qml/), sin diferencias.
+    function nombreMarco(m) {
+        return m === "platino" ? "Platino" : m === "oro" ? "Oro" : m === "plata" ? "Plata"
+               : m === "bronce" ? "Bronce" : m === "hierro" ? "Hierro" : "Sin marco";
+    }
+    function nombreProximoMarco(n, tieneMarcoBasico) {
+        if (n < 1 && !tieneMarcoBasico) return "Hierro";
+        if (n < 5) return "Bronce";
+        if (n < 15) return "Plata";
+        if (n < 25) return "Oro";
+        if (n < 50) return "Platino";
+        return "";  // ya en platino, no hay siguiente
+    }
+    function proximoUmbralMarco(n, tieneMarcoBasico) {
+        if (n < 1 && !tieneMarcoBasico) return 1;
+        if (n < 5) return 5;
+        if (n < 15) return 15;
+        if (n < 25) return 25;
+        return 50;
+    }
+    function umbralAnteriorMarco(n) {
+        if (n < 1) return 0;
+        if (n < 5) return 1;
+        if (n < 15) return 5;
+        if (n < 25) return 15;
+        return 25;
+    }
+    // Fase 2 del sistema de progresión: nivel 1→2 a 150 XP, cada nivel
+    // siguiente pide un 20% más que el anterior, sin techo -- el nivel se
+    // CALCULA aquí a partir de xpTotal en vez de guardarse aparte.
+    function progresoNivel(xpTotal) {
+        var nivel = 1;
+        var umbral = 150;
+        var restante = xpTotal;
+        while (restante >= umbral) {
+            restante -= umbral;
+            nivel++;
+            umbral = Math.round(umbral * 1.2);
+        }
+        return { nivel: nivel, xpEnNivel: restante, xpParaSiguiente: umbral };
+    }
+    property var progresoNivelActual: progresoNivel(statsXpTotal || 0)
 
     // ── Lobby ────────────────────────────────────────────────────────────
     property string codigoSalaPropia: ""
@@ -554,6 +955,14 @@ ApplicationWindow {
             pantalla = "Salas";
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
             redcliente.conectarPresencia(servidorHost, servidorPuerto);
+            // Fase M0 del port de progresión a móvil (2026-09-01, ver
+            // memoria qt_mobile_progression_port_plan) -- se pide ya
+            // mismo, no solo al entrar en Tienda (que en móvil ni existe
+            // todavía), para que tiendaCrudo esté listo y se pueda
+            // resolver el nombre/rareza de un título ajeno desde
+            // cualquier pantalla (ver PopupPerfilJugador.qml).
+            redcliente.consultarTienda(servidorHost, servidorPuerto, tokenSesion);
+            ventana.pedirDatosDeCuenta();
         }
         function onRegistroError(mensaje) {
             mensajeErrorLogin = mensaje;
@@ -585,9 +994,45 @@ ApplicationWindow {
                 redcliente.refrescarSalas(servidorHost, servidorPuerto);
                 redcliente.conectarPresencia(servidorHost, servidorPuerto);
             }
+            // Ver el mismo comentario en onRegistroOk.
+            redcliente.consultarTienda(servidorHost, servidorPuerto, tokenSesion);
+            ventana.pedirDatosDeCuenta();
         }
         function onLoginError(mensaje) {
             mensajeErrorLogin = mensaje;
+        }
+        // Fase M2 del port de progresión a móvil -- ver el comentario
+        // junto a "tiendaCrudo" más arriba.
+        function onTiendaActualizada(tienda) {
+            tiendaCrudo = tienda;
+            reordenarTienda();
+        }
+        // Fase M2 -- comprar (Tienda), mismo criterio que
+        // onObjetoEquipado/onObjetoEquiparError de abajo.
+        function onObjetoComprado(codigo) {
+            ventana.mensajeTienda = "";
+            redcliente.consultarTienda(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+        function onObjetoCompraError(mensaje) {
+            ventana.mensajeTienda = mensaje;
+        }
+        // Fase 4 del sistema de progresión -- ya llega parseado
+        // (parsearFilasChat() en C++, ver NetworkClient.hpp), un
+        // QVariantMap por logro.
+        function onLogrosActualizados(logros) {
+            var ordenados = ordenarLogros(logros);
+            logrosModel.clear();
+            for (var i = 0; i < ordenados.length; i++) logrosModel.append(ordenados[i]);
+        }
+        // Personalizar (Fase M1 del port a móvil) -- refresca loadout Y
+        // tienda tras equipar/desequipar, mismo criterio que escritorio.
+        function onObjetoEquipado(slot, codigo) {
+            ventana.mensajeTienda = "";
+            redcliente.consultarLoadout(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+            redcliente.consultarTienda(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+        function onObjetoEquiparError(mensaje) {
+            ventana.mensajeTienda = mensaje;
         }
         function onSesionInvalida(mensaje) {
             // Token caducado/revocado -- se olvida y se deja Inicio tal
@@ -739,11 +1184,21 @@ ApplicationWindow {
             var jugadores = jugadoresStr.split(";");
             for (var i = 0; i < jugadores.length; i++) {
                 var campos = jugadores[i].split(":");
+                // campos[4..9]: visibilidad a otros jugadores, parte B
+                // (2026-09-01, ver memoria qt_progression_review_2026_09_01,
+                // portado el mismo día a móvil) -- loadout completo de
+                // cada jugador sentado, no solo partidasGanadas.
                 jugadoresPartida.append({
                     nombre: campos[0],
                     saldo: campos[1],
                     apuesta: campos[2],
-                    partidasGanadas: campos.length > 3 ? parseInt(campos[3]) : 0
+                    partidasGanadas: campos.length > 3 ? parseInt(campos[3]) : 0,
+                    tieneMarcoBasico: campos.length > 4 ? campos[4] === "1" : false,
+                    textura: campos.length > 5 ? campos[5] : "",
+                    efecto: campos.length > 6 ? campos[6] : "",
+                    decoracionLateral1: campos.length > 7 ? campos[7] : "",
+                    decoracionLateral2: campos.length > 8 ? campos[8] : "",
+                    decoracionSuperior: campos.length > 9 ? campos[9] : ""
                 });
                 if (campos[0] === nombreJugador) {
                     // Mismo bug que en escritorio: miSaldoActual solo se
@@ -811,7 +1266,7 @@ ApplicationWindow {
             cajonPartidaMovil.prepararNuevoTurno(minSubida);
             for (var j = 0; j < jugadoresPartida.count; j++) {
                 if (jugadoresPartida.get(j).nombre === nombreJugador) {
-                    jugadoresPartida.setProperty(j, "saldo", miSaldo);
+                    jugadoresPartida.setProperty(j, "saldo", String(miSaldo));  // el rol nace texto en el append() (campos[1]) y Asiento lo declara string
                     break;
                 }
             }
@@ -966,6 +1421,14 @@ ApplicationWindow {
             esperandoManosExtra = false;
             soyYoQuienElige = false;
             pantalla = "Fin";
+            // Modo offline (Torneos > Solitario) -- ver el comentario
+            // gemelo en qml/Main.qml (escritorio). Va ANTES de las
+            // llamadas de red de abajo (los datos de LocalGameClient ya
+            // se leyeron más arriba).
+            if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
+                modoJuego.activarModoRed();
+                ventana.modoOfflineActivo = false;
+            }
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
         function onPartidaGuardada(archivo) {
@@ -982,6 +1445,10 @@ ApplicationWindow {
             esperandoManosExtra = false;
             soyYoQuienElige = false;
             pantalla = "Fin";
+            if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
+                modoJuego.activarModoRed();
+                ventana.modoOfflineActivo = false;
+            }
         }
         function onAbandonaste(mensaje) {
             mensajeErrorConexion = mensaje;
@@ -993,7 +1460,14 @@ ApplicationWindow {
             // Bug real reportado: sin esto, soyHost se quedaba en true
             // para siempre tras abandonar -- ver Main.qml de qml/.
             soyHost = false;
-            pantalla = "Salas";
+            // Ver el comentario gemelo en qml/Main.qml.
+            pantalla = ventana.sesionOffline ? "Torneos" : "Salas";
+            // Ver el comentario en onFinDePartida -- aquí va ANTES de las
+            // llamadas de red porque ninguna lee nada de LocalGameClient primero.
+            if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
+                modoJuego.activarModoRed();
+                ventana.modoOfflineActivo = false;
+            }
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
@@ -1054,12 +1528,23 @@ ApplicationWindow {
                 for (var i = 0; i < partes.length; i++) {
                     var campos = partes[i].split(":");
                     // accountId antepuesto (Cerrar Social v1) -- abre el
-                    // perfil público de cada fila.
+                    // perfil público de cada fila. "elo" es la Fase 3. Los
+                    // 7 campos de loadout son el podio de Ranking (Fase
+                    // M3 del port a móvil, 2026-09-01) -- mismo formato
+                    // exacto que escritorio.
                     filas.push({
                         accountId: parseInt(campos[0]),
                         partidasJugadas: parseInt(campos[1]),
                         partidasGanadas: parseInt(campos[2]),
-                        username: campos.slice(3).join(":")
+                        elo: parseInt(campos[3]),
+                        tieneMarcoBasico: campos[4] === "1",
+                        textura: campos[5],
+                        efecto: campos[6],
+                        decoracionLateral1: campos[7],
+                        decoracionLateral2: campos[8],
+                        decoracionSuperior: campos[9],
+                        titulo: campos[10],
+                        username: campos.slice(11).join(":")
                     });
                 }
             }
@@ -1070,12 +1555,28 @@ ApplicationWindow {
         // parámetros de la señal -- ver el comentario largo junto a
         // consultarEstadisticas() en NetworkClient.hpp (bug real de Android
         // con señales de muchos parámetros).
+        // Respuesta a sincronizarXpOffline(). "acreditado" puede ser MENOR que
+        // "reclamado": el servidor acota el XP ganado sin conexión a lo plausible
+        // para el tiempo transcurrido (ver AccountManager::sincronizarXpOffline()).
+        // Se confirma con lo ACREDITADO y se refrescan las estadísticas para que
+        // el nivel de la pantalla refleje ya lo nuevo.
+        function onXpOfflineSincronizado(acreditado, reclamado, mensaje) {
+            modoJuego.confirmarXpOfflineSincronizado(acreditado);
+            if (acreditado > 0) {
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+            }
+            mensajeErrorConexion = mensaje;
+        }
         function onEstadisticasCuentaCambiaron() {
             var m = redcliente.estadisticasCuenta;
             ventana.statsManosJugadas = m.manosJugadas;
             ventana.statsManosGanadas = m.manosGanadas;
             ventana.statsPartidasJugadas = m.partidasJugadas;
             ventana.statsPartidasGanadas = m.partidasGanadas;
+            ventana.statsTieneMarcoBasico = m.tieneMarcoBasico;
+            ventana.statsXpTotal = m.xpTotal;
+            ventana.statsVecesGanoSinShowdown = m.vecesGanoSinShowdown;
+            ventana.statsRachaManosGanadas = m.rachaManosGanadas;
             ventana.statsRachaActual = m.rachaActual;
             ventana.statsRachaMaxima = m.rachaMaxima;
             ventana.statsMayorBote = m.mayorBote;
@@ -1091,6 +1592,8 @@ ApplicationWindow {
             ventana.statsVecesPoker = m.vecesPoker;
             ventana.statsVecesEscaleraColor = m.vecesEscaleraColor;
             ventana.statsVecesEscaleraReal = m.vecesEscaleraReal;
+            ventana.statsTreboles = m.treboles;
+            ventana.statsEsAdmin = m.esAdmin;
         }
         function onGuardadaRenombrada(mensaje) {
             if (mensaje.length > 0) mensajeErrorConexion = mensaje;
@@ -1189,14 +1692,15 @@ ApplicationWindow {
         // aquí mismo, sin persistencia. Iniciar sesión/Crear cuenta en la
         // misma fila -- una pantalla landscape corta de alto no sobra
         // espacio para apilar tres botones más el de invitado y salir.
+        // Inicio con TRES estados -- ver el comentario gemelo en el
+        // Main.qml de escritorio (comprobando / conectado / sin conexión).
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 10 * Tema.escala
+            visible: ventana.conectadoAlServidor
             BotonRelleno {
                 text: "Iniciar sesión"
                 radioBorde: 999
-                enabled: ventana.conectadoAlServidor
-                opacity: enabled ? 1.0 : 0.5
                 onClicked: {
                     ventana.mensajeErrorLogin = "";
                     ventana.pantalla = "Login";
@@ -1205,8 +1709,6 @@ ApplicationWindow {
             BotonContorno {
                 text: "Crear cuenta"
                 radioBorde: 999
-                enabled: ventana.conectadoAlServidor
-                opacity: enabled ? 1.0 : 0.5
                 onClicked: {
                     ventana.mensajeErrorLogin = "";
                     ventana.pantalla = "Registro";
@@ -1217,8 +1719,7 @@ ApplicationWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Entrar como invitado"
             radioBorde: 999
-            enabled: ventana.conectadoAlServidor
-            opacity: enabled ? 1.0 : 0.5
+            visible: ventana.conectadoAlServidor
             onClicked: {
                 // tokenSesion se limpia explícitamente aquí, no se asume
                 // vacío: puede quedar relleno por una sesión guardada de
@@ -1234,6 +1735,44 @@ ApplicationWindow {
                 redcliente.refrescarSalas(ventana.servidorHost, ventana.servidorPuerto);
             }
         }
+
+        // ── Sin conexión: jugar en local ──────────────────────────────────
+        // Ver el comentario gemelo en el Main.qml de escritorio.
+        BotonRelleno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Jugar sin conexión"
+            radioBorde: 999
+            visible: !ventana.conectadoAlServidor && !ventana.comprobandoConexion
+                     && modoJuego.hayIdentidadCacheada
+            onClicked: ventana.entrarSinConexion(true)
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Jugar como invitado"
+            radioBorde: 999
+            visible: !ventana.conectadoAlServidor && !ventana.comprobandoConexion
+            onClicked: ventana.entrarSinConexion(false)
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !ventana.conectadoAlServidor && !ventana.comprobandoConexion
+                     && modoJuego.hayIdentidadCacheada
+            color: Tema.colorTextoTenue
+            font.pixelSize: 11 * Tema.escala
+            text: "Como " + modoJuego.usernameCacheado + " · sin Tréboles ni Elo"
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 260 * Tema.escala
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            visible: !ventana.conectadoAlServidor && !ventana.comprobandoConexion
+                     && !modoJuego.hayIdentidadCacheada
+            color: Tema.colorTextoTenue
+            font.pixelSize: 11 * Tema.escala
+            text: "Inicia sesión al menos una vez con el servidor disponible para poder jugar sin conexión con tu cuenta."
+        }
+
         BotonContorno {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Salir"
@@ -1288,14 +1827,12 @@ ApplicationWindow {
 
         // Campos "de mentira" -- mismo patrón que "Nombre de la sala" en
         // CrearSala, cada uno con su propio CampoEmergente embebido.
-        Rectangle {
+        MarcoHueco {
             id: cajaUsuarioLogin
             width: parent.width
-            height: Tema.tamanoMinTactil
-            radius: 6 * Tema.escala
-            color: Tema.colorFondo
-            border.width: 1
-            border.color: areaUsuarioLogin.pressed ? Tema.colorAccent : Tema.colorBorde
+            height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+            radius: 10 * Tema.escala
+            activo: areaUsuarioLogin.pressed
             property string valor: ""
             Text {
                 anchors.left: parent.left
@@ -1317,14 +1854,12 @@ ApplicationWindow {
                 onAceptado: (texto) => cajaUsuarioLogin.valor = texto
             }
         }
-        Rectangle {
+        MarcoHueco {
             id: cajaPasswordLogin
             width: parent.width
-            height: Tema.tamanoMinTactil
-            radius: 6 * Tema.escala
-            color: Tema.colorFondo
-            border.width: 1
-            border.color: areaPasswordLogin.pressed ? Tema.colorAccent : Tema.colorBorde
+            height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+            radius: 10 * Tema.escala
+            activo: areaPasswordLogin.pressed
             property string valor: ""
             Text {
                 anchors.left: parent.left
@@ -1433,14 +1968,12 @@ ApplicationWindow {
         spacing: 12 * Tema.escala
         width: Math.min(280 * Tema.escala, ventana.width - 60 * Tema.escala)
 
-        Rectangle {
+        MarcoHueco {
             id: cajaUsuarioRegistro
             width: parent.width
-            height: Tema.tamanoMinTactil
-            radius: 6 * Tema.escala
-            color: Tema.colorFondo
-            border.width: 1
-            border.color: areaUsuarioRegistro.pressed ? Tema.colorAccent : Tema.colorBorde
+            height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+            radius: 10 * Tema.escala
+            activo: areaUsuarioRegistro.pressed
             property string valor: ""
             Text {
                 anchors.left: parent.left
@@ -1464,14 +1997,12 @@ ApplicationWindow {
                 onAceptado: (texto) => cajaUsuarioRegistro.valor = texto
             }
         }
-        Rectangle {
+        MarcoHueco {
             id: cajaPasswordRegistro
             width: parent.width
-            height: Tema.tamanoMinTactil
-            radius: 6 * Tema.escala
-            color: Tema.colorFondo
-            border.width: 1
-            border.color: areaPasswordRegistro.pressed ? Tema.colorAccent : Tema.colorBorde
+            height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+            radius: 10 * Tema.escala
+            activo: areaPasswordRegistro.pressed
             property string valor: ""
             Text {
                 anchors.left: parent.left
@@ -1494,14 +2025,12 @@ ApplicationWindow {
                 onAceptado: (texto) => cajaPasswordRegistro.valor = texto
             }
         }
-        Rectangle {
+        MarcoHueco {
             id: cajaPasswordRegistroConfirmar
             width: parent.width
-            height: Tema.tamanoMinTactil
-            radius: 6 * Tema.escala
-            color: Tema.colorFondo
-            border.width: 1
-            border.color: areaPasswordRegistroConfirmar.pressed ? Tema.colorAccent : Tema.colorBorde
+            height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+            radius: 10 * Tema.escala
+            activo: areaPasswordRegistroConfirmar.pressed
             property string valor: ""
             Text {
                 anchors.left: parent.left
@@ -1593,18 +2122,75 @@ ApplicationWindow {
     // CrearSala/Lobby/Partida/Fin) no lo llevan.
     RielNavegacion {
         id: rielNavegacionMovil
-        visible: ["Salas", "Ranking", "Torneos", "Social"].indexOf(ventana.pantalla) !== -1
+        visible: ["Salas", "Ranking", "Torneos", "Social", "Tienda", "Cuenta"].indexOf(ventana.pantalla) !== -1
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         pantallaActual: ventana.pantalla
+        modoOffline: ventana.sesionOffline
         onSeccionElegida: (nombre) => {
             ventana.pantalla = nombre;
-            if (nombre === "Ranking") redcliente.consultarRanking(ventana.servidorHost, ventana.servidorPuerto);
+            // Ver el comentario gemelo en qml/Main.qml.
+            if (nombre === "Salas" && ventana.sesionOffline) {
+                ventana.viendoGuardadas = true;
+                ventana.viendoPrivada = false;
+                redcliente.listarGuardadas(ventana.servidorHost, ventana.servidorPuerto);
+            }
+            if (nombre === "Ranking") {
+                // Elo por defecto al entrar (Fase M3 del port a móvil,
+                // 2026-09-01) -- mismo criterio que escritorio: mide
+                // habilidad, no dedicación, así que es la que de verdad
+                // importa, no la primera pestaña de la lista.
+                ventana.ordenRankingActual = 2;
+                redcliente.consultarRanking(ventana.servidorHost, ventana.servidorPuerto);
+                // Bug real reportado 2026-09-02: al reentrar en Ranking
+                // (tras haber bajado en la lista la vez anterior), el
+                // ListView conservaba el scroll a medias -- el 4º puesto
+                // quedaba pegado arriba y había que subir a mano para ver
+                // el podio. El Item de la pantalla nunca se destruye
+                // (solo cambia "visible"), así que contentY sobrevivía
+                // entre visitas -- se reinicia a mano al entrar. El reset
+                // real (el que importa, tras la respuesta del servidor)
+                // vive en reordenarRanking() -- este de aquí solo cubre
+                // el instante de reentrar con datos ya cargados de antes.
+                // anclarArriba=true reactiva el "pin" de contentY=0 (ver
+                // el comentario grande junto a listaRankingMovil) para
+                // esta visita nueva a la pantalla.
+                listaRankingMovil.anclarArriba = true;
+                Qt.callLater(() => { listaRankingMovil.contentY = 0; });
+            }
             if (nombre === "Social" && ventana.tokenSesion !== "") {
                 ventana.pestanaSocialActual = 0;
                 ventana.mensajeErrorSocial = "";
                 redcliente.listarAmigos(ventana.servidorHost, ventana.servidorPuerto);
+            }
+            if (nombre === "Cuenta") {
+                // Fase M1 del port de progresión a móvil (2026-09-01, ver
+                // memoria qt_mobile_progression_port_plan) -- mismo
+                // criterio de reset-al-reentrar que Social en escritorio:
+                // siempre Perfil, no lo que se hubiera dejado a medias.
+                ventana.pestanaCuentaActual = 0;
+                ventana.mensajeErrorLogin = "";
+                if (ventana.tokenSesion !== "") {
+                    redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarTienda(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarLoadout(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                }
+            }
+            if (nombre === "Tienda") {
+                // Fase M2 del port de progresión a móvil (2026-09-01, ver
+                // memoria qt_mobile_progression_port_plan) -- mismo
+                // criterio de reset-al-reentrar, port directo del bloque
+                // gemelo de escritorio.
+                ventana.pestanaTiendaActual = 0;
+                ventana.mensajeTienda = "";
+                ventana.busquedaTienda = "";
+                if (ventana.tokenSesion !== "") {
+                    redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarTienda(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarLoadout(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                }
             }
         }
     }
@@ -1617,7 +2203,7 @@ ApplicationWindow {
         anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
         anchors.margins: 16 * Tema.escala
-        textoCentro: "Salas disponibles"
+        textoCentro: ventana.sesionOffline ? "Partida local" : "Salas disponibles"
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
 
@@ -1650,6 +2236,9 @@ ApplicationWindow {
         spacing: 10 * Tema.escala
         SelectorSegmentado {
             id: tabsSalas
+            // Ver el comentario gemelo en qml/Main.qml: offline solo existe
+            // "Partidas guardadas", así que el selector sobra.
+            visible: !ventana.sesionOffline
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - botonCrearSalaMovil.width - parent.spacing
             opciones: ["Salas públicas", "Partidas guardadas", "Sala privada"]
@@ -1667,7 +2256,7 @@ ApplicationWindow {
             // "Crear sala nueva" se comía la barra en pantallas landscape
             // compactas (rediseño 2026-08-28, ver el mockup) -- acortado a
             // "+ Sala", el segmentado ya deja claro el contexto ("Salas").
-            text: "+ Sala"
+            text: ventana.sesionOffline ? "+ Partida" : "+ Sala"
             onClicked: {
                 ventana.mensajeErrorConexion = "";
                 ventana.pantalla = "CrearSala";
@@ -1728,10 +2317,12 @@ ApplicationWindow {
         radius: 10 * Tema.escala
         border.width: 1
         border.color: Qt.rgba(0, 0, 0, 0.35)
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
-            GradientStop { position: 1.0; color: Tema.colorPanel }
-        }
+        // LISO, sin degradado ni textura de tapete (2026-09-09, pedido
+        // explícito). Es el caso de la regla general: esta caja es el
+        // FONDO sobre el que van las tarjetas de sala, y esas sí llevan su
+        // fieltro (ver tarjetaSalaMovilVisual). Fieltro sobre fieltro no
+        // deja que las tarjetas destaquen.
+        color: Tema.colorPanel
 
             Text {
                 anchors.centerIn: parent
@@ -1798,19 +2389,58 @@ ApplicationWindow {
                     // sala ya está llena.
                     Repeater {
                         model: filaDeSalasMovil.salas
-                        delegate: Rectangle {
+                        delegate: Item {
                             id: tarjetaSalaMovil
                             required property var modelData
                             width: (filaDeSalasMovil.width - 2 * filaDeSalasMovil.spacing) / 3
                             height: 78 * Tema.escala
-                            radius: 8 * Tema.escala
-                            border.width: 1
-                            border.color: Qt.rgba(0, 0, 0, 0.35)
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                                GradientStop { position: 1.0; color: Tema.colorPanel }
-                            }
                             opacity: tarjetaSalaMovil.modelData.conectados < tarjetaSalaMovil.modelData.esperados ? 1.0 : 0.55
+
+                            // "Ficha de casino" (2026-09-02, pedido
+                            // explícito: "aplicar el mismo estilo a los
+                            // amigos y salas") -- sombra desplazada
+                            // barata, SIN escalar. Item envolvente nuevo
+                            // (antes tarjetaSalaMovil era el Rectangle
+                            // raíz) solo para poder meter esto detrás.
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.topMargin: 3 * Tema.escala
+                                radius: 8 * Tema.escala
+                                color: "black"
+                                opacity: 0.35
+                            }
+
+                            Rectangle {
+                                id: tarjetaSalaMovilVisual
+                                anchors.fill: parent
+                                radius: 8 * Tema.escala
+                                border.width: 1.2
+                                border.color: Qt.rgba(0, 0, 0, 0.4)
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                                }
+                                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                                layer.enabled: true
+                                layer.effect: ShaderEffect {
+                                    property variant source
+                                    property real amplitud: 30.0
+                                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                }
+                                scale: areaUnirseSalaMovil.pressed ? 0.97 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 100 } }
+
+                                // Hilo dorado por dentro del bisel exterior
+                                // -- el "doble bisel" de ficha de casino.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 2 * Tema.escala
+                                    radius: parent.radius - 2 * Tema.escala
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.18)
+                                }
 
                             Column {
                                 anchors.left: parent.left
@@ -1854,9 +2484,11 @@ ApplicationWindow {
                                 }
                             }
                             MouseArea {
+                                id: areaUnirseSalaMovil
                                 anchors.fill: parent
                                 enabled: tarjetaSalaMovil.modelData.conectados < tarjetaSalaMovil.modelData.esperados
                                 onClicked: ventana.unirse(tarjetaSalaMovil.modelData.id, "")
+                            }
                             }
                         }
                     }
@@ -1896,13 +2528,28 @@ ApplicationWindow {
                     required property int bots
                     property bool confirmandoBorrado: false
                     width: ListView.view.width
-                    height: Tema.tamanoMinTactil + 12 * Tema.escala
+                    // Manda el BOTÓN y la fila crece a su alrededor, no al
+                    // revés: si la fila fijara el alto y el botón se metiera
+                    // dentro, con Tema.escala > 1 el botón bajaría del suelo
+                    // táctil de 44px. Los 16 de sobra son la holgura que
+                    // impide que el canto del botón se confunda con el de la
+                    // tarjeta (ver filaAccionesGuardadaMovil).
+                    readonly property real altoBotonFila: Math.max(Tema.tamanoMinTactil,
+                                                                   34 * Tema.escala)
+                    height: altoBotonFila + 16 * Tema.escala
                     radius: 8 * Tema.escala
                     border.width: 1
                     border.color: Qt.rgba(0, 0, 0, 0.35)
                     gradient: Gradient {
                         GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
                         GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
+                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                    layer.enabled: true
+                    layer.effect: ShaderEffect {
+                        property variant source
+                        property real amplitud: 30.0
+                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
                     }
 
                     Column {
@@ -1927,19 +2574,31 @@ ApplicationWindow {
                             font.pixelSize: 11 * Tema.escala
                         }
                     }
+                    // Los tres botones con alto EXPLÍCITO, metido respecto del
+                    // de la fila (2026-09-09). Antes cogían su alto
+                    // implícito, que con Tema.escala > 1 crecía hasta
+                    // coincidir exactamente con el de la tarjeta: sus
+                    // bordes de arriba y abajo caían justo sobre el canto
+                    // de la tarjeta y el botón se leía como dos rayas
+                    // verticales sueltas a los lados del texto (bug real
+                    // reportado con capturas: "los botones en las filas de
+                    // guardados se ven extraños").
                     Row {
                         id: filaAccionesGuardadaMovil
+                        readonly property real altoBoton: filaGuardadaMovil.altoBotonFila
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.rightMargin: 10 * Tema.escala
                         spacing: 6 * Tema.escala
                         BotonRelleno {
                             anchors.verticalCenter: parent.verticalCenter
+                            height: filaAccionesGuardadaMovil.altoBoton
                             text: "Reanudar"
                             onClicked: ventana.reanudar(filaGuardadaMovil.archivo)
                         }
                         BotonContorno {
                             anchors.verticalCenter: parent.verticalCenter
+                            height: filaAccionesGuardadaMovil.altoBoton
                             // Texto en vez de "✎": ese glifo (y "🗑" abajo)
                             // no está ni en EBGaramond ni en el font de
                             // sistema de este build de Android -- se veía
@@ -1952,6 +2611,7 @@ ApplicationWindow {
                         }
                         BotonContorno {
                             anchors.verticalCenter: parent.verticalCenter
+                            height: filaAccionesGuardadaMovil.altoBoton
                             text: filaGuardadaMovil.confirmandoBorrado ? "¿Seguro?" : "Borrar"
                             colorBorde: Tema.colorPeligro
                             onClicked: {
@@ -1978,14 +2638,12 @@ ApplicationWindow {
                 spacing: 14 * Tema.escala
                 width: parent.width - 60 * Tema.escala
 
-                Rectangle {
+                MarcoHueco {
                     id: cajaCodigoPrivadoMovil
                     width: parent.width
-                    height: Tema.tamanoMinTactil
-                    radius: 6 * Tema.escala
-                    color: Tema.colorFondo
-                    border.width: 1
-                    border.color: areaCodigoPrivado.pressed ? Tema.colorAccent : Tema.colorBorde
+                    height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                    radius: 10 * Tema.escala
+                    activo: areaCodigoPrivado.pressed
                     property string valor: ""
                     Text {
                         anchors.centerIn: parent
@@ -2029,25 +2687,28 @@ ApplicationWindow {
         textoCentro: "Ranking global"
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
+    // Selector + botón de info FIJOS, fuera del área que scrollea --
+    // mismo criterio que cabeceraCuenta/cabeceraTienda ("el selector de
+    // pestaña arriba tiene que quedarse, el contenido baja"). Sin el
+    // aviso textual de arriba (pedido explícito 2026-09-02: "quitar el
+    // aviso textual de arriba y recolocar el boton de informacion, asi
+    // subimos el slider y ganamos altura") -- el botón "i" vuelve a
+    // vivir junto al propio selector, mismo sitio de antes de la Fase M3.
     Row {
-        id: filaTabsRankingMovil
+        id: cabeceraRankingMovil
         visible: ventana.pantalla === "Ranking"
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
         anchors.top: barraRankingMovil.bottom
         anchors.topMargin: 12 * Tema.escala
-        // Mismo ancho tope que la caja de Salas -- SelectorSegmentado (a
-        // diferencia de SelectorPildoras) necesita uno explícito, ver el
-        // comentario largo en filaTabsSalasMovil.
-        width: Math.min(560 * Tema.escala, ventana.width - 60 * Tema.escala)
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
         spacing: 10 * Tema.escala
-        // Unificado con Salas/Social (rediseño 2026-08-28) -- antes era el
-        // único selector que seguía en píldoras sueltas.
+
         SelectorSegmentado {
             id: tabsRankingMovil
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - iconoInfoRankingMovil.width - parent.spacing
-            opciones: ["Más victorias", "Mejor ratio"]
+            opciones: ["Más victorias", "Mejor ratio", "Elo"]
             seleccionado: ventana.ordenRankingActual
             onElegido: (indice) => {
                 ventana.ordenRankingActual = indice;
@@ -2124,17 +2785,29 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
-                text: "Para aparecer en este ranking hace falta además al menos 10 partidas jugadas de las que sí cuentan."
+                text: "Para aparecer en este ranking hace falta además al menos 5 partidas jugadas de las que sí cuentan."
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: "Elo (pestaña por defecto) mide habilidad, no dedicación: +10 al ganar una partida oficial, −3 al perderla, sin ajustar por el nivel del rival. \"Más victorias\" y \"ratio\" son históricos y nunca se resetean; Elo sí -- se reinicia con cada temporada nueva."
                 color: Tema.colorTextoTenue
                 font.pixelSize: 11 * Tema.escala
                 wrapMode: Text.WordWrap
             }
         }
     }
+    // Podio + lista, TODO scrolleable como un único conjunto -- mismo
+    // criterio ya fijado en escritorio (2026-09-01, "que sea scrolleable
+    // en su conjunto"). El panel no tiene altura fija, llena el resto de
+    // la pantalla bajo cabeceraRankingMovil; el podio vive en
+    // ListView.header, así que se desplaza junto con las filas.
     Rectangle {
         visible: ventana.pantalla === "Ranking"
-        anchors.top: filaTabsRankingMovil.bottom
-        anchors.topMargin: 12 * Tema.escala
+        anchors.top: cabeceraRankingMovil.bottom
+        anchors.topMargin: 8 * Tema.escala
         anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -2147,7 +2820,7 @@ ApplicationWindow {
         Text {
             anchors.centerIn: parent
             width: parent.width - 40 * Tema.escala
-            visible: rankingModel.count === 0
+            visible: rankingModel.count === 0 && ventana.rankingPodio.length === 0
             text: "Todavía no hay cuentas con partidas suficientes para aparecer en el ranking."
             color: Tema.colorTextoTenue
             horizontalAlignment: Text.AlignHCenter
@@ -2156,40 +2829,192 @@ ApplicationWindow {
         }
 
         ListView {
-            visible: rankingModel.count > 0
+            id: listaRankingMovil
+            // rankingPodio.length===3 en el OR -- con exactamente 3
+            // cuentas en el ranking el header (podio) debe seguir
+            // viéndose aunque rankingModel esté vacío.
+            visible: rankingModel.count > 0 || ventana.rankingPodio.length === 3
             anchors.fill: parent
             anchors.margins: 12 * Tema.escala
             clip: true
             spacing: 6 * Tema.escala
             model: rankingModel
-            header: Row {
+            // Bug real reportado 2026-09-02, CUARTO Y QUINTO intento --
+            // mismo mecanismo que escritorio, ver el comentario grande
+            // junto a listaRanking allí: los resets puntuales (sin
+            // importar EN QUÉ MOMENTO se disparen) pueden perder la
+            // carrera contra la compensación interna de Flickable cuando
+            // el contenido crece por encima de lo visible (la cabecera-
+            // podio pasando de invisible a visible de golpe). En vez de
+            // adivinar el momento otra vez, esto FIJA contentY a 0 en
+            // cada cambio real de contentHeight hasta que el usuario
+            // mueva la lista de verdad.
+            property bool anclarArriba: true
+            onContentHeightChanged: if (anclarArriba) contentY = 0
+            onMovementStarted: anclarArriba = false
+            onFlickStarted: anclarArriba = false
+            header: Column {
+                id: cabeceraListaRankingMovil
                 width: parent ? parent.width : 0
-                height: 20 * Tema.escala
-                Text {
-                    width: 28 * Tema.escala
-                    text: "#"
-                    color: Tema.colorTextoMuyTenue
-                    font.pixelSize: 9 * Tema.escala
+                spacing: 12 * Tema.escala
+                // Bug real reportado 2026-09-02, TERCER intento -- los dos
+                // anteriores adivinaban EN QUÉ MOMENTO del ciclo de JS
+                // resetear el scroll (mismo tick, luego Qt.callLater) y
+                // los dos fallaron -- estaban resolviendo el problema
+                // equivocado. Esto SÍ ataca la causa real: el alto de esta
+                // Column cambia de golpe cuando el podio aparece/
+                // desaparece (Column excluye del layout a los hijos
+                // invisibles), y ESE cambio de alto es lo que descoloca a
+                // ListView -- no importa cuándo se rellene el modelo, lo
+                // que importa es cuándo cambia el alto de la cabecera.
+                // Reaccionar directamente a ESE evento, en vez de intentar
+                // adivinar el momento adecuado en otro sitio.
+                onHeightChanged: Qt.callLater(() => { listaRankingMovil.contentY = 0; })
+
+                // ── Podio: top 3 de la pestaña activa -- mismo diseño ya
+                // validado en escritorio (avatar grande + placa numérica,
+                // sin insignia nueva -- ver memoria
+                // qt_progression_review_2026_09_01). Avatares algo más
+                // pequeños que escritorio (84/66 en vez de 96/76) para
+                // caber con más margen en landscape móvil.
+                Row {
+                    visible: ventana.rankingPodio.length === 3
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 20 * Tema.escala
+                    Repeater {
+                        model: 3
+                        delegate: Column {
+                            id: columnaPodioMovil
+                            required property int index
+                            readonly property int idxFila: [1, 0, 2][columnaPodioMovil.index]
+                            readonly property var fila: ventana.rankingPodio.length === 3
+                                                         ? ventana.rankingPodio[columnaPodioMovil.idxFila] : null
+                            readonly property bool esPrimero: columnaPodioMovil.idxFila === 0
+                            readonly property real tamanoAvatar: (columnaPodioMovil.esPrimero ? 84 : 66) * Tema.escala
+                            readonly property color colorPuesto: ventana.colorRareza(
+                                !columnaPodioMovil.fila ? "" :
+                                columnaPodioMovil.fila.posicion === 1 ? "oro" :
+                                columnaPodioMovil.fila.posicion === 2 ? "plata" : "bronce")
+                            spacing: 5 * Tema.escala
+
+                            Item {
+                                id: envolturaAvatarPodioMovil
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: columnaPodioMovil.tamanoAvatar * 2.1
+                                height: width
+                                Avatar {
+                                    anchors.centerIn: parent
+                                    letra: columnaPodioMovil.fila && columnaPodioMovil.fila.username.length > 0
+                                           ? columnaPodioMovil.fila.username.charAt(0).toUpperCase() : "?"
+                                    tamano: columnaPodioMovil.tamanoAvatar
+                                    marco: columnaPodioMovil.fila
+                                           ? Tema.marcoPorPartidasGanadas(columnaPodioMovil.fila.partidasGanadas,
+                                                                           columnaPodioMovil.fila.tieneMarcoBasico)
+                                           : "ninguno"
+                                    textura: columnaPodioMovil.fila ? columnaPodioMovil.fila.textura : ""
+                                    efecto: columnaPodioMovil.fila ? columnaPodioMovil.fila.efecto : ""
+                                    decoracionLateral1: columnaPodioMovil.fila ? columnaPodioMovil.fila.decoracionLateral1 : ""
+                                    decoracionLateral2: columnaPodioMovil.fila ? columnaPodioMovil.fila.decoracionLateral2 : ""
+                                    decoracionSuperior: columnaPodioMovil.fila ? columnaPodioMovil.fila.decoracionSuperior : ""
+                                }
+                                // Tocar el avatar abre el perfil público --
+                                // pedido explícito 2026-09-02 ("importante"),
+                                // el podio se había quedado sin esto aunque
+                                // la lista normal de abajo ya lo tenía.
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: columnaPodioMovil.fila !== null
+                                    onClicked: popupPerfilJugador.abrir(columnaPodioMovil.fila.accountId)
+                                }
+                                // Placa de puesto -- mismo lenguaje que el
+                                // disco "D" de dealer en Asiento.qml,
+                                // offset desde el CENTRO del envolvente
+                                // (no la esquina del Item 2.1x de sobra).
+                                Rectangle {
+                                    width: 20 * Tema.escala
+                                    height: width
+                                    radius: width / 2
+                                    x: envolturaAvatarPodioMovil.width / 2 + columnaPodioMovil.tamanoAvatar * 0.30 - width / 2
+                                    y: envolturaAvatarPodioMovil.height / 2 + columnaPodioMovil.tamanoAvatar * 0.30 - height / 2
+                                    color: columnaPodioMovil.colorPuesto
+                                    border.width: 1.5
+                                    border.color: Tema.colorFondo
+                                    z: 10
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: columnaPodioMovil.fila ? (columnaPodioMovil.fila.posicion + "") : ""
+                                        font.bold: true
+                                        font.family: Tema.fuenteElegante
+                                        font.pixelSize: 10 * Tema.escala
+                                        color: Tema.colorFondo
+                                    }
+                                }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 110 * Tema.escala
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                text: columnaPodioMovil.fila ? columnaPodioMovil.fila.username : ""
+                                font.bold: true
+                                color: Tema.colorTexto
+                                font.pixelSize: 12 * Tema.escala
+                            }
+                            CajaTitulo {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                readonly property var infoTitulo: columnaPodioMovil.fila
+                                    ? ventana.objetoTiendaPorCodigo(columnaPodioMovil.fila.titulo || "") : null
+                                nombre: infoTitulo ? infoTitulo.nombre : ""
+                                colorTier: ventana.colorRareza(infoTitulo ? infoTitulo.rareza : "")
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: !columnaPodioMovil.fila ? ""
+                                      : ventana.ordenRankingActual === 2 ? (columnaPodioMovil.fila.elo + " Elo")
+                                      : ventana.ordenRankingActual === 1
+                                        ? (Math.round(100 * columnaPodioMovil.fila.partidasGanadas / columnaPodioMovil.fila.partidasJugadas) + "% de ratio")
+                                        : (columnaPodioMovil.fila.partidasGanadas + " victorias")
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 10 * Tema.escala
+                            }
+                        }
+                    }
                 }
-                Text {
-                    width: parent.width - 28 * Tema.escala - 160 * Tema.escala
-                    text: "JUGADOR"
-                    color: Tema.colorTextoMuyTenue
-                    font.pixelSize: 9 * Tema.escala
+                Rectangle {
+                    visible: ventana.rankingPodio.length === 3
+                    width: parent.width
+                    height: 1
+                    color: Qt.rgba(0, 0, 0, 0.25)
                 }
-                Text {
-                    width: 80 * Tema.escala
-                    horizontalAlignment: Text.AlignRight
-                    text: "GANADAS"
-                    color: Tema.colorTextoMuyTenue
-                    font.pixelSize: 9 * Tema.escala
-                }
-                Text {
-                    width: 80 * Tema.escala
-                    horizontalAlignment: Text.AlignRight
-                    text: "RATIO"
-                    color: Tema.colorTextoMuyTenue
-                    font.pixelSize: 9 * Tema.escala
+                Row {
+                    width: parent.width
+                    height: 20 * Tema.escala
+                    Text {
+                        width: 28 * Tema.escala
+                        text: "#"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 9 * Tema.escala
+                    }
+                    Text {
+                        width: parent.width - 28 * Tema.escala - 160 * Tema.escala
+                        text: "JUGADOR"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 9 * Tema.escala
+                    }
+                    Text {
+                        width: 80 * Tema.escala
+                        horizontalAlignment: Text.AlignRight
+                        text: ventana.ordenRankingActual === 2 ? "ELO" : "GANADAS"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 9 * Tema.escala
+                    }
+                    Text {
+                        width: 80 * Tema.escala
+                        horizontalAlignment: Text.AlignRight
+                        text: ventana.ordenRankingActual === 2 ? "PARTIDAS" : "RATIO"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 9 * Tema.escala
+                    }
                 }
             }
             delegate: Rectangle {
@@ -2198,11 +3023,14 @@ ApplicationWindow {
                 required property string username
                 required property int partidasJugadas
                 required property int partidasGanadas
+                required property int elo
+                required property int posicion
+                required property bool tieneMarcoBasico
                 required property int index
                 readonly property bool esUsuarioPropio:
                     username.toLowerCase() === ventana.nombreJugador.toLowerCase()
                 width: ListView.view.width
-                height: Tema.tamanoMinTactil
+                height: Math.max(Tema.tamanoMinTactil, 56 * Tema.escala)
                 radius: 6 * Tema.escala
                 color: esUsuarioPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.1) : Tema.colorFondo
                 border.width: esUsuarioPropio ? 1.5 : 1
@@ -2215,33 +3043,51 @@ ApplicationWindow {
                     Text {
                         width: 28 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
-                        text: (filaRankingMovil.index + 1) + ""
+                        // "posicion", no "index+1" -- el top 3 ya no vive
+                        // en este modelo (ver el podio de arriba).
+                        text: filaRankingMovil.posicion + ""
                         font.family: Tema.fuenteElegante
-                        color: filaRankingMovil.index < 3 ? Tema.colorAccent : Tema.colorTextoTenue
-                        font.pixelSize: 13 * Tema.escala
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 14 * Tema.escala
                     }
-                    Text {
+                    Row {
                         width: filaRankingMovil.width - 28 * Tema.escala - 160 * Tema.escala - 20 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
-                        text: filaRankingMovil.username + (filaRankingMovil.esUsuarioPropio ? " (tú)" : "")
-                        font.bold: filaRankingMovil.esUsuarioPropio
+                        spacing: 8 * Tema.escala
+                        Avatar {
+                            anchors.verticalCenter: parent.verticalCenter
+                            letra: filaRankingMovil.username.length > 0 ? filaRankingMovil.username.charAt(0).toUpperCase() : "?"
+                            // Sin textura/efecto/decoraciones -- reservadas
+                            // como "premio" exclusivo del podio de arriba,
+                            // mismo criterio que escritorio.
+                            tamano: 34 * Tema.escala
+                            marco: Tema.marcoPorPartidasGanadas(filaRankingMovil.partidasGanadas, filaRankingMovil.tieneMarcoBasico)
+                            colorBorde: filaRankingMovil.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: filaRankingMovil.username + (filaRankingMovil.esUsuarioPropio ? " (tú)" : "")
+                            font.bold: filaRankingMovil.esUsuarioPropio
+                            color: Tema.colorTexto
+                            elide: Text.ElideRight
+                            font.pixelSize: 12 * Tema.escala
+                        }
+                    }
+                    Text {
+                        width: 80 * Tema.escala
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignRight
+                        text: ventana.ordenRankingActual === 2 ? (filaRankingMovil.elo + "") : (filaRankingMovil.partidasGanadas + "")
                         color: Tema.colorTexto
-                        elide: Text.ElideRight
                         font.pixelSize: 12 * Tema.escala
                     }
                     Text {
                         width: 80 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         horizontalAlignment: Text.AlignRight
-                        text: filaRankingMovil.partidasGanadas + ""
-                        color: Tema.colorTexto
-                        font.pixelSize: 12 * Tema.escala
-                    }
-                    Text {
-                        width: 80 * Tema.escala
-                        anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignRight
-                        text: Math.round(100 * filaRankingMovil.partidasGanadas / filaRankingMovil.partidasJugadas) + "%"
+                        text: ventana.ordenRankingActual === 2
+                              ? (filaRankingMovil.partidasJugadas + "")
+                              : (Math.round(100 * filaRankingMovil.partidasGanadas / filaRankingMovil.partidasJugadas) + "%")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                     }
@@ -2266,14 +3112,89 @@ ApplicationWindow {
         textoCentro: "Torneos"
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
-    Proximamente {
+    // Torneos Solitario (Fase 6, ver CLAUDE.md) -- mismo contenido que
+    // qml/Main.qml (escritorio), ver el comentario largo ahí. "Multijugador"
+    // sigue siendo un placeholder puro.
+    Item {
         visible: ventana.pantalla === "Torneos"
         anchors.top: barraTorneosMovil.bottom
         anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        titulo: "Torneos"
-        descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 20 * Tema.escala
+            width: 300 * Tema.escala
+
+            Text {
+                text: "Torneos Solitario"
+                color: Tema.colorTexto
+                font.bold: true
+                font.pixelSize: 18 * Tema.escala
+                font.family: Tema.fuenteElegante
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                color: Tema.colorTextoTenue
+                font.pixelSize: 12 * Tema.escala
+                text: "Una escalera de desafíos contra bots está en camino. De momento, un único reto para probarlo."
+            }
+
+            Rectangle {
+                width: parent.width
+                height: columnaRetoMovil.height + 28 * Tema.escala
+                radius: 12 * Tema.escala
+                color: Tema.colorPanel
+                border.width: 1
+                border.color: Tema.colorBorde
+                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property variant source
+                    property real amplitud: 30.0
+                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                }
+
+                Column {
+                    id: columnaRetoMovil
+                    anchors.centerIn: parent
+                    width: parent.width - 32 * Tema.escala
+                    spacing: 10 * Tema.escala
+
+                    Text {
+                        text: "Reto 1 · Primeros pasos"
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.pixelSize: 14 * Tema.escala
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "2 bots, dificultad fácil, hasta que alguien se quede con todas las fichas."
+                        color: Tema.colorTexto
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    BotonRelleno {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "Jugar"
+                        onClicked: {
+                            modoJuego.activarModoLocal();
+                            ventana.modoOfflineActivo = true;
+                            redcliente.iniciarPartidaLocal(
+                                nombreJugador, /*numBots=*/2, /*numManos=*/200,
+                                /*ciegaGrande=*/20, /*saldo=*/500, /*tipoLimite=*/0,
+                                /*aplicarMinRaise=*/false, /*monteFijo=*/0,
+                                /*dificultadBots=*/0, /*permitirRecompra=*/false,
+                                /*preguntarExtension=*/false);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     BarraSuperior {
@@ -2386,6 +3307,18 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.margins: 16 * Tema.escala
         radius: 8 * Tema.escala
+        // LISO a propósito, sin degradado ni textura de tapete
+        // (2026-09-09, pedido explícito): "en los sitios que tengan fondo
+        // tapete y encima tarjetas con textura tapete, el fondo sea sin
+        // esa textura, resalta las tarjetas y se diferencia mejor". Este
+        // panel es justo eso -- el fondo sobre el que van las tarjetas de
+        // amigos / objetos / estadísticas, que sí llevan su fieltro.
+        //
+        // Antes de llegar aquí pasó por dos intentos que sobran, pero que
+        // conviene no repetir: un degradado corto SIN dithering (bandeó, y
+        // el escalón se veía como "una línea drástica de cambio de color"
+        // cruzando la tarjeta) y luego uno con dithering en un hijo. El
+        // segundo funcionaba; simplemente, liso queda mejor.
         color: Tema.colorPanel
         border.width: 1
         border.color: Tema.colorBorde
@@ -2408,22 +3341,20 @@ ApplicationWindow {
         GridView {
             id: gridAmigosMovil
             visible: ventana.pestanaSocialActual === 0 && modeloAmigos.count > 0
-            // Ancho tope (no anchors.fill sin más) -- panelSocialMovil llena
-            // TODO el resto del ancho tras el riel, sin límite; sin este
-            // tope, en una pantalla ancha de verdad el mismo umbral de
-            // columna daba 4 tarjetas en vez de 3 (bug real reportado
-            // 2026-08-28) -- mismo criterio de ancho que la caja de Salas.
+            // Llena TODO el ancho del panel (antes se topaba a 560*escala
+            // y quedaba centrado, dejando margen muerto a los lados en
+            // pantallas anchas de verdad -- bug real reportado
+            // 2026-08-31: "queda bastante margen a ambos lados"). cellWidth
+            // = ancho/3 EXACTO, no un umbral "quepan las que quepan" --
+            // así siempre son 3 columnas, ni 2 ni 4, y las tarjetas crecen
+            // para aprovechar el ancho en vez de dejarlo vacío.
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            anchors.topMargin: 12 * Tema.escala
-            anchors.bottomMargin: 12 * Tema.escala
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(560 * Tema.escala, panelSocialMovil.width - 24 * Tema.escala)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 12 * Tema.escala
             clip: true
-            // Umbral subido (165 -> 175) para que 3 sea el número de
-            // verdad con este ancho tope, no 4 -- tarjetas más grandes de
-            // paso (pedido explícito).
-            cellWidth: Math.floor(width / Math.max(1, Math.floor(width / (175 * Tema.escala))))
+            cellWidth: Math.floor(width / 3)
             cellHeight: 78 * Tema.escala
             model: modeloAmigosConChat
             delegate: Item {
@@ -2437,15 +3368,50 @@ ApplicationWindow {
                 width: gridAmigosMovil.cellWidth
                 height: gridAmigosMovil.cellHeight
 
+                // "Ficha de casino" (2026-09-02, pedido explícito:
+                // "aplicar el mismo estilo a los amigos y salas") --
+                // sombra desplazada barata, SIN escalar con la tarjeta.
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 4 * Tema.escala
+                    anchors.topMargin: 4 * Tema.escala + 3 * Tema.escala
                     radius: 8 * Tema.escala
-                    border.width: 1
-                    border.color: Qt.rgba(0, 0, 0, 0.35)
+                    color: "black"
+                    opacity: 0.35
+                }
+
+                Rectangle {
+                    id: tarjetaAmigoMovil
+                    anchors.fill: parent
+                    anchors.margins: 4 * Tema.escala
+                    radius: 8 * Tema.escala
+                    border.width: 1.2
+                    border.color: Qt.rgba(0, 0, 0, 0.4)
                     gradient: Gradient {
-                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
                         GradientStop { position: 1.0; color: Tema.colorPanel }
+                    }
+                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                    layer.enabled: true
+                    layer.effect: ShaderEffect {
+                        property variant source
+                        property real amplitud: 30.0
+                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                    }
+                    // Mismo encogido reactivo que la Tienda al tocar.
+                    scale: areaChatAmigoMovil.pressed ? 0.97 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 100 } }
+
+                    // Hilo dorado por dentro del bisel exterior -- el
+                    // "doble bisel" de ficha de casino.
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 2 * Tema.escala
+                        radius: parent.radius - 2 * Tema.escala
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.18)
                     }
 
                     // Avatar como hijo DIRECTO de la tarjeta (no anidado en
@@ -2534,6 +3500,7 @@ ApplicationWindow {
                     // DESPUÉS = prioridad de hit-test sobre la de abajo)
                     // abre el perfil público.
                     MouseArea {
+                        id: areaChatAmigoMovil
                         anchors.fill: parent
                         onClicked: popupChatDirecto.abrir(celdaAmigoMovil.accountId, celdaAmigoMovil.username, celdaAmigoMovil.estado)
                     }
@@ -2554,45 +3521,32 @@ ApplicationWindow {
         // color/borde/altura), confuso dentro de una lista (reportado en
         // pruebas reales). El resto de "campos falsos" del programa viven
         // solos en un formulario, no encima de filas gemelas.
-        Rectangle {
+        // "Caja falsa" de búsqueda: parece un campo, pero al tocarla abre
+        // el CampoEmergente de arriba (patrón táctil de toda la app
+        // móvil). Sobre MarcoHueco desde 2026-09-09 -- era un relleno
+        // plano con un filo dorado de 1.5px y, sobre un panel con textura
+        // de fieltro, no se separaba del fondo ("es muy estrecha, no se
+        // ve bien"). Un poco más alta también, que el rebaje necesita
+        // alto para leerse como rebaje.
+        MarcoHueco {
             id: cajaBusquedaSocialMovil
             visible: ventana.pestanaSocialActual === 1
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: 12 * Tema.escala
-            height: Tema.tamanoMinTactil
-            radius: 6 * Tema.escala
-            color: Tema.colorFondo
-            border.width: 1.5
-            border.color: Tema.colorAccent
+            height: Math.max(Tema.tamanoMinTactil, 48 * Tema.escala)
+            radius: 10 * Tema.escala
+            activo: areaBusquedaSocialMovil.pressed
             property string valor: ""
 
-            Item {
+            IconoLupa {
                 id: iconoLupaMovil
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 10 * Tema.escala
-                width: 14 * Tema.escala
-                height: 14 * Tema.escala
-                Rectangle {
-                    width: 10 * Tema.escala
-                    height: 10 * Tema.escala
-                    radius: width / 2
-                    color: "transparent"
-                    border.width: 1.6
-                    border.color: Tema.colorAccent
-                }
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    anchors.right: parent.right
-                    width: 5 * Tema.escala
-                    height: 1.6 * Tema.escala
-                    radius: height / 2
-                    rotation: 45
-                    transformOrigin: Item.Right
-                    color: Tema.colorAccent
-                }
+                anchors.leftMargin: 12 * Tema.escala
+                width: 16 * Tema.escala
+                height: width
             }
             Text {
                 anchors.left: iconoLupaMovil.right
@@ -2655,7 +3609,7 @@ ApplicationWindow {
                 // menos Tema.tamanoMinTactil él solo, sin margen la fila
                 // quedaba justa (bordes del botón pegados a los de la
                 // fila, reportado en pruebas reales).
-                height: Tema.tamanoMinTactil + 12 * Tema.escala
+                height: Tema.tactil + 12 * Tema.escala
                 radius: 6 * Tema.escala
                 color: Tema.colorFondo
                 border.width: 1
@@ -2720,7 +3674,7 @@ ApplicationWindow {
                 required property string username
                 readonly property bool solicitudEnviada: filaRecienteMovil.pendiente === 1
                 width: ListView.view.width
-                height: Tema.tamanoMinTactil + 12 * Tema.escala
+                height: Tema.tactil + 12 * Tema.escala
                 radius: 6 * Tema.escala
                 color: Tema.colorFondo
                 border.width: 1
@@ -2777,52 +3731,1901 @@ ApplicationWindow {
             clip: true
             spacing: 6 * Tema.escala
             model: modeloSolicitudes
-            delegate: Rectangle {
+            delegate: Item {
                 id: filaSolicitudMovil
                 required property int solicitudId
                 required property int fromAccountId
                 required property int creadoEn
                 required property string fromUsername
                 width: ListView.view.width
-                height: Tema.tamanoMinTactil + 12 * Tema.escala
-                radius: 6 * Tema.escala
-                color: Tema.colorFondo
-                border.width: 1
-                border.color: Tema.colorBorde
+                // Antes Tema.tamanoMinTactil + 12*escala -- quedaba
+                // apretada, a ras de los propios botones (pedido
+                // explícito 2026-09-02: "que sea un poco mas grande que
+                // los botones, asi se ve apretado, funcional pero no
+                // estetico").
+                height: Tema.tactil + 24 * Tema.escala
 
-                Text {
-                    anchors.left: parent.left
-                    anchors.right: filaBotonesSolicitudMovil.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 10 * Tema.escala
-                    anchors.rightMargin: 8 * Tema.escala
-                    elide: Text.ElideRight
-                    text: filaSolicitudMovil.fromUsername
-                    color: Tema.colorTexto
-                    font.pixelSize: 12 * Tema.escala
+                // "Ficha de casino" (mismo pedido: "adaptala tambien al
+                // estilo del cajon") -- mismo recetario que Amigos/Salas:
+                // sombra desplazada barata, degradado de 3 paradas con
+                // brillo arriba, hilo dorado interior. Antes un
+                // Rectangle plano (Tema.colorFondo liso), la única fila
+                // "pobre" de todo Social -- Amigos/Buscar/Recientes ya
+                // tenían al menos degradado o (Amigos) el estilo nuevo.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.topMargin: 3 * Tema.escala
+                    radius: 8 * Tema.escala
+                    color: "black"
+                    opacity: 0.35
                 }
-                Row {
-                    id: filaBotonesSolicitudMovil
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.rightMargin: 8 * Tema.escala
-                    spacing: 6 * Tema.escala
-                    BotonContorno {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Rechazar"
-                        onClicked: redcliente.responderSolicitud(
-                            ventana.servidorHost, ventana.servidorPuerto, filaSolicitudMovil.solicitudId, false)
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 8 * Tema.escala
+                    border.width: 1.2
+                    border.color: Qt.rgba(0, 0, 0, 0.4)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                        GradientStop { position: 1.0; color: Tema.colorPanel }
                     }
-                    BotonRelleno {
+                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                    layer.enabled: true
+                    layer.effect: ShaderEffect {
+                        property variant source
+                        property real amplitud: 30.0
+                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 2 * Tema.escala
+                        radius: parent.radius - 2 * Tema.escala
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.18)
+                    }
+
+                    // Avatar -- mismo criterio que escritorio (que ya lo
+                    // tenía) y que el resto de filas de Social con
+                    // identidad de otro jugador (Amigos).
+                    Avatar {
+                        id: avatarSolicitudMovil
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Aceptar"
-                        onClicked: redcliente.responderSolicitud(
-                            ventana.servidorHost, ventana.servidorPuerto, filaSolicitudMovil.solicitudId, true)
+                        letra: filaSolicitudMovil.fromUsername.length > 0 ? filaSolicitudMovil.fromUsername.charAt(0).toUpperCase() : "?"
+                        tamano: 32 * Tema.escala
+                    }
+                    Text {
+                        anchors.left: avatarSolicitudMovil.right
+                        anchors.right: filaBotonesSolicitudMovil.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 10 * Tema.escala
+                        anchors.rightMargin: 8 * Tema.escala
+                        elide: Text.ElideRight
+                        text: filaSolicitudMovil.fromUsername
+                        color: Tema.colorTexto
+                        font.pixelSize: 13 * Tema.escala
+                    }
+                    Row {
+                        id: filaBotonesSolicitudMovil
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.rightMargin: 10 * Tema.escala
+                        spacing: 6 * Tema.escala
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Rechazar"
+                            onClicked: redcliente.responderSolicitud(
+                                ventana.servidorHost, ventana.servidorPuerto, filaSolicitudMovil.solicitudId, false)
+                        }
+                        BotonRelleno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Aceptar"
+                            onClicked: redcliente.responderSolicitud(
+                                ventana.servidorHost, ventana.servidorPuerto, filaSolicitudMovil.solicitudId, true)
+                        }
                     }
                 }
             }
         }
 
+    }
+
+    // ── Pantalla Cuenta (Fase M1 del port de progresión a móvil,
+    // 2026-09-01, ver memoria qt_mobile_progression_port_plan) -- antes
+    // vivía como sub-pestaña del cajón de Ajustes, mudada aquí al riel
+    // (pantalla propia), mismo criterio ya aprobado en escritorio
+    // 2026-08-31. Perfil, con el contenido que ya existía (avatar/
+    // stats/cambiar usuario-contraseña/cerrar sesión) más lo nuevo de
+    // hoy (loadout real + CajaTitulo en el avatar), está TERMINADO.
+    // Progreso/Logros/Personalizar quedan con un aviso "sin construir
+    // todavía" -- necesitan portar piezas que no existen aún en móvil
+    // (AnilloNivel.qml, el catálogo de Logros, la rejilla de
+    // Personalizar) y se dejaron fuera de este primer tramo a propósito.
+    BarraSuperior {
+        id: barraCuentaMovil
+        visible: ventana.pantalla === "Cuenta"
+        anchors.top: parent.top
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Cuenta"
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    // ── Cuenta: invitados ven un aviso + acceso a login/registro, mismo
+    // criterio que Social. ──────────────────────────────────────────────
+    Column {
+        visible: ventana.pantalla === "Cuenta" && !ventana.hayCuenta
+        anchors.centerIn: parent
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
+        spacing: 12 * Tema.escala
+        width: Math.min(340 * Tema.escala, ventana.width - rielNavegacionMovil.width - 60 * Tema.escala)
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: "Estás jugando como invitado. Inicia sesión o crea una cuenta para ver tu perfil, tu progreso y tus logros."
+            color: Tema.colorTextoTenue
+            font.pixelSize: 13 * Tema.escala
+        }
+        BotonRelleno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Iniciar sesión"
+            onClicked: { ventana.mensajeErrorLogin = ""; ventana.pantalla = "Login"; }
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Crear cuenta"
+            onClicked: { ventana.mensajeErrorLogin = ""; ventana.pantalla = "Registro"; }
+        }
+    }
+
+    SelectorSegmentado {
+        id: tabsCuentaMovil
+        visible: ventana.pantalla === "Cuenta" && ventana.hayCuenta
+        anchors.top: barraCuentaMovil.bottom
+        anchors.topMargin: 12 * Tema.escala
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        opciones: ["Perfil", "Progreso", "Logros", "Personalizar"]
+        seleccionado: ventana.pestanaCuentaActual
+        onElegido: (indice) => ventana.pestanaCuentaActual = indice
+    }
+
+    // Panel con scroll (ScrollView, mismo criterio que scrollAjustesMovil)
+    // bajo tabsCuentaMovil, que se queda fijo -- "el selector de pestaña
+    // arriba tiene que quedarse, el contenido baja" (regla ya aplicada en
+    // toda la app, ver qt_progression_review_2026_09_01).
+    Rectangle {
+        id: panelCuentaMovil
+        visible: ventana.pantalla === "Cuenta" && ventana.hayCuenta
+        anchors.top: tabsCuentaMovil.bottom
+        anchors.topMargin: 8 * Tema.escala
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16 * Tema.escala
+        radius: 8 * Tema.escala
+        // LISO a propósito, sin degradado ni textura de tapete
+        // (2026-09-09, pedido explícito): "en los sitios que tengan fondo
+        // tapete y encima tarjetas con textura tapete, el fondo sea sin
+        // esa textura, resalta las tarjetas y se diferencia mejor". Este
+        // panel es justo eso -- el fondo sobre el que van las tarjetas de
+        // amigos / objetos / estadísticas, que sí llevan su fieltro.
+        //
+        // Antes de llegar aquí pasó por dos intentos que sobran, pero que
+        // conviene no repetir: un degradado corto SIN dithering (bandeó, y
+        // el escalón se veía como "una línea drástica de cambio de color"
+        // cruzando la tarjeta) y luego uno con dithering en un hijo. El
+        // segundo funcionaba; simplemente, liso queda mejor.
+        color: Tema.colorPanel
+        border.width: 1
+        border.color: Tema.colorBorde
+
+        // Personalizar (pestaña 3) NO vive aquí dentro -- necesita su
+        // propio layout con avatar fijo a la derecha (ver el Item
+        // hermano más abajo, después de este ScrollView); las otras 3
+        // pestañas siguen siendo contenido simple que scrollea entero.
+        ScrollView {
+            id: scrollCuentaMovil
+            visible: ventana.pestanaCuentaActual !== 3
+            anchors.fill: parent
+            anchors.margins: 16 * Tema.escala
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            Column {
+                width: panelCuentaMovil.width - 32 * Tema.escala
+                spacing: 8 * Tema.escala
+
+                // ── Perfil ────────────────────────────────────────────────
+                Column {
+                    width: parent.width
+                    visible: ventana.pestanaCuentaActual === 0
+                    spacing: 12 * Tema.escala
+
+                    // Ver el comentario gemelo en qml/Main.qml: sin conexión
+                    // esto es la foto de la última sesión con servidor.
+                    Text {
+                        visible: ventana.sesionOffline
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
+                        text: "Sin conexión · datos de tu última sesión con el servidor, solo lectura."
+                    }
+
+                    // Item envolvente de sobra (2.1x) -- el anillo y las
+                    // decoraciones sobresalen de su propio tamano, mismo
+                    // criterio que PopupPerfilJugador.qml/escritorio.
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 72 * Tema.escala * 2.1
+                        height: width
+                        Avatar {
+                            anchors.centerIn: parent
+                            letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                            tamano: 72 * Tema.escala
+                            marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
+                            // Loadout real (Fase M0/M1, 2026-09-01) -- antes
+                            // este avatar solo pintaba el marco, nunca
+                            // textura/efecto/decoraciones (mismo hueco que
+                            // tenía escritorio antes de arreglarlo el mismo
+                            // día -- ver memoria qt_progression_review_2026_09_01).
+                            textura: redcliente.loadoutMarco.textura || ""
+                            efecto: redcliente.loadoutMarco.efecto || ""
+                            decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
+                            decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
+                            decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                        }
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: ventana.nombreJugador
+                        color: Tema.colorTexto
+                        font.family: Tema.fuenteElegante
+                        font.bold: true
+                        font.pixelSize: 16 * Tema.escala
+                    }
+                    CajaTitulo {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        readonly property var infoTitulo: ventana.objetoTiendaPorCodigo(redcliente.loadoutMarco.titulo || "")
+                        nombre: infoTitulo ? infoTitulo.nombre : ""
+                        colorTier: ventana.colorRareza(infoTitulo ? infoTitulo.rareza : "")
+                    }
+
+                    // ── Estadísticas propias -- ocultas hasta la primera
+                    // partida contada.
+                    Column {
+                        width: parent.width
+                        visible: ventana.statsPartidasJugadas > 0
+                        spacing: 6 * Tema.escala
+                        Repeater {
+                            model: [
+                                { etiqueta: "Partidas jugadas", valor: ventana.statsPartidasJugadas + "" },
+                                { etiqueta: "Partidas ganadas", valor: ventana.statsPartidasGanadas + "" },
+                                { etiqueta: "Ratio de victorias", valor: Math.round(100 * ventana.statsPartidasGanadas / ventana.statsPartidasJugadas) + "%" },
+                                { etiqueta: "Racha actual", valor: ventana.statsRachaActual + "" },
+                                { etiqueta: "Mejor racha", valor: ventana.statsRachaMaxima + "" },
+                                { etiqueta: "Manos jugadas", valor: ventana.statsManosJugadas + "" },
+                                { etiqueta: "Manos ganadas", valor: ventana.statsManosGanadas + "" },
+                                { etiqueta: "Mayor bote ganado", valor: ventana.statsMayorBote + "", esDinero: true },
+                                { etiqueta: "Mejor mano", valor: ventana.statsMejorManoFecha > 0
+                                      ? ventana.statsMejorManoNombre + " (" + ventana.formatearFechaCorta(ventana.statsMejorManoFecha) + ")"
+                                      : "—" }
+                            ]
+                            delegate: Row {
+                                required property var modelData
+                                width: parent.width
+                                Text {
+                                    width: parent.width - 150 * Tema.escala
+                                    text: modelData.etiqueta
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Row {
+                                    width: 150 * Tema.escala
+                                    layoutDirection: Qt.RightToLeft
+                                    spacing: 3 * Tema.escala
+                                    IconoFicha {
+                                        visible: modelData.esDinero === true
+                                        width: 10 * Tema.escala
+                                        height: width
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        colorFicha: Tema.colorTexto
+                                    }
+                                    Text {
+                                        text: modelData.valor
+                                        color: Tema.colorTexto
+                                        font.pixelSize: 11 * Tema.escala
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                        }
+
+                        // Combinaciones mostradas alguna vez en un showdown.
+                        // Lista de UNA columna y letra a 11 -- el mismo arreglo
+                        // que ya tenía el cliente de escritorio, pedido para
+                        // móvil el 2026-09-10 ("sin razón es más pequeña que el
+                        // resto"). Antes era una rejilla de 2 columnas a 10 con
+                        // la cabecera a 9, más pequeña que las estadísticas de
+                        // justo encima (11), y subir la letra sin quitar la
+                        // rejilla habría cortado "Escalera de color" en medio
+                        // ancho. Va dentro del ScrollView de Cuenta, así que
+                        // las filas de más no le quitan sitio a nada.
+                        Text {
+                            text: "COMBINACIONES MOSTRADAS"
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 10 * Tema.escala
+                            font.letterSpacing: 1
+                            topPadding: 6 * Tema.escala
+                        }
+                        Column {
+                            width: parent.width
+                            spacing: 4 * Tema.escala
+                            Repeater {
+                                model: [
+                                    { etiqueta: "Carta alta", valor: ventana.statsVecesCartaAlta },
+                                    { etiqueta: "Pareja", valor: ventana.statsVecesPareja },
+                                    { etiqueta: "Doble pareja", valor: ventana.statsVecesDoblePareja },
+                                    { etiqueta: "Trío", valor: ventana.statsVecesTrio },
+                                    { etiqueta: "Escalera", valor: ventana.statsVecesEscalera },
+                                    { etiqueta: "Color", valor: ventana.statsVecesColor },
+                                    { etiqueta: "Full House", valor: ventana.statsVecesFullHouse },
+                                    { etiqueta: "Póker", valor: ventana.statsVecesPoker },
+                                    { etiqueta: "Escalera de color", valor: ventana.statsVecesEscaleraColor },
+                                    { etiqueta: "Escalera real", valor: ventana.statsVecesEscaleraReal }
+                                ]
+                                delegate: Row {
+                                    required property var modelData
+                                    width: parent.width
+                                    Text {
+                                        width: parent.width - 44 * Tema.escala
+                                        text: modelData.etiqueta
+                                        color: modelData.valor > 0 ? Tema.colorTextoTenue : Tema.colorTextoMuyTenue
+                                        font.pixelSize: 11 * Tema.escala
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        // 44 en vez de 26: con una sola columna
+                                        // sobra sitio, y un recuento de manos de
+                                        // cuatro o cinco cifras en negrita no
+                                        // cabía en 26.
+                                        width: 44 * Tema.escala
+                                        text: modelData.valor + ""
+                                        color: modelData.valor > 0 ? Tema.colorAccent : Tema.colorTextoMuyTenue
+                                        font.bold: modelData.valor > 0
+                                        font.pixelSize: 11 * Tema.escala
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    MarcoHueco {
+                        id: cajaNuevoUsernameMovil
+                        width: parent.width
+                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                        radius: 10 * Tema.escala
+                        activo: areaNuevoUsernameMovil.pressed
+                        property string valor: ""
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cajaNuevoUsernameMovil.valor !== "" ? cajaNuevoUsernameMovil.valor : "Nuevo nombre de usuario"
+                            color: cajaNuevoUsernameMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                            font.pixelSize: 12 * Tema.escala
+                            elide: Text.ElideRight
+                            width: parent.width - 20 * Tema.escala
+                        }
+                        MouseArea {
+                            id: areaNuevoUsernameMovil
+                            anchors.fill: parent
+                            onClicked: campoNuevoUsernameMovil.abrir(cajaNuevoUsernameMovil.valor)
+                        }
+                        CampoEmergente {
+                            id: campoNuevoUsernameMovil
+                            parent: Overlay.overlay
+                            etiqueta: "Nuevo nombre de usuario"
+                            onAceptado: (texto) => cajaNuevoUsernameMovil.valor = texto
+                        }
+                    }
+                    BotonContorno {
+                        text: "Cambiar nombre de usuario"
+                        onClicked: {
+                            if (cajaNuevoUsernameMovil.valor.length < 3) {
+                                ventana.mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
+                                return;
+                            }
+                            ventana.mensajeErrorLogin = "";
+                            redcliente.cambiarNombreUsuario(ventana.servidorHost, ventana.servidorPuerto,
+                                                            ventana.tokenSesion, cajaNuevoUsernameMovil.valor);
+                        }
+                    }
+
+                    MarcoHueco {
+                        id: cajaPasswordActualMovil
+                        width: parent.width
+                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                        radius: 10 * Tema.escala
+                        activo: areaPasswordActualMovil.pressed
+                        property string valor: ""
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cajaPasswordActualMovil.valor !== "" ? "••••••••" : "Contraseña actual"
+                            color: cajaPasswordActualMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                            font.pixelSize: 12 * Tema.escala
+                        }
+                        MouseArea {
+                            id: areaPasswordActualMovil
+                            anchors.fill: parent
+                            onClicked: campoPasswordActualMovil.abrir(cajaPasswordActualMovil.valor)
+                        }
+                        CampoEmergente {
+                            id: campoPasswordActualMovil
+                            parent: Overlay.overlay
+                            etiqueta: "Contraseña actual"
+                            esPassword: true
+                            onAceptado: (texto) => cajaPasswordActualMovil.valor = texto
+                        }
+                    }
+                    MarcoHueco {
+                        id: cajaPasswordNuevaMovil
+                        width: parent.width
+                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                        radius: 10 * Tema.escala
+                        activo: areaPasswordNuevaMovil.pressed
+                        property string valor: ""
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cajaPasswordNuevaMovil.valor !== "" ? "••••••••" : "Contraseña nueva (8+ caracteres)"
+                            color: cajaPasswordNuevaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                            font.pixelSize: 12 * Tema.escala
+                            elide: Text.ElideRight
+                            width: parent.width - 20 * Tema.escala
+                        }
+                        MouseArea {
+                            id: areaPasswordNuevaMovil
+                            anchors.fill: parent
+                            onClicked: campoPasswordNuevaMovil.abrir(cajaPasswordNuevaMovil.valor)
+                        }
+                        CampoEmergente {
+                            id: campoPasswordNuevaMovil
+                            parent: Overlay.overlay
+                            etiqueta: "Contraseña nueva"
+                            esPassword: true
+                            onAceptado: (texto) => cajaPasswordNuevaMovil.valor = texto
+                        }
+                    }
+                    BotonContorno {
+                        text: "Cambiar contraseña"
+                        onClicked: {
+                            if (cajaPasswordActualMovil.valor.length === 0) {
+                                ventana.mensajeErrorLogin = "Escribe tu contraseña actual.";
+                                return;
+                            }
+                            if (cajaPasswordNuevaMovil.valor.length < 8) {
+                                ventana.mensajeErrorLogin = "La contraseña nueva debe tener al menos 8 caracteres.";
+                                return;
+                            }
+                            ventana.mensajeErrorLogin = "";
+                            redcliente.cambiarPassword(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                       cajaPasswordActualMovil.valor, cajaPasswordNuevaMovil.valor);
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorPeligro
+                        font.pixelSize: 11 * Tema.escala
+                        text: ventana.mensajeErrorLogin
+                        visible: ventana.mensajeErrorLogin !== ""
+                    }
+
+                    BotonContorno {
+                        text: "Cerrar sesión"
+                        colorBorde: Tema.colorPeligro
+                        // Gestionar la cuenta exige servidor -- ver el
+                        // comentario gemelo en qml/Main.qml.
+                        visible: !ventana.sesionOffline
+                        onClicked: {
+                            redcliente.cerrarSesion(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                        }
+                    }
+                }
+
+                // ── Progreso -- Fase M1, terminada 2026-09-01 (ver memoria
+                // qt_mobile_progression_port_plan). Port directo del
+                // Progreso de escritorio (Main.qml de qml/): XP/Nivel
+                // arriba, marco actual + barra hacia el siguiente, roadmap
+                // de todos los marcos abajo -- todo un solo bloque que
+                // scrollea junto con el resto de la pestaña (sin scroll
+                // anidado propio, mismo criterio ya revertido en
+                // escritorio el mismo día: "una pagina con el progreso y
+                // roadmap todo scrolleable como conjunto es mejor"). Sin
+                // caso "invitado" -- ya lo cubre el aviso a nivel de toda
+                // la pantalla Cuenta, más arriba.
+                Column {
+                    width: parent.width
+                    visible: ventana.pestanaCuentaActual === 1
+                    spacing: 20 * Tema.escala
+
+                    Row {
+                        width: parent.width
+                        spacing: 16 * Tema.escala
+                        AnilloNivel {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 64 * Tema.escala
+                            height: width
+                            nivel: ventana.progresoNivelActual.nivel
+                            fraccion: ventana.progresoNivelActual.xpEnNivel / Math.max(1, ventana.progresoNivelActual.xpParaSiguiente)
+                        }
+                        Text {
+                            width: parent.width - 64 * Tema.escala - parent.spacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            wrapMode: Text.WordWrap
+                            text: ventana.progresoNivelActual.xpEnNivel + " / " + ventana.progresoNivelActual.xpParaSiguiente + " XP para el siguiente nivel"
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 11 * Tema.escala
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 10 * Tema.escala
+
+                        Item {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 72 * Tema.escala * 2.1
+                            height: width
+                            Avatar {
+                                anchors.centerIn: parent
+                                letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                                tamano: 72 * Tema.escala
+                                marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
+                                textura: redcliente.loadoutMarco.textura || ""
+                                efecto: redcliente.loadoutMarco.efecto || ""
+                                decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
+                                decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
+                                decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                            }
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Marco actual: " + ventana.nombreMarco(Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico))
+                            color: Tema.colorTexto
+                            font.bold: true
+                            font.pixelSize: 14 * Tema.escala
+                        }
+
+                        Column {
+                            width: parent.width
+                            visible: ventana.statsPartidasGanadas < 50
+                            spacing: 6 * Tema.escala
+                            Row {
+                                width: parent.width
+                                Text {
+                                    width: parent.width - 140 * Tema.escala
+                                    text: "Siguiente: " + ventana.nombreProximoMarco(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Text {
+                                    width: 140 * Tema.escala
+                                    horizontalAlignment: Text.AlignRight
+                                    text: ventana.statsPartidasGanadas + " / " + ventana.proximoUmbralMarco(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico) + " victorias"
+                                    color: Tema.colorTexto
+                                    font.bold: true
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                            }
+                            Rectangle {
+                                id: pistaProgresoMarcoMovil
+                                width: parent.width
+                                height: 7 * Tema.escala
+                                radius: height / 2
+                                color: Qt.rgba(1, 1, 1, 0.08)
+                                Rectangle {
+                                    width: pistaProgresoMarcoMovil.width * Math.min(1.0,
+                                        (ventana.statsPartidasGanadas - ventana.umbralAnteriorMarco(ventana.statsPartidasGanadas)) /
+                                        Math.max(1, ventana.proximoUmbralMarco(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico) - ventana.umbralAnteriorMarco(ventana.statsPartidasGanadas)))
+                                    height: parent.height
+                                    radius: parent.radius
+                                    gradient: Gradient {
+                                        orientation: Gradient.Horizontal
+                                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorAccent, 1.3) }
+                                        GradientStop { position: 1.0; color: Tema.colorAccent }
+                                    }
+                                    // Sin dithering: cuando está activo esto es un
+                                    // botón DORADO, y los dorados van limpios
+                                    // (2026-09-09) -- ver BotonRelleno.qml.
+                                }
+                            }
+                        }
+                        Text {
+                            width: parent.width
+                            visible: ventana.statsPartidasGanadas >= 50
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: "Has desbloqueado el marco más alto: Platino."
+                            color: Tema.colorAccent
+                            font.bold: true
+                            font.pixelSize: 12 * Tema.escala
+                        }
+                        Text {
+                            width: parent.width
+                            visible: ventana.statsPartidasJugadas === 0
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: "Gana partidas oficiales (con otras personas reales) para avanzar de marco."
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 11 * Tema.escala
+                        }
+                    }
+
+                    // ── Roadmap de marcos: TODOS los tiers a la vez, mismo
+                    // criterio que escritorio.
+                    Column {
+                        width: parent.width
+                        spacing: 14 * Tema.escala
+
+                        Text {
+                            text: "Todos los marcos"
+                            color: Tema.colorTexto
+                            font.bold: true
+                            font.pixelSize: 14 * Tema.escala
+                        }
+
+                        Column {
+                            width: parent.width
+                            spacing: 8 * Tema.escala
+
+                            Repeater {
+                                model: [
+                                    { tier: "hierro",  etiqueta: "Hierro",  umbral: 1 },
+                                    { tier: "bronce",  etiqueta: "Bronce",  umbral: 5 },
+                                    { tier: "plata",   etiqueta: "Plata",   umbral: 15 },
+                                    { tier: "oro",     etiqueta: "Oro",     umbral: 25 },
+                                    { tier: "platino", etiqueta: "Platino", umbral: 50 }
+                                ]
+                                delegate: Item {
+                                    id: filaMarcoRoadmapMovil
+                                    required property var modelData
+                                    width: parent.width
+                                    height: 64 * Tema.escala
+                                    readonly property bool conseguido: filaMarcoRoadmapMovil.modelData.tier === "hierro"
+                                        ? (ventana.statsPartidasGanadas >= 1 || ventana.statsTieneMarcoBasico)
+                                        : ventana.statsPartidasGanadas >= filaMarcoRoadmapMovil.modelData.umbral
+
+                                    Row {
+                                        // Margen izquierdo -- el anillo del
+                                        // Avatar sangra un 16% más allá de
+                                        // su propio tamano (ver Avatar.qml),
+                                        // sin esto se recorta contra el
+                                        // borde del ScrollView (mismo bug
+                                        // ya arreglado en escritorio).
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 10 * Tema.escala
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 12 * Tema.escala
+
+                                        Avatar {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                                            tamano: 46 * Tema.escala
+                                            marco: filaMarcoRoadmapMovil.modelData.tier
+                                        }
+                                        Column {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 46 * Tema.escala - 76 * Tema.escala - 2 * parent.spacing
+                                            spacing: 5 * Tema.escala
+                                            Text {
+                                                text: filaMarcoRoadmapMovil.modelData.etiqueta
+                                                color: filaMarcoRoadmapMovil.conseguido ? Tema.colorTexto : Tema.colorTextoTenue
+                                                font.bold: true
+                                                font.pixelSize: 12 * Tema.escala
+                                            }
+                                            Rectangle {
+                                                width: parent.width
+                                                height: 6 * Tema.escala
+                                                radius: height / 2
+                                                color: Qt.rgba(1, 1, 1, 0.08)
+                                                Rectangle {
+                                                    width: parent.width * Math.min(1.0, ventana.statsPartidasGanadas / filaMarcoRoadmapMovil.modelData.umbral)
+                                                    height: parent.height
+                                                    radius: parent.radius
+                                                    color: filaMarcoRoadmapMovil.conseguido ? Tema.colorAccent : Qt.lighter(Tema.colorAccent, 1.3)
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 76 * Tema.escala
+                                            horizontalAlignment: Text.AlignRight
+                                            text: filaMarcoRoadmapMovil.conseguido ? "Conseguido" : (ventana.statsPartidasGanadas + " / " + filaMarcoRoadmapMovil.modelData.umbral)
+                                            color: filaMarcoRoadmapMovil.conseguido ? Tema.colorAccent : Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                            font.bold: filaMarcoRoadmapMovil.conseguido
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Logros -- Fase M1, terminada 2026-09-01 (ver memoria
+                // qt_mobile_progression_port_plan). Port directo del
+                // catálogo de escritorio: se muestran TODOS, desbloqueados
+                // o no (atenuados si no) -- la idea es que se vea qué se
+                // puede conseguir y cómo, no solo lo ya logrado.
+                Column {
+                    width: parent.width
+                    visible: ventana.pestanaCuentaActual === 2
+                    spacing: 12 * Tema.escala
+
+                    Text {
+                        text: ventana.logrosDesbloqueados() + " / " + logrosModel.count + " desbloqueados"
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
+                    }
+
+                    Repeater {
+                        model: logrosModel
+                        delegate: Rectangle {
+                            id: tarjetaLogroMovil
+                            required property string codigo
+                            required property string rareza
+                            required property int xpRecompensa
+                            required property int desbloqueado
+                            required property int desbloqueadoEn
+                            required property string nombre
+                            required property string descripcion
+
+                            width: parent ? parent.width : 0
+                            height: filaLogroMovil.height + 20 * Tema.escala
+                            radius: 8 * Tema.escala
+                            opacity: desbloqueado ? 1.0 : 0.55
+                            border.width: 1
+                            border.color: desbloqueado ? ventana.colorRareza(rareza) : Qt.rgba(1, 1, 1, 0.12)
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                GradientStop { position: 1.0; color: Tema.colorPanel }
+                            }
+                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                            layer.enabled: true
+                            layer.effect: ShaderEffect {
+                                property variant source
+                                property real amplitud: 30.0
+                                fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                            }
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4 * Tema.escala
+                                radius: 3 * Tema.escala
+                                color: ventana.colorRareza(tarjetaLogroMovil.rareza)
+                            }
+
+                            Row {
+                                id: filaLogroMovil
+                                anchors.left: parent.left
+                                anchors.leftMargin: 16 * Tema.escala
+                                anchors.right: parent.right
+                                anchors.rightMargin: 14 * Tema.escala
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 12 * Tema.escala
+
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 34 * Tema.escala
+                                    height: width
+                                    radius: width / 2
+                                    color: tarjetaLogroMovil.desbloqueado ? ventana.colorRareza(tarjetaLogroMovil.rareza) : "transparent"
+                                    border.width: 1.5
+                                    border.color: ventana.colorRareza(tarjetaLogroMovil.rareza)
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: tarjetaLogroMovil.desbloqueado ? "✓" : tarjetaLogroMovil.rareza.charAt(0).toUpperCase()
+                                        color: tarjetaLogroMovil.desbloqueado ? Tema.colorFondo : ventana.colorRareza(tarjetaLogroMovil.rareza)
+                                        font.bold: true
+                                        font.pixelSize: 14 * Tema.escala
+                                    }
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - 34 * Tema.escala - 12 * Tema.escala - 60 * Tema.escala - 12 * Tema.escala
+                                    spacing: 3 * Tema.escala
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 6 * Tema.escala
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: tarjetaLogroMovil.nombre
+                                            color: Tema.colorTexto
+                                            font.bold: true
+                                            font.pixelSize: 12 * Tema.escala
+                                        }
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: etiquetaRarezaTextoMovil.width + 10 * Tema.escala
+                                            height: 14 * Tema.escala
+                                            radius: height / 2
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: ventana.colorRareza(tarjetaLogroMovil.rareza)
+                                            Text {
+                                                id: etiquetaRarezaTextoMovil
+                                                anchors.centerIn: parent
+                                                text: ventana.etiquetaRareza(tarjetaLogroMovil.rareza)
+                                                color: ventana.colorRareza(tarjetaLogroMovil.rareza)
+                                                font.pixelSize: 8 * Tema.escala
+                                                font.bold: true
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: tarjetaLogroMovil.descripcion
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Text {
+                                        visible: tarjetaLogroMovil.desbloqueado === 1
+                                        text: "Desbloqueado el " +
+                                              Qt.formatDate(new Date(tarjetaLogroMovil.desbloqueadoEn * 1000), "d MMM yyyy") +
+                                              " · +" + tarjetaLogroMovil.xpRecompensa + " XP"
+                                        color: ventana.colorRareza(tarjetaLogroMovil.rareza)
+                                        font.pixelSize: 9 * Tema.escala
+                                    }
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 60 * Tema.escala
+                                    horizontalAlignment: Text.AlignRight
+                                    visible: tarjetaLogroMovil.desbloqueado !== 1
+                                    text: ventana.progresoLogro(tarjetaLogroMovil.codigo)
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 10 * Tema.escala
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+
+        // ── Personalizar (pestaña 3) -- layout propio, FUERA del
+        // ScrollView de arriba (2026-09-02, pedido explícito: "mismo
+        // principio que en PC, a la hora de... personalizar el avatar
+        // tiene que ser visible... ponlo a la derecha, los elementos a
+        // la izquierda y scrolleables" + "el segundo slider [Texturas/
+        // Efectos/Decoraciones/Títulos]... hay que hacer un mini riel
+        // para estas cosas en movil, para aprovechar la horizontal,
+        // pero no comernos altura"). Antes todo apilado en una Column
+        // (mini-selector horizontal + avatar arriba + rejilla debajo)
+        // dentro del mismo ScrollView que Perfil/Progreso/Logros -- el
+        // avatar se salía de la pantalla al bajar en la rejilla, y el
+        // SelectorSegmentado de 4 opciones quedaba apretado incluso en
+        // escritorio. Ahora: mini-riel vertical (categoría) + rejilla
+        // (scrollea sola) a la izquierda, avatar fijo a la derecha --
+        // ambos Items, no Column, para que la rejilla pueda anclarse al
+        // alto disponible y scrollear de forma nativa.
+        Item {
+            id: panelPersonalizarMovil
+            visible: ventana.pantalla === "Cuenta" && ventana.hayCuenta && ventana.pestanaCuentaActual === 3
+            anchors.fill: parent
+            anchors.margins: 16 * Tema.escala
+            // Vertical a 8 en vez de 16 (2026-09-10): la columna del
+            // mini-riel mide 208 en unidades de escala y en un móvil
+            // apaisado le quedaban 212 de alto -- dos de holgura, y el
+            // brillo del botón activo sale bastante más que eso. Con los
+            // 16 de más, el riel respira. Los márgenes laterales se quedan
+            // en 16, como en Tienda.
+            anchors.topMargin: 8 * Tema.escala
+            anchors.bottomMargin: 8 * Tema.escala
+
+            // (Sin Text de mensajeTienda aquí -- bug real reportado
+            // 2026-09-02: "el mensaje tambien aparece en la
+            // personalizacion, ya que antes teniamos esa funcionalidad
+            // implementada por error". Confirmado, mismo motivo que en
+            // escritorio (ver el comentario ahí): resto de cuando
+            // Personalizar compraba de verdad, antes de que Tienda saliera
+            // a su propia pantalla -- Personalizar solo equipa, un error
+            // de COMPRA no tiene nada que hacer aquí, y al compartir la
+            // property con Tienda se quedaba pegado sin que nada de esta
+            // pestaña lo limpiara.)
+            Row {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                spacing: 14 * Tema.escala
+
+                // Mini-riel vertical de categoría -- mismo lenguaje visual
+                // que rielNavegacionMovil (caja redondeada, realce de
+                // acento cuando está activa) a tamaño reducido, en vez
+                // del SelectorSegmentado horizontal de antes. Panel de
+                // fondo NUEVO (2026-09-02, pedido explícito: "aun se ve
+                // muy suelto, no se reconoce como una columna de
+                // pestañas") -- antes los 4 botones flotaban sueltos
+                // directo sobre el fondo de la pantalla; ahora viven
+                // DENTRO de una caja propia (mismo degradado/borde que
+                // rielNavegacionMovil, el riel principal) que los agrupa
+                // visualmente en una sola tira, igual que ese riel agrupa
+                // sus propios iconos.
+                // Sin tarjeta propia (2026-09-10, pedido explícito: "quita las
+                // tarjetas hermanas... deja que eso flote en la pestaña
+                // principal", igual que en Tienda). Tuvo una hasta ese día, con
+                // capa de dithering, y esa capa era la que cortaba los botones
+                // "por arriba y por abajo": layer.enabled pinta a sus hijos en una
+                // textura del tamaño del item, así que lo que sobresale se pierde,
+                // y el brillo del botón activo sobresale de sobra. Ahora es un Item
+                // sin capa y sin clip: nada lo recorta.
+                Item {
+                    id: minirielPersonalizarMovil
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: columnaMinirielMovil.width + 16 * Tema.escala
+
+                    Column {
+                        id: columnaMinirielMovil
+                        anchors.centerIn: parent
+                        width: 76 * Tema.escala
+                        spacing: 8 * Tema.escala
+                        Repeater {
+                            model: ["Texturas", "Efectos", "Decoraciones", "Títulos"]
+                            // "Ficha de casino" (2026-09-02, diseño A elegido por
+                            // el usuario tras el artifact "Tarjetas de Mesa
+                            // Real") -- activo usa EL MISMO degradado metálico
+                            // de 3 paradas que BotonRelleno ("Iniciar sesión"),
+                            // no un relleno plano nuevo. Envuelto en un Item
+                            // (antes el Rectangle era la raíz del delegate) para
+                            // poder meter la sombra desplazada detrás sin que
+                            // escale junto con el botón.
+                            delegate: Item {
+                                id: envolturaMinirielMovil
+                                required property string modelData
+                                required property int index
+                                readonly property bool activo: envolturaMinirielMovil.index === ventana.pestanaPersonalizarActual
+                                width: columnaMinirielMovil.width
+                                height: Math.max(Tema.tamanoMinTactil, 46 * Tema.escala)
+
+                            // Sombra -- el inactivo queda a ras (sin
+                            // sombra) para que el realce se note por
+                            // contraste, no solo por color. El activo NO
+                            // lleva esta sombra plana -- lleva el brillo
+                            // dorado de verdad de abajo (MultiEffect).
+                            Rectangle {
+                                visible: !envolturaMinirielMovil.activo && areaMinirielMovil.pressed
+                                anchors.fill: parent
+                                anchors.topMargin: 3 * Tema.escala
+                                radius: 10 * Tema.escala
+                                color: "black"
+                                opacity: 0.35
+                            }
+
+                            // Brillo dorado de verdad alrededor del botón
+                            // activo (2026-09-02, pedido explícito tras ver
+                            // el artifact: "en el riel hay bastante
+                            // diferencia... se simula un brillo desde el
+                            // boton"). autoPaddingEnabled reserva sitio de
+                            // sobra para que el resplandor no se recorte
+                            // contra el propio Item (46*escala de alto).
+                            MultiEffect {
+                                anchors.centerIn: botonMinirielMovil
+                                width: botonMinirielMovil.width
+                                height: botonMinirielMovil.height
+                                source: botonMinirielMovil
+                                autoPaddingEnabled: true
+                                shadowEnabled: true
+                                shadowColor: Tema.colorAccent
+                                shadowOpacity: envolturaMinirielMovil.activo ? 0.65 : 0
+                                shadowBlur: 0.7
+                                shadowHorizontalOffset: 0
+                                shadowVerticalOffset: 0
+                                Behavior on shadowOpacity { NumberAnimation { duration: 120 } }
+                            }
+
+                            Rectangle {
+                                id: botonMinirielMovil
+                                anchors.fill: parent
+                                radius: 10 * Tema.escala
+                                color: "transparent"
+                                scale: areaMinirielMovil.pressed ? 0.96 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                // Degradado + dithering en un Rectangle HIJO, no
+                                // aquí -- ver el comentario largo en
+                                // SelectorSegmentado.qml. Resumen: el MultiEffect
+                                // de arriba usa "source: botonMinirielMovil", y
+                                // ponerle layer.effect al propio item que otro
+                                // efecto captura hace que el MultiEffect pinte su
+                                // propia copia encogida encima. Aquí se veía peor
+                                // que en el selector porque el botón lleva texto
+                                // dentro: salía DOS VECES, a dos tamaños (bug real
+                                // reportado 2026-09-09 con capturas -- "Texturas",
+                                // "Efectos", "Decoraciones" y "Títulos"
+                                // duplicados).
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: parent.radius
+                                    gradient: Gradient {
+                                        GradientStop {
+                                            position: 0.0
+                                            color: envolturaMinirielMovil.activo ? Qt.lighter(Tema.colorAccent, 1.35) : Qt.rgba(1, 1, 1, 0.045)
+                                        }
+                                        GradientStop {
+                                            position: 0.5
+                                            color: envolturaMinirielMovil.activo ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.1)
+                                        }
+                                        GradientStop {
+                                            position: 1.0
+                                            color: envolturaMinirielMovil.activo ? Qt.darker(Tema.colorAccent, 1.2) : Qt.rgba(0, 0, 0, 0.2)
+                                        }
+                                    }
+                                    // El borde va AQUÍ, no en el padre: un
+                                    // Rectangle pinta su borde antes que a
+                                    // sus hijos, así que un hijo que lo
+                                    // llena entero se lo comería.
+                                    border.width: 1
+                                    // Antes rgba(1,1,1,.35) -- blanco puro sobre
+                                    // dorado se veía como un anillo grisáceo
+                                    // (bug real reportado 2026-09-02). Un dorado
+                                    // más claro que el propio relleno, no blanco.
+                                    border.color: envolturaMinirielMovil.activo ? Qt.lighter(Tema.colorAccent, 1.6) : Tema.colorBorde
+                                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                                    layer.enabled: true
+                                    layer.effect: ShaderEffect {
+                                        property variant source
+                                        property real amplitud: 3.0
+                                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                    }
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    width: parent.width - 8 * Tema.escala
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    text: envolturaMinirielMovil.modelData
+                                    font.bold: envolturaMinirielMovil.activo
+                                    color: envolturaMinirielMovil.activo ? Tema.colorPanel : Tema.colorTextoTenue
+                                    font.pixelSize: 10 * Tema.escala
+                                }
+                                MouseArea {
+                                    id: areaMinirielMovil
+                                    anchors.fill: parent
+                                    onClicked: ventana.pestanaPersonalizarActual = envolturaMinirielMovil.index
+                                }
+                            }
+                        }
+                    }
+                } // fin de columnaMinirielMovil
+                } // fin de minirielPersonalizarMovil
+
+                // Catálogo de lo ya poseído -- llena el resto del alto
+                // disponible y scrollea de forma nativa (GridView es un
+                // Flickable), ya no comparte scroll con el avatar.
+                Item {
+                    id: columnaGridPersonalizarMovil
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width - minirielPersonalizarMovil.width - columnaPreviewPersonalizarMovil.width - parent.spacing * 2
+
+                    Text {
+                        anchors.top: parent.top
+                        width: parent.width
+                        visible: ventana.itemsPersonalizar.length === 0
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: "Todavía no tienes nada de esto -- consíguelo en la Tienda."
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    GridView {
+                        id: gridPersonalizarMovil
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        visible: ventana.itemsPersonalizar.length > 0
+                        clip: true
+                        // TODAS las categorías usan ya la tarjeta compacta
+                        // (2026-09-02, pedido explícito: "las decoraciones
+                        // ya estan bien hechas... en todos los cosmeticos
+                        // debe ser igual") -- antes solo Decoraciones,
+                        // Texturas/Efectos/Títulos se habían quedado con
+                        // la tarjeta grande de botón, "se ven feos".
+                        cellWidth: Math.floor(width / Math.max(1, Math.floor(width / (92 * Tema.escala))))
+                        cellHeight: 92 * Tema.escala
+                        model: ventana.itemsPersonalizar
+                        delegate: Item {
+                            id: celdaPersonalizarMovil
+                            required property string codigo
+                            required property string categoria
+                            required property string nombre
+                            required property string rareza
+                            required property int equipado
+                            width: gridPersonalizarMovil.cellWidth
+                            height: gridPersonalizarMovil.cellHeight
+
+                            // "Ficha de casino" (2026-09-02, diseño A
+                            // elegido por el usuario tras el artifact
+                            // "Tarjetas de Mesa Real") -- sombra desplazada
+                            // barata (mismo criterio que BarraSuperior.qml),
+                            // SIN escalar con la tarjeta.
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 5 * Tema.escala
+                                anchors.topMargin: 5 * Tema.escala + 3 * Tema.escala
+                                radius: 8 * Tema.escala
+                                color: "black"
+                                opacity: 0.35
+                            }
+
+                            Rectangle {
+                                id: tarjetaPersonalizarMovil
+                                anchors.fill: parent
+                                anchors.margins: 5 * Tema.escala
+                                radius: 8 * Tema.escala
+                                // Tarjeta compacta, sin botones, se toca
+                                // para equipar/desequipar -- pedido
+                                // explícito 2026-09-02: "quita el boton...
+                                // pulsando encima añade una animacion
+                                // igual a la tienda... la diferencia de
+                                // brillo... es lenguaje no textual
+                                // suficiente... en todos los cosmeticos
+                                // debe ser igual" (antes solo Decoraciones,
+                                // ahora las 4 categorías por igual).
+                                // Bug real reportado 2026-09-02: "la caja
+                                // se queda igual, solo se desequipa" -- el
+                                // borde de "no equipado" copiaba el de "no
+                                // poseído" de la Tienda (negro
+                                // semitransparente), que en tema oscuro se
+                                // confunde con el fondo y parece que la
+                                // tarjeta entera desaparece. Aquí TODO lo
+                                // que se ve ya es tuyo (itemsPersonalizar
+                                // solo lista poseído===1) -- el borde
+                                // SIEMPRE debe notarse, solo cambia de
+                                // intensidad según esté puesto o no.
+                                border.width: celdaPersonalizarMovil.equipado ? 1.8 : 1.2
+                                border.color: celdaPersonalizarMovil.equipado ? Tema.colorAccent : Qt.darker(Tema.colorAccent, 1.8)
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                                }
+                                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                                layer.enabled: true
+                                layer.effect: ShaderEffect {
+                                    property variant source
+                                    property real amplitud: 30.0
+                                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                }
+                                // Mismo encogido reactivo que la Tienda al
+                                // tocar.
+                                scale: areaTogglePersonalizarMovil.pressed ? 0.97 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 100 } }
+
+                                // Hilo dorado por dentro del bisel exterior
+                                // -- el "doble bisel" de ficha de casino.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 2 * Tema.escala
+                                    radius: parent.radius - 2 * Tema.escala
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                           celdaPersonalizarMovil.equipado ? 0.55 : 0.28)
+                                }
+
+                                // Toca la tarjeta entera para equipar/
+                                // desequipar. Lateral no elige lado a
+                                // mano: si ya está puesta (en cualquiera de
+                                // los dos huecos) la quita; si no, va al
+                                // primer hueco libre (o sobreescribe el
+                                // izquierdo si los dos están ocupados) --
+                                // mismo criterio de reparto que ya usa
+                                // adminConcederItem(). El resto de
+                                // categorías (un único hueco) alterna
+                                // Equipar/Quitar sin más.
+                                MouseArea {
+                                    id: areaTogglePersonalizarMovil
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (celdaPersonalizarMovil.categoria === "decoracion_lateral") {
+                                            var enIzq = redcliente.loadoutMarco.decoracionLateral1 === celdaPersonalizarMovil.codigo;
+                                            var enDer = redcliente.loadoutMarco.decoracionLateral2 === celdaPersonalizarMovil.codigo;
+                                            if (enIzq) {
+                                                redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                    "decoracion_lateral_1", "");
+                                            } else if (enDer) {
+                                                redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                    "decoracion_lateral_2", "");
+                                            } else {
+                                                var libre1 = (redcliente.loadoutMarco.decoracionLateral1 || "") === "";
+                                                var libre2 = (redcliente.loadoutMarco.decoracionLateral2 || "") === "";
+                                                var slotDestino = libre1 ? "decoracion_lateral_1" : (libre2 ? "decoracion_lateral_2" : "decoracion_lateral_1");
+                                                redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                    slotDestino, celdaPersonalizarMovil.codigo);
+                                            }
+                                        } else {
+                                            redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                celdaPersonalizarMovil.categoria,
+                                                celdaPersonalizarMovil.equipado === 1 ? "" : celdaPersonalizarMovil.codigo);
+                                        }
+                                    }
+                                }
+
+                                // Icono + nombre corto, sin texto de estado
+                                // ni botón -- el brillo del borde de arriba
+                                // ya dice si está puesto. Títulos no tienen
+                                // icono (rutaIconoObjetoTienda() nunca
+                                // devuelve uno para "titulo") -- en su
+                                // lugar el propio nombre se pinta con el
+                                // mismo lenguaje "material" que CajaTitulo
+                                // (color por rareza, cursiva), para que la
+                                // tarjeta no se quede con un hueco vacío
+                                // arriba.
+                                Column {
+                                    anchors.centerIn: parent
+                                    width: parent.width - 10 * Tema.escala
+                                    spacing: 4 * Tema.escala
+                                    Image {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        visible: source !== ""
+                                        width: visible ? 38 * Tema.escala : 0
+                                        height: width
+                                        fillMode: Image.PreserveAspectFit
+                                        smooth: true
+                                        // mipmap aunque sea pequeña: Qt comparte la textura de un
+                                        // PNG entre todas las Image que lo cargan -- ver el
+                                        // comentario gemelo en qml/Main.qml.
+                                        mipmap: true
+                                        source: ventana.rutaIconoObjetoTienda(celdaPersonalizarMovil.codigo, celdaPersonalizarMovil.categoria)
+                                    }
+                                    // Nombre normal (todo salvo títulos).
+                                    Text {
+                                        visible: celdaPersonalizarMovil.categoria !== "titulo"
+                                        width: parent.width
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                        text: celdaPersonalizarMovil.nombre
+                                        color: Tema.colorTexto
+                                        font.pixelSize: 10 * Tema.escala
+                                    }
+                                    // Títulos: mismo lenguaje "material" que
+                                    // CajaTitulo (color por rareza, cursiva,
+                                    // fuente elegante) -- sin esto se
+                                    // quedaban con un nombre gris igual que
+                                    // cualquier otro objeto, perdiendo la
+                                    // identidad visual que ya tienen en el
+                                    // resto de la app.
+                                    Text {
+                                        visible: celdaPersonalizarMovil.categoria === "titulo"
+                                        width: parent.width
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                        text: celdaPersonalizarMovil.nombre
+                                        color: ventana.colorRareza(celdaPersonalizarMovil.rareza)
+                                        font.italic: true
+                                        font.family: Tema.fuenteElegante
+                                        font.pixelSize: 11 * Tema.escala
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Avatar fijo a la derecha, con el loadout REAL (sin
+                // previsualización -- no hay "hover" táctil).
+                Column {
+                    id: columnaPreviewPersonalizarMovil
+                    anchors.top: parent.top
+                    width: 180 * Tema.escala
+                    spacing: 12 * Tema.escala
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "TU AVATAR"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 10 * Tema.escala
+                        font.letterSpacing: 1
+                    }
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 80 * Tema.escala * 2.1
+                        height: 80 * Tema.escala + 50 * Tema.escala
+                        Avatar {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                            tamano: 80 * Tema.escala
+                            marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
+                            textura: redcliente.loadoutMarco.textura || ""
+                            efecto: redcliente.loadoutMarco.efecto || ""
+                            decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
+                            decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
+                            decoracionSuperior: redcliente.loadoutMarco.decoracionSuperior || ""
+                        }
+                    }
+                    CajaTitulo {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        readonly property var infoTituloPropioMovil: ventana.objetoTiendaPorCodigo(redcliente.loadoutMarco.titulo || "")
+                        nombre: infoTituloPropioMovil ? infoTituloPropioMovil.nombre : ""
+                        colorTier: ventana.colorRareza(infoTituloPropioMovil ? infoTituloPropioMovil.rareza : "")
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Pantalla Tienda (Fase M2 del port de progresión a móvil,
+    // 2026-09-01, ver memoria qt_mobile_progression_port_plan) -- pantalla
+    // propia en el riel, port directo de escritorio (catálogo con
+    // búsqueda + selector de carta + comprar/equipar), mismo criterio
+    // "cabecera fija, panel con scroll" que Cuenta. Diferencia deliberada
+    // (mismo criterio ya fijado en Personalizar, Fase M1): SIN
+    // previsualización al tocar una tarjeta -- no hay "hover" táctil, el
+    // avatar de arriba pinta directo el loadout REAL, no lo que estés
+    // mirando. Apilado (avatar arriba, catálogo debajo) en vez del Row
+    // lateral de escritorio -- el panel es más estrecho en móvil, mismo
+    // criterio que Personalizar.
+    BarraSuperior {
+        id: barraTiendaMovil
+        visible: ventana.pantalla === "Tienda"
+        anchors.top: parent.top
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        textoCentro: "Tienda"
+        // Saldo de Tréboles en la barra superior, junto a Ajustes --
+        // mejor sitio que dentro del catálogo (pedido explícito
+        // 2026-09-02). -1 mientras no hay sesión (invitado no compra).
+        treboles: ventana.tokenSesion !== "" ? ventana.statsTreboles : -1
+        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
+    }
+    // ── Tienda: invitados ven un aviso + acceso a login/registro, mismo
+    // criterio que Cuenta/Social. ────────────────────────────────────────
+    Column {
+        visible: ventana.pantalla === "Tienda" && ventana.tokenSesion === ""
+        anchors.centerIn: parent
+        anchors.horizontalCenterOffset: rielNavegacionMovil.width / 2
+        spacing: 12 * Tema.escala
+        width: Math.min(340 * Tema.escala, ventana.width - rielNavegacionMovil.width - 60 * Tema.escala)
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: "Inicia sesión para entrar en la tienda."
+            color: Tema.colorTextoTenue
+            font.pixelSize: 13 * Tema.escala
+        }
+        BotonRelleno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Iniciar sesión"
+            onClicked: { ventana.mensajeErrorLogin = ""; ventana.pantalla = "Login"; }
+        }
+        BotonContorno {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Crear cuenta"
+            onClicked: { ventana.mensajeErrorLogin = ""; ventana.pantalla = "Registro"; }
+        }
+    }
+
+    // Selector Marco/Perfil FIJO, fuera del ScrollView -- mismo criterio
+    // que tabsCuentaMovil. Sin título "Tienda" (pedido explícito
+    // 2026-09-02: "borra el titulo superior asi ganamos altura, el
+    // titulo ya lo incluye la barra superior") -- barraTiendaMovil ya
+    // dice "Tienda" en su textoCentro, era el mismo texto dos veces.
+    // El buscador comparte fila con el selector Marco/Perfil en vez de
+    // ocupar una suya dentro del panel (pedido explícito 2026-09-09: "el
+    // móvil tiene poca altura, vamos a esconder la barra de búsqueda en un
+    // botón para desplegar cuando se necesite"). Así el buscador pasa a
+    // costar CERO alto: la fila ya existía.
+    //
+    // La lupa se pinta rellena cuando hay una búsqueda puesta -- sin la
+    // caja a la vista, es lo único que delata que el catálogo está
+    // filtrado, y "no encuentro un objeto que sé que tengo" por un filtro
+    // olvidado sería un mal rato tonto. Pulsarla reabre el campo con el
+    // texto dentro, así que vaciarlo y aceptar es cómo se quita.
+    Row {
+        id: cabeceraTiendaMovil
+        visible: ventana.pantalla === "Tienda" && ventana.tokenSesion !== ""
+        anchors.top: barraTiendaMovil.bottom
+        anchors.topMargin: 10 * Tema.escala
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.margins: 16 * Tema.escala
+        spacing: 8 * Tema.escala
+
+        SelectorSegmentado {
+            width: parent.width - botonBusquedaTiendaMovil.width - parent.spacing
+            opciones: ["Marco", "Perfil"]
+            seleccionado: ventana.pestanaTiendaActual
+            onElegido: (indice) => {
+                ventana.pestanaTiendaActual = indice;
+                // Mismo bug real que escritorio 2026-09-02 ("el mensaje no
+                // desaparece"): un error de compra/equipar se quedaba
+                // pegado al cambiar de Marco a Perfil (o viceversa).
+                ventana.mensajeTienda = "";
+                ventana.reordenarTienda();
+            }
+        }
+
+        MarcoRelieve {
+            id: botonBusquedaTiendaMovil
+            readonly property bool filtrando: ventana.busquedaTienda !== ""
+            width: Tema.tactil
+            height: Tema.tactil
+            radioMarco: 10 * Tema.escala
+            pulsado: areaBusquedaTiendaMovil.pressed
+            colorBase: botonBusquedaTiendaMovil.filtrando ? Tema.colorAccent : Tema.colorPanel
+
+            IconoLupa {
+                anchors.centerIn: parent
+                width: 19 * Tema.escala
+                height: width
+                color: botonBusquedaTiendaMovil.filtrando ? Tema.colorPanel : Tema.colorAccent
+            }
+            MouseArea {
+                id: areaBusquedaTiendaMovil
+                anchors.fill: parent
+                onClicked: campoBusquedaTiendaMovilPopup.abrir(ventana.busquedaTienda)
+            }
+            CampoEmergente {
+                id: campoBusquedaTiendaMovilPopup
+                parent: Overlay.overlay
+                etiqueta: "Buscar en la tienda"
+                onAceptado: (texto) => {
+                    ventana.busquedaTienda = texto;
+                    ventana.reordenarTienda();
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        id: panelTiendaMovil
+        visible: ventana.pantalla === "Tienda" && ventana.tokenSesion !== ""
+        anchors.top: cabeceraTiendaMovil.bottom
+        anchors.topMargin: 8 * Tema.escala
+        anchors.left: rielNavegacionMovil.right
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16 * Tema.escala
+        radius: 8 * Tema.escala
+        // LISO a propósito, sin degradado ni textura de tapete
+        // (2026-09-09, pedido explícito): "en los sitios que tengan fondo
+        // tapete y encima tarjetas con textura tapete, el fondo sea sin
+        // esa textura, resalta las tarjetas y se diferencia mejor". Este
+        // panel es justo eso -- el fondo sobre el que van las tarjetas de
+        // amigos / objetos / estadísticas, que sí llevan su fieltro.
+        //
+        // Antes de llegar aquí pasó por dos intentos que sobran, pero que
+        // conviene no repetir: un degradado corto SIN dithering (bandeó, y
+        // el escalón se veía como "una línea drástica de cambio de color"
+        // cruzando la tarjeta) y luego uno con dithering en un hijo. El
+        // segundo funcionaba; simplemente, liso queda mejor.
+        color: Tema.colorPanel
+        border.width: 1
+        border.color: Tema.colorBorde
+
+        // Avatar fijo a la DERECHA, catálogo a la izquierda y scrolleable
+        // dentro de sí mismo -- mismo principio que escritorio (2026-09-02,
+        // pedido explícito: "a la hora de comprar o personalizar el avatar
+        // tiene que ser visible... ponlo a la derecha, los elementos a la
+        // izquierda y scrolleables"). Antes todo apilado en una única
+        // Column dentro de un ScrollView -- en landscape móvil, con menos
+        // alto que una ventana de escritorio, el avatar se salía de la
+        // pantalla en cuanto el catálogo crecía un poco.
+        Item {
+            anchors.fill: parent
+            anchors.margins: 16 * Tema.escala
+
+            Row {
+                anchors.fill: parent
+                spacing: 16 * Tema.escala
+
+                Item {
+                    id: columnaCatalogoTiendaMovil
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width - columnaPreviewTiendaMovil.width - parent.spacing
+
+                    Column {
+                        id: cabeceraCatalogoTiendaMovil
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        spacing: 8 * Tema.escala
+
+                        // La caja de búsqueda vivía AQUÍ y se comía una fila
+                        // entera (suelo táctil de 44px + separación) encima
+                        // del catálogo. Desde 2026-09-09 es un botón de lupa
+                        // en cabeceraTiendaMovil, compartiendo fila con el
+                        // selector Marco/Perfil -- ver allí el porqué. Esta
+                        // Column se queda solo con el mensaje de error, que
+                        // casi siempre está vacío y entonces no ocupa alto.
+
+                        Text {
+                            width: parent.width
+                            visible: ventana.mensajeTienda !== ""
+                            wrapMode: Text.WordWrap
+                            color: Tema.colorPeligro
+                            text: ventana.mensajeTienda
+                            font.pixelSize: 11 * Tema.escala
+                        }
+                    }
+
+                // Catálogo en tarjetas -- mismo lenguaje visual que
+                // gridPersonalizarMovil, con precio/nivel y el botón
+                // Comprar que Personalizar no necesita. Llena el resto del
+                // alto disponible y scrollea de forma nativa (ya no
+                // comparte scroll con el avatar de al lado).
+                GridView {
+                    id: gridTiendaMovil
+                    anchors.top: cabeceraCatalogoTiendaMovil.bottom
+                    anchors.topMargin: 10 * Tema.escala
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    clip: true
+                    cellWidth: Math.floor(width / Math.max(1, Math.floor(width / (190 * Tema.escala))))
+                    // 156 → 104*escala (2/3, pedido explícito 2026-09-02)
+                    // -- solo hizo falta bajarla tanto porque el merge de
+                    // nombre+precio/nivel en una línea (ver más abajo)
+                    // libera una fila entera.
+                    cellHeight: 104 * Tema.escala
+                    model: tiendaModel
+                    delegate: Item {
+                        id: celdaTiendaMovil
+                        required property string codigo
+                        required property string categoria
+                        required property int precioTreboles
+                        required property int nivelMinimo
+                        required property int esDeLogro
+                        required property int poseido
+                        required property int equipado
+                        required property string nombre
+                        required property string logroNombre
+                        width: gridTiendaMovil.cellWidth
+                        height: gridTiendaMovil.cellHeight
+
+                        // "Ficha de casino" (2026-09-02, diseño A elegido
+                        // por el usuario tras el artifact "Tarjetas de Mesa
+                        // Real") -- sombra desplazada barata (mismo
+                        // criterio que BarraSuperior.qml), SIN escalar con
+                        // la tarjeta: al hundirse en el tap, la sombra se
+                        // queda fija y asoma más, como si se hundiera de
+                        // verdad en el fieltro.
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 5 * Tema.escala
+                            anchors.topMargin: 5 * Tema.escala + 3 * Tema.escala
+                            radius: 8 * Tema.escala
+                            color: "black"
+                            opacity: 0.35
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 5 * Tema.escala
+                            radius: 8 * Tema.escala
+                            border.width: celdaTiendaMovil.equipado ? 1.8 : (celdaTiendaMovil.poseido ? 1.2 : 1)
+                            border.color: celdaTiendaMovil.equipado ? Tema.colorAccent
+                                          : (celdaTiendaMovil.poseido ? Qt.darker(Tema.colorAccent, 1.8) : Qt.rgba(0, 0, 0, 0.4))
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                GradientStop { position: 1.0; color: Tema.colorPanel }
+                            }
+                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                            layer.enabled: true
+                            layer.effect: ShaderEffect {
+                                property variant source
+                                property real amplitud: 30.0
+                                fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                            }
+                            // Se encoge mientras se toca -- pedido explícito
+                            // 2026-09-02, "el equivalente" al encogido de
+                            // escritorio al pasar el ratón por encima
+                            // (mismos números: 0.97, 100ms).
+                            scale: zonaTapPreviewMovil.pressed ? 0.97 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 100 } }
+
+                            // Hilo dorado por dentro del bisel exterior --
+                            // el "doble bisel" de ficha de casino.
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 2 * Tema.escala
+                                radius: parent.radius - 2 * Tema.escala
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                       celdaTiendaMovil.equipado ? 0.6 : (celdaTiendaMovil.poseido ? 0.32 : 0.14))
+                            }
+
+                            // Previsualización en vivo al TOCAR la tarjeta
+                            // (no el botón Comprar/Equipar) -- se limpia sola
+                            // al soltar, mismo criterio "sin estado pegajoso"
+                            // que escritorio (ver ventana.valorPreview()).
+                            // Declarada ANTES que la Column de contenido para
+                            // quedar POR DEBAJO en el z-order -- los botones
+                            // de dentro (con su propia MouseArea) siguen
+                            // recibiendo su toque sin que esto se lo coma.
+                            MouseArea {
+                                id: zonaTapPreviewMovil
+                                anchors.fill: parent
+                                onPressed: {
+                                    if (celdaTiendaMovil.codigo === "_baraja") {
+                                        if (ventana.cartaSeleccionada === "") return;
+                                        ventana.fijarPreview("decoracion_lateral", ventana.cartaSeleccionada);
+                                        return;
+                                    }
+                                    ventana.fijarPreview(celdaTiendaMovil.categoria, celdaTiendaMovil.codigo);
+                                }
+                                onReleased: {
+                                    var codigoDePreview = celdaTiendaMovil.codigo === "_baraja" ? ventana.cartaSeleccionada : celdaTiendaMovil.codigo;
+                                    if (ventana.previewCodigo === codigoDePreview) {
+                                        ventana.previewCodigo = "";
+                                        ventana.previewCategoria = "";
+                                    }
+                                }
+                                onCanceled: {
+                                    var codigoDePreview = celdaTiendaMovil.codigo === "_baraja" ? ventana.cartaSeleccionada : celdaTiendaMovil.codigo;
+                                    if (ventana.previewCodigo === codigoDePreview) {
+                                        ventana.previewCodigo = "";
+                                        ventana.previewCategoria = "";
+                                    }
+                                }
+                            }
+
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 10 * Tema.escala
+                                spacing: 4 * Tema.escala
+
+                                // Nombre + precio/nivel EN LA MISMA línea
+                                // (2026-09-02, pedido explícito: "podemos
+                                // poner el coste en treboles y el nivel al
+                                // lado del nombre, el efecto de
+                                // secundariedad lo tiene porque usa un
+                                // color mas apagado") -- antes eran dos
+                                // filas separadas; el color apagado ya
+                                // distingue lo secundario sin necesitar su
+                                // propia fila, y así la tarjeta baja de
+                                // altura de verdad.
+                                Row {
+                                    width: parent.width
+                                    spacing: 6 * Tema.escala
+                                    Image {
+                                        id: miniaturaTiendaMovil
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: source !== ""
+                                        width: visible ? 18 * Tema.escala : 0
+                                        height: width
+                                        fillMode: Image.PreserveAspectFit
+                                        smooth: true
+                                        // mipmap aunque sea pequeña: Qt comparte la textura de un
+                                        // PNG entre todas las Image que lo cargan -- ver el
+                                        // comentario gemelo en qml/Main.qml.
+                                        mipmap: true
+                                        source: ventana.rutaIconoObjetoTienda(celdaTiendaMovil.codigo, celdaTiendaMovil.categoria)
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - miniaturaTiendaMovil.width - (miniaturaTiendaMovil.visible ? parent.spacing : 0)
+                                               - (sufijoPrecioTiendaMovil.visible ? sufijoPrecioTiendaMovil.width + parent.spacing : 0)
+                                        elide: Text.ElideRight
+                                        text: celdaTiendaMovil.nombre + (celdaTiendaMovil.equipado === 1 ? " · Equipado" : "")
+                                        color: Tema.colorTexto
+                                        font.bold: true
+                                        font.pixelSize: 12 * Tema.escala
+                                    }
+                                    Row {
+                                        id: sufijoPrecioTiendaMovil
+                                        visible: celdaTiendaMovil.esDeLogro === 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 3 * Tema.escala
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: "· " + celdaTiendaMovil.precioTreboles
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10.5 * Tema.escala
+                                        }
+                                        IconoTrebol {
+                                            width: 8 * Tema.escala
+                                            height: width
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            colorTrebol: Tema.colorTextoTenue
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: "· nivel " + celdaTiendaMovil.nivelMinimo
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10.5 * Tema.escala
+                                        }
+                                    }
+                                }
+                                // Con cuál -- pedido explícito 2026-09-02:
+                                // "ya no solo pondrá que se consigue con
+                                // un logro, sino con cual".
+                                Text {
+                                    visible: celdaTiendaMovil.esDeLogro === 1
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                    text: celdaTiendaMovil.logroNombre !== ""
+                                          ? "Logro: " + celdaTiendaMovil.logroNombre
+                                          : "Se consigue con un logro"
+                                    color: Tema.colorTextoMuyTenue
+                                    font.pixelSize: 10.5 * Tema.escala
+                                }
+                                // Código real del objeto, solo admin -- mismo
+                                // criterio que escritorio.
+                                Text {
+                                    visible: ventana.statsEsAdmin === true
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                    text: celdaTiendaMovil.codigo
+                                    color: Tema.colorTextoMuyTenue
+                                    font.family: "monospace"
+                                    font.pixelSize: 9 * Tema.escala
+                                }
+
+                                Row {
+                                    visible: celdaTiendaMovil.codigo === "_baraja"
+                                    spacing: 6 * Tema.escala
+                                    BotonContorno {
+                                        text: "+"
+                                        onClicked: popupSeleccionCartaMovil.open()
+                                    }
+                                    BotonContorno {
+                                        readonly property var info: ventana.infoCartaSeleccionada()
+                                        visible: ventana.cartaSeleccionada !== "" && info !== null && info.poseido === 0
+                                        text: "Comprar"
+                                        onClicked: redcliente.comprarObjeto(ventana.servidorHost, ventana.servidorPuerto,
+                                                                            ventana.tokenSesion, ventana.cartaSeleccionada)
+                                    }
+                                    Row {
+                                        readonly property var info: ventana.infoCartaSeleccionada()
+                                        visible: ventana.cartaSeleccionada !== "" && info !== null && info.poseido === 1
+                                        spacing: 4 * Tema.escala
+                                        BotonContorno {
+                                            readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral1 === ventana.cartaSeleccionada
+                                            text: aqui ? "Quitar izq." : "A la izq."
+                                            colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
+                                            onClicked: redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                "decoracion_lateral_1", aqui ? "" : ventana.cartaSeleccionada)
+                                        }
+                                        BotonContorno {
+                                            readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral2 === ventana.cartaSeleccionada
+                                            text: aqui ? "Quitar der." : "A la der."
+                                            colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
+                                            onClicked: redcliente.equiparObjeto(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                "decoracion_lateral_2", aqui ? "" : ventana.cartaSeleccionada)
+                                        }
+                                    }
+                                }
+                                // Ancho completo de la tarjeta -- pedido
+                                // explícito 2026-09-02: "el boton de
+                                // comprar o quitar... se ve raro [en la
+                                // esquina]... quedaria mejor... extendido
+                                // a lo ancho de la tarjeta".
+                                BotonContorno {
+                                    visible: celdaTiendaMovil.codigo !== "_baraja" &&
+                                             celdaTiendaMovil.poseido === 0 && celdaTiendaMovil.esDeLogro === 0
+                                    width: parent.width
+                                    text: "Comprar"
+                                    onClicked: redcliente.comprarObjeto(ventana.servidorHost, ventana.servidorPuerto,
+                                                                        ventana.tokenSesion, celdaTiendaMovil.codigo)
+                                }
+                                // "Comprado" -- estado final, visiblemente
+                                // inactivo (2026-09-02, mismo pedido que en
+                                // escritorio: "quitar en la tienda sobra...
+                                // un boton que no funcione visiblemente
+                                // inactivo que ponga comprado" --
+                                // equipar/desequipar vive solo en
+                                // Personalizar). Sustituye tanto al viejo
+                                // botón Equipar/Quitar como al par izq./der.
+                                // de decoraciones laterales.
+                                BotonContorno {
+                                    visible: celdaTiendaMovil.codigo !== "_baraja" && celdaTiendaMovil.poseido === 1
+                                    width: parent.width
+                                    enabled: false
+                                    opacity: 0.6
+                                    text: "Comprado"
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+
+                // Avatar fijo a la derecha, con el loadout REAL (sin
+                // previsualización -- ver comentario de arriba). Sibling
+                // de columnaCatalogoTiendaMovil dentro del mismo Row, así
+                // que nunca se mueve aunque el catálogo scrollee.
+                Column {
+                    id: columnaPreviewTiendaMovil
+                    anchors.top: parent.top
+                    width: 180 * Tema.escala
+                    spacing: 12 * Tema.escala
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "VISTA PREVIA"
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 10 * Tema.escala
+                        font.letterSpacing: 1
+                    }
+                    // Toca cualquier tarjeta del catálogo para ver cómo
+                    // quedaría -- ventana.valorPreview() de siempre (tocar
+                    // una tarjeta = se ve al momento aquí; soltar = vuelve
+                    // a lo que ya llevas puesto de verdad). "_baraja" fuera
+                    // -- previsualiza la carta ELEGIDA, no la tarjeta
+                    // sintética en sí.
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 80 * Tema.escala * 2.1
+                        height: 80 * Tema.escala + 50 * Tema.escala
+                        Avatar {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                            tamano: 80 * Tema.escala
+                            marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
+                            textura: ventana.valorPreview("textura", redcliente.loadoutMarco.textura)
+                            efecto: ventana.valorPreview("efecto", redcliente.loadoutMarco.efecto)
+                            decoracionLateral1: ventana.valorPreview("decoracion_lateral", redcliente.loadoutMarco.decoracionLateral1)
+                            decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
+                            decoracionSuperior: ventana.valorPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior)
+                        }
+                    }
+                    CajaTitulo {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        readonly property var infoTituloVistaTiendaMovil: ventana.objetoTiendaPorCodigo(ventana.valorPreview("titulo", redcliente.loadoutMarco.titulo || ""))
+                        nombre: infoTituloVistaTiendaMovil ? infoTituloVistaTiendaMovil.nombre : ""
+                        colorTier: ventana.colorRareza(infoTituloVistaTiendaMovil ? infoTituloVistaTiendaMovil.rareza : "")
+                    }
+                }
+            }
+        }
+    }
+    PopupSeleccionCarta {
+        id: popupSeleccionCartaMovil
+        cartas: ventana.tiendaCrudo.filter(function(o) { return o.codigo.indexOf("carta_") === 0; })
+        decoracionLateral1: redcliente.loadoutMarco.decoracionLateral1 || ""
+        decoracionLateral2: redcliente.loadoutMarco.decoracionLateral2 || ""
+        seleccionActual: ventana.cartaSeleccionada
+        onCartaElegida: (codigo) => ventana.cartaSeleccionada = codigo
     }
 
     // ── Pantalla CrearSala ───────────────────────────────────────────────
@@ -2832,7 +5635,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 16 * Tema.escala
-        textoCentro: "Crear sala"
+        textoCentro: ventana.sesionOffline ? "Nueva partida local" : "Crear sala"
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
 
@@ -2870,9 +5673,45 @@ ApplicationWindow {
                     width: scrollCrearSalaMovil.availableWidth
                     spacing: 10 * Tema.escala
 
+                    // Ver el comentario gemelo en qml/Main.qml: offline se
+                    // reutiliza el mismo formulario sin la sección de red,
+                    // eligiendo contra cuántos bots jugar.
                     Column {
                         width: parent.width
                         spacing: 4 * Tema.escala
+                        visible: ventana.sesionOffline
+                        Text {
+                            text: "PARTIDA LOCAL"
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 11 * Tema.escala
+                            font.letterSpacing: 1
+                        }
+                        Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
+                    }
+                    Row {
+                        width: parent.width
+                        visible: ventana.sesionOffline
+                        Text {
+                            width: parent.width - selectorNumBotsMovil.width
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Número de bots (rivales)"
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        SelectorNumerico {
+                            id: selectorNumBotsMovil
+                            anchors.verticalCenter: parent.verticalCenter
+                            valor: 3
+                            minimo: 1
+                            maximo: 8
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 4 * Tema.escala
+                        visible: !ventana.sesionOffline
                         Text {
                             text: "SALA"
                             color: Tema.colorTextoMuyTenue
@@ -2885,14 +5724,13 @@ ApplicationWindow {
                     // Nombre de sala: campo "de mentira" que abre
                     // CampoEmergente, igual que el nombre de jugador en
                     // Inicio (punto 2 del plan de diseño móvil).
-                    Rectangle {
+                    MarcoHueco {
                         id: cajaNombreSalaMovil
+                        visible: !ventana.sesionOffline
                         width: parent.width
-                        height: Tema.tamanoMinTactil
-                        radius: 6 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: areaNombreSala.pressed ? Tema.colorAccent : Tema.colorBorde
+                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                        radius: 10 * Tema.escala
+                        activo: areaNombreSala.pressed
                         property string valor: ""
                         Text {
                             anchors.left: parent.left
@@ -2917,6 +5755,7 @@ ApplicationWindow {
 
                     Row {
                         width: parent.width
+                        visible: !ventana.sesionOffline
                         Text {
                             width: parent.width - interruptorPublicaMovil.width
                             anchors.verticalCenter: parent.verticalCenter
@@ -2933,6 +5772,7 @@ ApplicationWindow {
 
                     Row {
                         width: parent.width
+                        visible: !ventana.sesionOffline
                         Text {
                             width: parent.width - selectorTamanoMovil.width
                             anchors.verticalCenter: parent.verticalCenter
@@ -2952,6 +5792,7 @@ ApplicationWindow {
 
                     Row {
                         width: parent.width
+                        visible: !ventana.sesionOffline
                         Text {
                             width: parent.width - interruptorRellenarMovil.width
                             anchors.verticalCenter: parent.verticalCenter
@@ -2969,6 +5810,7 @@ ApplicationWindow {
 
                     Row {
                         width: parent.width
+                        visible: !ventana.sesionOffline
                         Text {
                             width: parent.width - interruptorAbiertaMovil.width
                             anchors.verticalCenter: parent.verticalCenter
@@ -3195,9 +6037,26 @@ ApplicationWindow {
                 onClicked: ventana.pantalla = "Salas"
             }
             BotonRelleno {
-                text: "Crear sala"
+                text: ventana.sesionOffline ? "Empezar partida" : "Crear sala"
                 onClicked: {
                     if (ventana.nombreJugador === "") { campoNombre.abrir(""); return; }
+                    // Ver el comentario gemelo en qml/Main.qml.
+                    if (ventana.sesionOffline) {
+                        ventana.modoOfflineActivo = true;
+                        redcliente.iniciarPartidaLocal(
+                            ventana.nombreJugador,
+                            selectorNumBotsMovil.valor,
+                            selectorNumManosMovil.valor,
+                            selectorCiegaMovil.valor,
+                            selectorSaldoMovil.valor,
+                            selectorLimiteMovil.seleccionado,
+                            interruptorMinRaiseMovil.activo,
+                            selectorMonteFijoMovil.valor,
+                            selectorDificultadMovil.seleccionado,
+                            interruptorRecompraMovil.activo,
+                            interruptorPreguntarExtensionMovil.activo);
+                        return;
+                    }
                     redcliente.crearSala(
                         ventana.servidorHost, ventana.servidorPuerto, ventana.nombreJugador,
                         cajaNombreSalaMovil.valor,
@@ -3613,6 +6472,13 @@ ApplicationWindow {
                     GradientStop { position: 0.0; color: "transparent" }
                     GradientStop { position: 1.0; color: Qt.rgba(0.04, 0.078, 0.059, 0.96) }
                 }
+                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property variant source
+                    property real amplitud: 30.0
+                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                }
 
                 Text {
                     id: textoPistaScrollShowdown
@@ -3757,6 +6623,13 @@ ApplicationWindow {
             gradient: Gradient {
                 GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
                 GradientStop { position: 1.0; color: Tema.colorPanel }
+            }
+            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+            layer.enabled: true
+            layer.effect: ShaderEffect {
+                property variant source
+                property real amplitud: 30.0
+                fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
             }
 
             Flickable {
@@ -3942,14 +6815,17 @@ ApplicationWindow {
                 width: cajonAjustesMovil.width - 36 * Tema.escala
                 spacing: 20 * Tema.escala
 
-                // Mismo criterio que escritorio: dos pestañas en vez de un
-                // único título, con SelectorSegmentado en vez de
-                // SelectorPildoras -- ver Main.qml de qml/.
-                SelectorSegmentado {
-                    width: parent.width
-                    opciones: ["Ajustes", "Cuenta"]
-                    seleccionado: ventana.pestanaAjustesActual
-                    onElegido: (indice) => ventana.pestanaAjustesActual = indice
+                // Título único otra vez -- "Cuenta" se mudó al riel
+                // (pestaña propia, 2026-09-01, Fase M1 del port de
+                // progresión a móvil), así que este cajón ya solo tiene
+                // "cómo se ve/comporta el cliente", sin selector para
+                // elegir entre dos secciones cuando ya solo queda una --
+                // mismo criterio que escritorio.
+                Text {
+                    text: "AJUSTES"
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 10 * Tema.escala
+                    font.letterSpacing: 1
                 }
 
                 // ── Tema de color ────────────────────────────────────────
@@ -4047,315 +6923,6 @@ ApplicationWindow {
                     }
                 }
 
-                // ── Cuenta: invitados ven un aviso + acceso a login/
-                // registro en vez de la gestión de cuenta. ──────────────
-                Column {
-                    width: parent.width
-                    visible: ventana.pestanaAjustesActual === 1 && ventana.tokenSesion === ""
-                    spacing: 12 * Tema.escala
-
-                    Text {
-                        text: "CUENTA"
-                        color: Tema.colorTextoMuyTenue
-                        font.pixelSize: 10 * Tema.escala
-                        font.letterSpacing: 1
-                    }
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: "Estás jugando como invitado. Inicia sesión o crea una cuenta para poder cambiar tu nombre de usuario o tu contraseña."
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 11 * Tema.escala
-                    }
-                    BotonRelleno {
-                        text: "Iniciar sesión"
-                        onClicked: {
-                            ventana.ajustesAbiertos = false;
-                            ventana.mensajeErrorLogin = "";
-                            ventana.pantalla = "Login";
-                        }
-                    }
-                    BotonContorno {
-                        text: "Crear cuenta"
-                        onClicked: {
-                            ventana.ajustesAbiertos = false;
-                            ventana.mensajeErrorLogin = "";
-                            ventana.pantalla = "Registro";
-                        }
-                    }
-                }
-
-                // ── Cuenta: con sesión activa, gestión real. ──────────────
-                Column {
-                    width: parent.width
-                    visible: ventana.pestanaAjustesActual === 1 && ventana.tokenSesion !== ""
-                    spacing: 8 * Tema.escala
-
-                    Text {
-                        text: "CUENTA"
-                        color: Tema.colorTextoMuyTenue
-                        font.pixelSize: 10 * Tema.escala
-                        font.letterSpacing: 1
-                    }
-
-                    // Mismo marco que verás en tu Asiento y en el Ranking --
-                    // así el jugador ve de un vistazo qué está desbloqueado.
-                    Avatar {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
-                        tamano: 58 * Tema.escala
-                        marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas)
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - 80 * Tema.escala
-                            text: "Usuario"
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 11 * Tema.escala
-                        }
-                        Text {
-                            text: ventana.nombreJugador
-                            color: Tema.colorTexto
-                            font.pixelSize: 11 * Tema.escala
-                            font.bold: true
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-
-                    // ── Estadísticas propias -- mismo criterio que
-                    // escritorio (ver Main.qml de qml/): ocultas hasta la
-                    // primera partida contada.
-                    Column {
-                        width: parent.width
-                        visible: ventana.statsPartidasJugadas > 0
-                        spacing: 6 * Tema.escala
-                        Repeater {
-                            model: [
-                                { etiqueta: "Partidas jugadas", valor: ventana.statsPartidasJugadas + "" },
-                                { etiqueta: "Partidas ganadas", valor: ventana.statsPartidasGanadas + "" },
-                                { etiqueta: "Ratio de victorias", valor: Math.round(100 * ventana.statsPartidasGanadas / ventana.statsPartidasJugadas) + "%" },
-                                { etiqueta: "Racha actual", valor: ventana.statsRachaActual + "" },
-                                { etiqueta: "Mejor racha", valor: ventana.statsRachaMaxima + "" },
-                                { etiqueta: "Manos jugadas", valor: ventana.statsManosJugadas + "" },
-                                { etiqueta: "Manos ganadas", valor: ventana.statsManosGanadas + "" },
-                                { etiqueta: "Mayor bote ganado", valor: ventana.statsMayorBote + "" },
-                                { etiqueta: "Mejor mano", valor: ventana.statsMejorManoFecha > 0
-                                      ? ventana.statsMejorManoNombre + " (" + ventana.formatearFechaCorta(ventana.statsMejorManoFecha) + ")"
-                                      : "—" }
-                            ]
-                            delegate: Row {
-                                required property var modelData
-                                width: parent.width
-                                Text {
-                                    width: parent.width - 150 * Tema.escala
-                                    text: modelData.etiqueta
-                                    color: Tema.colorTextoTenue
-                                    font.pixelSize: 11 * Tema.escala
-                                }
-                                Text {
-                                    width: 150 * Tema.escala
-                                    text: modelData.valor
-                                    color: Tema.colorTexto
-                                    font.pixelSize: 11 * Tema.escala
-                                    font.bold: true
-                                    horizontalAlignment: Text.AlignRight
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-
-                        Text {
-                            text: "COMBINACIONES MOSTRADAS"
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 9 * Tema.escala
-                            font.letterSpacing: 1
-                            topPadding: 6 * Tema.escala
-                        }
-                        Grid {
-                            width: parent.width
-                            columns: 2
-                            columnSpacing: 10 * Tema.escala
-                            rowSpacing: 4 * Tema.escala
-                            Repeater {
-                                model: [
-                                    { etiqueta: "Carta alta", valor: ventana.statsVecesCartaAlta },
-                                    { etiqueta: "Pareja", valor: ventana.statsVecesPareja },
-                                    { etiqueta: "Doble pareja", valor: ventana.statsVecesDoblePareja },
-                                    { etiqueta: "Trío", valor: ventana.statsVecesTrio },
-                                    { etiqueta: "Escalera", valor: ventana.statsVecesEscalera },
-                                    { etiqueta: "Color", valor: ventana.statsVecesColor },
-                                    { etiqueta: "Full House", valor: ventana.statsVecesFullHouse },
-                                    { etiqueta: "Póker", valor: ventana.statsVecesPoker },
-                                    { etiqueta: "Escalera de color", valor: ventana.statsVecesEscaleraColor },
-                                    { etiqueta: "Escalera real", valor: ventana.statsVecesEscaleraReal }
-                                ]
-                                delegate: Row {
-                                    required property var modelData
-                                    width: (parent.width - 10 * Tema.escala) / 2
-                                    Text {
-                                        width: parent.width - 26 * Tema.escala
-                                        text: modelData.etiqueta
-                                        color: modelData.valor > 0 ? Tema.colorTextoTenue : Tema.colorTextoMuyTenue
-                                        font.pixelSize: 10 * Tema.escala
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        width: 26 * Tema.escala
-                                        text: modelData.valor + ""
-                                        color: modelData.valor > 0 ? Tema.colorAccent : Tema.colorTextoMuyTenue
-                                        font.bold: modelData.valor > 0
-                                        font.pixelSize: 10 * Tema.escala
-                                        horizontalAlignment: Text.AlignRight
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        id: cajaNuevoUsernameMovil
-                        width: parent.width
-                        height: Tema.tamanoMinTactil
-                        radius: 6 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: areaNuevoUsernameMovil.pressed ? Tema.colorAccent : Tema.colorBorde
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaNuevoUsernameMovil.valor !== "" ? cajaNuevoUsernameMovil.valor : "Nuevo nombre de usuario"
-                            color: cajaNuevoUsernameMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 12 * Tema.escala
-                            elide: Text.ElideRight
-                            width: parent.width - 20 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaNuevoUsernameMovil
-                            anchors.fill: parent
-                            onClicked: campoNuevoUsernameMovil.abrir(cajaNuevoUsernameMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoNuevoUsernameMovil
-                            parent: Overlay.overlay
-                            etiqueta: "Nuevo nombre de usuario"
-                            onAceptado: (texto) => cajaNuevoUsernameMovil.valor = texto
-                        }
-                    }
-                    BotonContorno {
-                        text: "Cambiar nombre de usuario"
-                        onClicked: {
-                            if (cajaNuevoUsernameMovil.valor.length < 3) {
-                                ventana.mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
-                                return;
-                            }
-                            ventana.mensajeErrorLogin = "";
-                            redcliente.cambiarNombreUsuario(ventana.servidorHost, ventana.servidorPuerto,
-                                                            ventana.tokenSesion, cajaNuevoUsernameMovil.valor);
-                        }
-                    }
-
-                    Rectangle {
-                        id: cajaPasswordActualMovil
-                        width: parent.width
-                        height: Tema.tamanoMinTactil
-                        radius: 6 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: areaPasswordActualMovil.pressed ? Tema.colorAccent : Tema.colorBorde
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaPasswordActualMovil.valor !== "" ? "••••••••" : "Contraseña actual"
-                            color: cajaPasswordActualMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 12 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaPasswordActualMovil
-                            anchors.fill: parent
-                            onClicked: campoPasswordActualMovil.abrir(cajaPasswordActualMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoPasswordActualMovil
-                            parent: Overlay.overlay
-                            etiqueta: "Contraseña actual"
-                            esPassword: true
-                            onAceptado: (texto) => cajaPasswordActualMovil.valor = texto
-                        }
-                    }
-                    Rectangle {
-                        id: cajaPasswordNuevaMovil
-                        width: parent.width
-                        height: Tema.tamanoMinTactil
-                        radius: 6 * Tema.escala
-                        color: Tema.colorFondo
-                        border.width: 1
-                        border.color: areaPasswordNuevaMovil.pressed ? Tema.colorAccent : Tema.colorBorde
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaPasswordNuevaMovil.valor !== "" ? "••••••••" : "Contraseña nueva (8+ caracteres)"
-                            color: cajaPasswordNuevaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 12 * Tema.escala
-                            elide: Text.ElideRight
-                            width: parent.width - 20 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaPasswordNuevaMovil
-                            anchors.fill: parent
-                            onClicked: campoPasswordNuevaMovil.abrir(cajaPasswordNuevaMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoPasswordNuevaMovil
-                            parent: Overlay.overlay
-                            etiqueta: "Contraseña nueva"
-                            esPassword: true
-                            onAceptado: (texto) => cajaPasswordNuevaMovil.valor = texto
-                        }
-                    }
-                    BotonContorno {
-                        text: "Cambiar contraseña"
-                        onClicked: {
-                            if (cajaPasswordActualMovil.valor.length === 0) {
-                                ventana.mensajeErrorLogin = "Escribe tu contraseña actual.";
-                                return;
-                            }
-                            if (cajaPasswordNuevaMovil.valor.length < 8) {
-                                ventana.mensajeErrorLogin = "La contraseña nueva debe tener al menos 8 caracteres.";
-                                return;
-                            }
-                            ventana.mensajeErrorLogin = "";
-                            redcliente.cambiarPassword(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
-                                                       cajaPasswordActualMovil.valor, cajaPasswordNuevaMovil.valor);
-                        }
-                    }
-
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        color: Tema.colorPeligro
-                        font.pixelSize: 11 * Tema.escala
-                        text: ventana.mensajeErrorLogin
-                        visible: ventana.mensajeErrorLogin !== ""
-                    }
-
-                    BotonContorno {
-                        text: "Cerrar sesión"
-                        colorBorde: Tema.colorPeligro
-                        onClicked: {
-                            ventana.ajustesAbiertos = false;
-                            redcliente.cerrarSesion(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
-                        }
-                    }
-                }
-
                 // ── Cliente ────────────────────────────────────────────────
                 Column {
                     width: parent.width
@@ -4445,6 +7012,7 @@ ApplicationWindow {
         id: popupPerfilJugador
         servidorHost: ventana.servidorHost
         servidorPuerto: ventana.servidorPuerto
+        tiendaCrudo: ventana.tiendaCrudo
     }
     // Overlay, no un panel embebido en una pestaña -- se abre desde
     // cualquier fila de Amigos, ver el comentario largo en
@@ -4468,6 +7036,9 @@ ApplicationWindow {
             redcliente.unirseASala(ventana.servidorHost, ventana.servidorPuerto,
                                     ventana.nombreJugador, salaId, codigo);
         }
+    }
+    BannerVersionNueva {
+        id: bannerVersionNueva
     }
 
     ChuletaFlotante {

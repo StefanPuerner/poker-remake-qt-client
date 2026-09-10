@@ -44,6 +44,9 @@ enum class MsgType {
     GUARDADAS_LISTA, ///< Respuesta a LISTAR_GUARDADAS: archivos .pok en el servidor.
     RANKING_LISTA,      ///< Respuesta a CONSULTAR_RANKING: cuentas con ≥10 partidas jugadas.
     ESTADISTICAS_CUENTA, ///< Respuesta a CONSULTAR_ESTADISTICAS: player_stats de la cuenta del token.
+    /// Respuesta a SINCRONIZAR_XP_OFFLINE: "acreditado","reclamado","mensaje".
+    /// "acreditado" puede ser menor que "reclamado" si los topes recortaron.
+    XP_OFFLINE_SINCRONIZADO,
 
     // Cliente → servidor
     JOIN_LOBBY,    ///< Solicitud de unión al lobby con nombre elegido.
@@ -68,6 +71,10 @@ enum class MsgType {
     CHANGE_PASSWORD,  ///< Cambia la contraseña de la cuenta autenticada por el token.
     CONSULTAR_RANKING,      ///< Pide el ranking global (sin payload, ni siquiera token -- es público).
     CONSULTAR_ESTADISTICAS, ///< Pide las estadísticas propias (token de la cuenta autenticada).
+    /// "token","xp" -- entrega el XP acumulado jugando SIN CONEXIÓN. Es el
+    /// único mensaje cuyo número lo calcula el cliente, así que el servidor
+    /// lo acota en vez de creérselo: ver AccountManager::sincronizarXpOffline().
+    SINCRONIZAR_XP_OFFLINE,
 
     // Cliente → servidor -- Social. Mismo patrón efímero que
     // CONSULTAR_RANKING salvo PRESENCIA_CONECTAR (única conexión que se
@@ -118,6 +125,53 @@ enum class MsgType {
     // conexión, llegan solos mientras el destinatario esté en menús.
     MENSAJE_DIRECTO_ENTRANTE,    ///< "fromAccountId","fromUsername","texto","creadoEn","mensajeId".
     INVITACION_SALA_ENTRANTE,    ///< "fromAccountId","fromUsername","salaId","codigo","nombreSala".
+
+    // Cliente → servidor -- herramienta de estadísticas mínima (Fase 1 del
+    // sistema de progresión, ver memoria qt_progression_system_design).
+    // "token" debe resolver a una cuenta con accounts.es_admin=1 (marcada a
+    // mano en la base -- ver AccountManager::migrarEsquema, v6) o se
+    // responde con GAME_EVENT{"evento":"EXPORTAR_ESTADISTICAS_ERROR"}. Con
+    // éxito, GAME_EVENT{"evento":"ESTADISTICAS_EXPORTADAS","archivo":"..."}
+    // -- el fichero se escribe en data/, no viaja por el protocolo.
+    EXPORTAR_ESTADISTICAS,       ///< "token" -- solo cuentas admin, ver AccountManager::exportarEstadisticas().
+
+    // Fase 4 del sistema de progresión (ver memoria qt_progression_system_design).
+    CONSULTAR_LOGROS,            ///< "token" -- catálogo completo + desbloqueados de la cuenta. Exige sesión.
+    // "codigo\x1Frareza\x1FxpRecompensa\x1Fdesbloqueado\x1FdesbloqueadoEn\x1Fnombre\x1Fdescripcion\x1E..."
+    // -- mismos separadores de control que CONVERSACION_LISTA/RESUMEN_CHATS_LISTA
+    // (nombre/descripcion son texto libre en principio; hoy son cadenas
+    // fijas de la propia app, pero el formato queda listo para si algún
+    // día no lo son).
+    LOGROS_LISTA,                ///< Respuesta a CONSULTAR_LOGROS.
+
+    // Fase 5 del sistema de progresión: marcos v2 + tienda. Mismo criterio
+    // que CONSULTAR_LOGROS -- exigen sesión, no son datos públicos.
+    CONSULTAR_TIENDA,           ///< "token" -- catálogo completo + poseído/equipado de la cuenta.
+    // "codigo\x1Fcategoria\x1FprecioTreboles\x1FnivelMinimo\x1FesDeLogro\x1Fposeido\x1Fequipado\x1Fnombre\x1E..."
+    TIENDA_LISTA,                ///< Respuesta a CONSULTAR_TIENDA.
+    COMPRAR_OBJETO,              ///< "token","codigo" -- ack vía GAME_EVENT (OBJETO_COMPRADO/OBJETO_COMPRA_ERROR).
+    EQUIPAR_OBJETO,              ///< "token","slot","codigo" ("codigo" vacío desequipa) -- ack vía GAME_EVENT.
+    CONSULTAR_LOADOUT,           ///< "token" -- el marco equipado de la propia cuenta.
+    LOADOUT_ACTUAL,              ///< Respuesta a CONSULTAR_LOADOUT -- campos JSON sueltos (textura/efecto/decoracion_lateral_1/decoracion_lateral_2/decoracion_superior/titulo).
+
+    // Herramienta de pruebas/admin, punto 2 de la prioridad confirmada
+    // (2026-09-01, ver memoria qt_progression_review_2026_09_01) --
+    // cierra el hueco real de "todo QA de logros/tienda ha sido SQL a
+    // mano contra cuentas.db". "token" debe resolver a una cuenta con
+    // es_admin=1 (igual que EXPORTAR_ESTADISTICAS) o se rechaza sin
+    // más. "codigo" prueba primero como código de LOGRO (concede
+    // también los objetos que ese logro trae, igual que si se hubiera
+    // desbloqueado jugando) y si no, como objeto de tienda suelto (sin
+    // Tréboles/nivel/gate de marco -- es un regalo admin, no una
+    // compra). Ack vía GAME_EVENT (ADMIN_CONCEDER_OK/_ERROR, "mensaje").
+    ADMIN_CONCEDER_ITEM,         ///< "token","username_destino","codigo".
+
+    // Segunda mitad del punto 2 (mismo día, ver memoria de arriba):
+    // fabrica cuentas de PRUEBA con partidas/elo variados, para poder
+    // diseñar/probar Ranking y un futuro podio sin esperar jugadores
+    // reales. Mismo criterio de permiso que ADMIN_CONCEDER_ITEM. Ack vía
+    // GAME_EVENT (ADMIN_FABRICAR_OK/_ERROR, "mensaje").
+    ADMIN_FABRICAR_CUENTAS,      ///< "token","cantidad" (recortado a [1,20] en el servidor).
 
     UNKNOWN        ///< Tipo desconocido o mensaje malformado.
 };

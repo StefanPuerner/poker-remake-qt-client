@@ -1,0 +1,10 @@
+// app.rc - recurso de Windows que empareja el icono con el .exe. Sin
+// esto, windeployqt no pone ningun icono propio (no es su trabajo) y el
+// .exe se queda con el icono generico de "aplicacion sin icono" de
+// Windows, tanto en el Explorador como en la barra de tareas.
+//
+// Solo ASCII a proposito: sin BOM UTF-8 ni "#pragma code_page(65001)",
+// el rc.exe de MSVC interpreta el fichero con la pagina de codigos ANSI
+// del sistema, no como UTF-8 -- tildes/rayas largas se leerian mal (o
+// directamente rompian la compilacion segun que bytes resultasen).
+IDI_ICON1 ICON "icon.ico"

@@ -28,8 +28,19 @@ Button {
     // de la interfaz crecía/encogía con el zoom. Al escalar el font y el
     // padding, el ancho/alto implícitos escalan juntos y proporcionales.
     padding: 10 * Tema.escala
+    // En reposo ya NO es transparente del todo (2026-09-09). Sobre un
+    // panel con textura de fieltro, un contorno de 1px sin nada detrás no
+    // separa el botón del fondo -- "solo es un borde barato", con las
+    // palabras del usuario. El caso que lo destapó: los botones de las
+    // filas de partidas guardadas, donde además el borde de arriba y el
+    // de abajo se confundían con el canto de la propia tarjeta y el botón
+    // se leía como dos rayas verticales sueltas.
+    //
+    // El relleno es un blanco a un 5%: no tiñe (funciona igual en los
+    // cinco temas) pero basta para que la superficie exista. El filo
+    // claro de arriba y el oscuro de abajo hacen el resto.
     background: Rectangle {
-        color: botonContorno.hovered ? botonContorno.colorBorde : "transparent"
+        color: botonContorno.hovered ? botonContorno.colorBorde : Qt.rgba(1, 1, 1, 0.05)
         radius: botonContorno.radioBorde
         border.width: 1
         border.color: botonContorno.colorBorde
@@ -38,6 +49,11 @@ Button {
                 duration: 120
             }
         }
+        // Aquí había dos filos de 1px (claro arriba, oscuro abajo). Fuera
+        // desde 2026-09-09: ver MarcoHueco.qml -- una raya recta en una
+        // caja redondeada deja sus extremos a la vista como rayas sueltas.
+        // El relleno tenue de arriba ya hace el trabajo de separar el
+        // botón del paño, que era el problema original.
     }
     contentItem: Text {
         text: botonContorno.text

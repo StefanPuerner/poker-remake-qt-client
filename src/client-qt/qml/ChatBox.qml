@@ -31,6 +31,13 @@ Rectangle {
         GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
         GradientStop { position: 1.0; color: Tema.colorPanel }
     }
+    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+    layer.enabled: true
+    layer.effect: ShaderEffect {
+        property variant source
+        property real amplitud: 30.0
+        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+    }
 
     ListView {
         anchors.top: parent.top
@@ -135,11 +142,9 @@ Rectangle {
             // ocultar el placeholder en cuanto hay foco o texto.
             placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
             placeholderTextColor: Tema.colorTextoTenue
-            background: Rectangle {
-                color: Tema.colorFondo
+            background: MarcoHueco {
                 radius: 8 * Tema.escala
-                border.width: 1
-                border.color: textoChat.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                activo: textoChat.activeFocus
             }
             // Antes había que Tab + Espacio hasta "Enviar" tras escribir
             // — Enter manda el mensaje directamente, igual que en móvil.

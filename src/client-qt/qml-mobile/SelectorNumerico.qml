@@ -30,8 +30,8 @@ Row {
     }
 
     Rectangle {
-        width: Tema.tamanoMinTactil
-        height: Tema.tamanoMinTactil
+        width: Tema.tactil
+        height: Tema.tactil
         radius: 8 * Tema.escala
         color: areaMenos.pressed ? Tema.colorAccent : "transparent"
         border.width: 1
@@ -51,7 +51,7 @@ Row {
 
     Rectangle {
         width: Math.max(textoValor.implicitWidth + 24 * Tema.escala, 70 * Tema.escala)
-        height: Tema.tamanoMinTactil
+        height: Tema.tactil
         radius: 8 * Tema.escala
         color: Tema.colorFondo
         border.width: 1
@@ -70,8 +70,8 @@ Row {
     }
 
     Rectangle {
-        width: Tema.tamanoMinTactil
-        height: Tema.tamanoMinTactil
+        width: Tema.tactil
+        height: Tema.tactil
         radius: 8 * Tema.escala
         color: areaMas.pressed ? Tema.colorAccent : "transparent"
         border.width: 1

@@ -30,8 +30,12 @@ QtObject {
         },
         {
             nombre: "Azul medianoche",
+            // Acento dorado desde 2026-09-10 (antes plateado, #B8C4CE): el
+            // azul marino con oro se ve mucho mejor (idea del usuario). Es el
+            // mismo dorado que Burdeos, más cálido que el del verde -- sobre
+            // azul, casi complementario, resalta más.
             fondo: "#0A141F", tapete: "#173250", panel: "#0D1B29", borde: "#2A4A63",
-            accent: "#B8C4CE", texto: "#FFFFFF", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
+            accent: "#D4A24E", texto: "#FFFFFF", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
         },
         {
             nombre: "Burdeos",
@@ -69,6 +73,12 @@ QtObject {
     readonly property color colorNombreAjeno: temas[temaActual].nombreAjeno
 
     function colorHex(c) {
+        // Guarda añadida (2026-09-03): "c" puede llegar null en el primer
+        // frame de un binding que todavía no resolvió su color real (visto
+        // en real: "TypeError: Cannot read property 'toString' of null",
+        // repetido en consola en cuanto se abre cualquier pantalla que
+        // llame a esto antes de que su color de origen esté listo).
+        if (!c) return "#000000";
         return "#" + c.toString().slice(-6);
     }
 
@@ -76,11 +86,24 @@ QtObject {
     // Avatar.qml) -- provisionales, sin datos de uso real todavía que los
     // calibren. Un único sitio para los dos: Asiento (cualquier jugador
     // sentado, vía GAME_STATE) y la fila de Ranking (vía CONSULTAR_RANKING).
-    function marcoPorPartidasGanadas(n) {
-        if (n >= 100) return "platino";
-        if (n >= 50) return "oro";
-        if (n >= 25) return "plata";
-        if (n >= 10) return "bronce";
+    // Umbrales bajados de 10/25/50/100 a 5/15/25/50 -- mismo cambio y
+    // mismo motivo que en escritorio (ver Tema.qml de qml/), 2026-08-31.
+    //
+    // Fase M0 del port a móvil (2026-09-01, ver memoria
+    // qt_mobile_progression_port_plan): puesta al día con la versión de
+    // escritorio, que llevaba dos correcciones más que esta nunca recibió
+    // -- "tieneMarcoBasico" como 2º parámetro real (antes la firma solo
+    // tenía "n", así que Hierro NUNCA se activaba salvo con
+    // partidas_ganadas real, aunque todos los llamadores ya lo pasaban) y
+    // el propio tier "hierro" (marco básico, se gana con CUALQUIER
+    // partida ganada, también contra bots -- antes de esto no existía
+    // ningún marco por debajo de Bronce en móvil).
+    function marcoPorPartidasGanadas(n, tieneMarcoBasico) {
+        if (n >= 50) return "platino";
+        if (n >= 25) return "oro";
+        if (n >= 15) return "plata";
+        if (n >= 5) return "bronce";
+        if (n >= 1 || tieneMarcoBasico) return "hierro";
         return "ninguno";
     }
 
@@ -104,4 +127,22 @@ QtObject {
     // cabecera del fichero). 44 es la recomendación estándar de
     // accesibilidad táctil (Android/iOS coinciden en ese entorno de valor).
     readonly property real tamanoMinTactil: 44
+
+    // El tamaño que de verdad debe tener un objetivo pulsable: el de
+    // diseño, ESCALADO, pero sin bajar nunca del suelo de arriba.
+    //
+    // Existe desde 2026-09-09 porque 21 sitios usaban "tamanoMinTactil"
+    // como si fuera el tamaño, no el suelo. Con escala > 1 (que es lo
+    // normal: la escala sale de la pantalla real contra 800x400 de
+    // diseño) eso dejaba botones, campos e interruptores clavados en 44px
+    // mientras su propio contenido -- texto, iconos, puntos -- crecía con
+    // la escala. Se veían diminutos y con el contenido saliéndose, y fue
+    // la causa REAL de tres rondas de "los campos de texto son muy
+    // estrechos" (2026-09-09): se buscó en el estilo lo que era un
+    // problema de escala.
+    //
+    // Regla: para el tamaño de algo pulsable, "Tema.tactil". Para un
+    // suelo dentro de otra cuenta (un botón que crece con su texto),
+    // "Math.max(Tema.tamanoMinTactil, ...)" sigue siendo lo correcto.
+    readonly property real tactil: Math.max(tamanoMinTactil, 44 * escala)
 }

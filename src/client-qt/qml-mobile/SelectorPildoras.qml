@@ -22,7 +22,7 @@ Row {
             required property string modelData
             required property int index
             width: Math.max(textoPildora.implicitWidth + 24 * Tema.escala, Tema.tamanoMinTactil)
-            height: Tema.tamanoMinTactil
+            height: Tema.tactil
             radius: height / 2
             color: index === selector.seleccionado ? Tema.colorAccent : "transparent"
             border.width: 1

@@ -17,8 +17,11 @@ namespace net {
 
 constexpr uint16_t    SERVER_PORT = 7777;
 // Dominio DuckDNS de la máquina remota (IP pública dinámica, actualizada
-// sola vía crontab) -- puerto reenviado por el router, ya no depende de
-// Tailscale para que un cliente cualquiera llegue al servidor.
+// sola vía crontab) -- puerto reenviado por el router, no depende de
+// Tailscale para que un cliente cualquiera llegue al servidor. Si lo
+// cambias para una prueba local (127.0.0.1, la IP de la red de casa),
+// devuélvelo antes de commitear: este valor viaja tal cual al repo público
+// y a sus releases (scripts/sincronizar_repo_publico.sh).
 constexpr const char* SERVER_HOST = "labandadehalcones.duckdns.org";
 
 // ── TLS ──────────────────────────────────────────────────────────────────
@@ -48,6 +51,9 @@ constexpr int TLS_HANDSHAKE_TIMEOUT_S = 10;
 /// mientras tanto (ninguna huella coincide con "", así que el cliente
 /// rechaza cualquier certificado hasta que esto se rellene -- fallo
 /// seguro, no un pinning desactivado por accidente).
+// Pin del certificado de la máquina remota. Si lo cambias por el de un
+// certificado LOCAL para una prueba (scripts/generar_cert_tls.sh),
+// devuélvelo antes de commitear -- mismo motivo que SERVER_HOST.
 constexpr const char* SERVER_CERT_PIN_SHA256 =
     "7dbbb404d98a3697892a736a46fe8a605144a03a6c7b7d6d94a5720b7fb704a6";
 

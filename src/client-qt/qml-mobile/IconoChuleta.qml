@@ -9,8 +9,8 @@ import PokerQuickMobile
 Rectangle {
     id: icono
     signal abrirChuleta()
-    width: Tema.tamanoMinTactil
-    height: Tema.tamanoMinTactil
+    width: Tema.tactil
+    height: Tema.tactil
     radius: width / 2
     color: area.pressed ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.35)
     border.width: 1

@@ -14,11 +14,30 @@ Rectangle {
     required property string pantallaActual
     signal seccionElegida(string nombre)
 
+    // Sesión sin conexión (Fase 7): el riel se reduce a lo que de verdad
+    // funciona sin servidor -- ver "disponibleOffline" en cada sección.
+    property bool modoOffline: false
+
+    // "disponibleOffline" en vez de filtrar el array: los glifos del
+    // delegate se eligen por "index" (0=Salas, 1=Ranking...), así que
+    // quitar entradas los desalinearía todos. Marcar y ocultar mantiene
+    // los índices estables.
     readonly property var secciones: [
-        { nombre: "Salas", etiqueta: "SALAS" },
-        { nombre: "Ranking", etiqueta: "RANKING" },
-        { nombre: "Torneos", etiqueta: "TORNEOS" },
-        { nombre: "Social", etiqueta: "SOCIAL" }
+        // Offline la pantalla no lista salas ajenas: solo deja montar y
+        // jugar una partida local (ver el bloque "Salas, versión sin
+        // conexión" en Main.qml).
+        { nombre: "Salas", etiqueta: "SALAS", disponibleOffline: true },
+        { nombre: "Ranking", etiqueta: "RANKING", disponibleOffline: false },
+        { nombre: "Torneos", etiqueta: "TORNEOS", disponibleOffline: true },
+        { nombre: "Social", etiqueta: "SOCIAL", disponibleOffline: false },
+        // Tienda (2026-09-01): tenía que estar aquí desde el diseño
+        // original, no escondida dentro de Cuenta -- ver junto a Cuenta,
+        // las dos giran alrededor de la misma cuenta/identidad. Offline no:
+        // comprar exige servidor, y los Tréboles nunca son offline.
+        { nombre: "Tienda", etiqueta: "TIENDA", disponibleOffline: false },
+        // Perfil/Progreso con los datos cacheados de la última sesión con
+        // servidor -- solo lectura, ver LocalGameClient::estadisticasCuenta.
+        { nombre: "Cuenta", etiqueta: "CUENTA", disponibleOffline: true }
     ]
 
     width: 76 * Tema.escala
@@ -29,6 +48,13 @@ Rectangle {
     gradient: Gradient {
         GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
         GradientStop { position: 1.0; color: Tema.colorPanel }
+    }
+    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+    layer.enabled: true
+    layer.effect: ShaderEffect {
+        property variant source
+        property real amplitud: 30.0
+        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
     }
 
     Column {
@@ -58,6 +84,9 @@ Rectangle {
                 required property var modelData
                 required property int index
                 readonly property bool activo: itemRiel.modelData.nombre === riel.pantallaActual
+                // Un Column omite del layout a los hijos invisibles, así que
+                // esto basta para que el riel se cierre sin huecos.
+                visible: !riel.modoOffline || itemRiel.modelData.disponibleOffline
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 6 * Tema.escala
 
@@ -165,6 +194,42 @@ Rectangle {
                             x: 9 * Tema.escala; y: 5 * Tema.escala
                             width: 12 * Tema.escala; height: 12 * Tema.escala
                             radius: width / 2
+                            color: "transparent"
+                            border.width: 1.6
+                            border.color: glifo.colorIcono
+                        }
+
+                        // Tienda (4): diamante hueco -- gema, mismo motivo
+                        // que ya usan las propias decoraciones de la Tienda
+                        // (Avatar.qml, engaste de gema) para que se
+                        // reconozca de un vistazo qué representa.
+                        Rectangle {
+                            visible: itemRiel.index === 4
+                            x: 5 * Tema.escala; y: 5 * Tema.escala
+                            width: 12 * Tema.escala; height: 12 * Tema.escala
+                            rotation: 45
+                            color: "transparent"
+                            border.width: 1.6
+                            border.color: glifo.colorIcono
+                        }
+
+                        // Cuenta (5): silueta de persona -- cabeza (círculo)
+                        // + hombros (rectángulo redondeado), ambos huecos
+                        // (mismo criterio "hollow" que Salas/Social).
+                        Rectangle {
+                            visible: itemRiel.index === 5
+                            x: 7 * Tema.escala; y: 1 * Tema.escala
+                            width: 8 * Tema.escala; height: 8 * Tema.escala
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: 1.6
+                            border.color: glifo.colorIcono
+                        }
+                        Rectangle {
+                            visible: itemRiel.index === 5
+                            x: 2 * Tema.escala; y: 11 * Tema.escala
+                            width: 18 * Tema.escala; height: 11 * Tema.escala
+                            radius: 8 * Tema.escala
                             color: "transparent"
                             border.width: 1.6
                             border.color: glifo.colorIcono

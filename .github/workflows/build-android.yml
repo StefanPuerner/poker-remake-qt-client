@@ -113,6 +113,13 @@ jobs:
           version: '6.7.3'
           host: 'linux'
           target: 'desktop'
+          # qtshadertools: compila assets/shaders/dither.frag a .qsb (el dithering
+          # de degradados que usa el QML). Sin él, CMake se para con un FATAL_ERROR
+          # que dice qué falta (ver cmake/ClientesQt.cmake).
+          # Hace falta en LAS DOS instalaciones: aquí porque la herramienta qsb
+          # corre en el runner, y en la de Android porque es donde CMake busca
+          # Qt6::ShaderTools.
+          modules: 'qtshadertools'
           dir: '${{ github.workspace }}/qt'
           set-env: false
 
@@ -123,6 +130,8 @@ jobs:
           host: 'linux'
           target: 'android'
           arch: 'android_arm64_v8a'
+          # qtshadertools: ver la nota del paso de arriba.
+          modules: 'qtshadertools'
           dir: '${{ github.workspace }}/qt'
 
       # Se usa la plantilla real de AndroidManifest.xml del propio kit de

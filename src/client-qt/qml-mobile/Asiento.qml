@@ -1,16 +1,34 @@
 // Asiento.qml (móvil) — idéntico al de escritorio: sin MouseArea/hover,
-// no necesita ningún cambio para tacto.
+// no necesita ningún cambio para tacto. Puesto al día 2026-09-01 (Fase
+// M0 del port de progresión a móvil, ver memoria
+// qt_mobile_progression_port_plan) con la "parte B" de visibilidad a
+// otros jugadores (loadout completo por asiento, no solo el tier de
+// marco) y el arreglo del anillo de resplandor de turno, los dos ya
+// hechos en escritorio el mismo día -- ver Asiento.qml de escritorio
+// para el detalle largo de cada uno.
 pragma ComponentBehavior: Bound
 import QtQuick
 import PokerQuickMobile
 
 Column {
+    id: asiento
     property string saldo
     property string nombre
     // Para el marco de avatar permanente (ver Tema.marcoPorPartidasGanadas
     // y Avatar.qml) -- viene de GAME_STATE, así que funciona para
     // CUALQUIER jugador sentado, no solo el propio.
     property int partidasGanadas: 0
+    // Visibilidad a otros jugadores, parte B (2026-09-01 -- ver memoria
+    // qt_progression_review_2026_09_01, portado el mismo día a móvil):
+    // loadout REAL de quien esté sentado aquí, no solo el tier de marco.
+    // "" = nada equipado en ese slot, igual que en todo el resto de la
+    // app.
+    property bool tieneMarcoBasico: false
+    property string textura: ""
+    property string efecto: ""
+    property string decoracionLateral1: ""
+    property string decoracionLateral2: ""
+    property string decoracionSuperior: ""
     property bool activo: false
     property real fraccionTiempo: 1.0
     property bool retirado: false
@@ -29,8 +47,16 @@ Column {
 
     Item {
         x: (parent.width - width) / 2
-        width: 46 * Tema.escala + 10
-        height: 46 * Tema.escala + 10
+        // Math.round(46*Tema.escala) -- MISMO valor que Avatar.qml
+        // calcula internamente para su propio "width". Bug real
+        // arreglado aquí también (2026-09-01, mismo día que en
+        // escritorio): antes este contenedor no redondeaba, así que su
+        // ancho fraccionario no coincidía en resto con el ancho YA
+        // redondeado del Avatar centrado dentro -- el halo de "es tu
+        // turno" quedaba centrado en el contenedor pero no en el avatar
+        // que de verdad se ve, dando un anillo visualmente descentrado.
+        width: Math.round(46 * Tema.escala) + 10
+        height: width
 
         Rectangle {
             visible: activo
@@ -45,8 +71,13 @@ Column {
         Rectangle {
             visible: activo
             anchors.centerIn: parent
-            width: parent.width + 5
-            height: parent.height + 5
+            // "+6", no "+5" -- mismo motivo que el redondeo de arriba:
+            // con un contenedor ya entero, un margen IMPAR deja una
+            // diferencia impar entre este anillo y su padre, dando otra
+            // vez medio píxel de desfase, esta vez en el propio anillo
+            // interior.
+            width: parent.width + 6
+            height: parent.height + 6
             radius: width / 2
             color: "transparent"
             border.width: 3 * Tema.escala
@@ -75,7 +106,17 @@ Column {
             anchors.centerIn: parent
             letra: nombre.charAt(0)
             tamano: 46 * Tema.escala
-            marco: Tema.marcoPorPartidasGanadas(partidasGanadas)
+            // tieneMarcoBasico como 2º argumento -- bug real ya
+            // encontrado varias veces en sitios distintos, ver memoria
+            // qt_marco_seat_ring_contrast_bug: sin él, un jugador con
+            // Hierro por victoria contra bots (sin partidasGanadas "de
+            // verdad") se vería sin marco en la mesa.
+            marco: Tema.marcoPorPartidasGanadas(partidasGanadas, tieneMarcoBasico)
+            textura: asiento.textura
+            efecto: asiento.efecto
+            decoracionLateral1: asiento.decoracionLateral1
+            decoracionLateral2: asiento.decoracionLateral2
+            decoracionSuperior: asiento.decoracionSuperior
             colorBorde: activo ? Tema.colorAccent : Tema.colorBorde
         }
 
@@ -147,12 +188,22 @@ Column {
                 font.pixelSize: 13 * Tema.escala
                 font.family: Tema.fuenteElegante
             }
-            Text {
-                text: saldo
-                color: Tema.colorAccent
-                font.bold: true
-                font.pixelSize: 13 * Tema.escala
-                font.family: Tema.fuenteElegante
+            Row {
+                spacing: 3 * Tema.escala
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: saldo
+                    color: Tema.colorAccent
+                    font.bold: true
+                    font.pixelSize: 13 * Tema.escala
+                    font.family: Tema.fuenteElegante
+                }
+                IconoFicha {
+                    width: 10 * Tema.escala
+                    height: width
+                    anchors.verticalCenter: parent.verticalCenter
+                    colorFicha: Tema.colorAccent
+                }
             }
         }
     }

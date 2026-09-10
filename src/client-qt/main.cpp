@@ -12,14 +12,19 @@
 #include <QSslSocket>
 #include <QDebug>
 
+#include <memory>
+
+#include "../../include/local-qt/LocalGameClient.hpp"
+#include "../../include/local-qt/ModoJuegoCoordinador.hpp"
 #include "../../include/net-qt/NetworkClient.hpp"
+#include "../../include/net-qt/VersionChecker.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
 int main(int argc, char* argv[]) {
 #ifdef Q_OS_WIN
   // Windows no trae OpenSSL instalado por defecto (a diferencia de Linux)
   // ni se empaqueta aquí (a diferencia de Android, ver
-  // CMakeLists.txt::add_android_openssl_libraries) -- sin esto, QSslSocket
+  // cmake/ClientesQt.cmake::add_android_openssl_libraries) -- sin esto, QSslSocket
   // intenta el backend OpenSSL por defecto, no encuentra sus .dll y el
   // *handshake* TLS del servidor nunca llega a completarse (confirmado en
   // real: el build de Windows no conectaba). Schannel es el backend TLS
@@ -54,15 +59,37 @@ int main(int argc, char* argv[]) {
   // ninguna parte (comprobado en real: cero fichero de settings creado).
   QGuiApplication::setOrganizationName("PokerRemake");
   QGuiApplication::setApplicationName("PokerClientQt");
-  QQmlApplicationEngine engine;
+  // En un puntero y destruido a mano al salir (ver el final de main()): el
+  // motor QML tiene que morir ANTES que los objetos que expone. Declarado
+  // como variable local el primero, moría el último: "redcliente" y compañía
+  // se destruían con la ventana QML todavía viva, sus bindings se
+  // re-evaluaban contra null y cada cierre soltaba ~85 "TypeError: Cannot
+  // read property ... of null" por la terminal (log del 2026-09-10).
+  auto engine = std::make_unique<QQmlApplicationEngine>();
   NetworkClient client;
-  engine.rootContext()->setContextProperty("redcliente", &client);
+  // Modo offline (Fase 6/7, ver docs/plan-modo-offline.md) -- vive todo el
+  // proceso, igual que "client", no solo mientras hay una partida local en
+  // curso: así "redcliente" puede reasignarse de vuelta a "client" en
+  // cuanto la partida local termina sin perder el objeto. ModoJuegoCoordinador
+  // es el único sitio que toca setContextProperty("redcliente", ...) tras
+  // este arranque -- ver su comentario.
+  LocalGameClient clienteLocal;
+  ModoJuegoCoordinador modoJuego(engine->rootContext(), &client, &clienteLocal);
+  VersionChecker versionChecker;
+  engine->rootContext()->setContextProperty("redcliente", &client);
+  engine->rootContext()->setContextProperty("modoJuego", &modoJuego);
+  engine->rootContext()->setContextProperty("versionChecker", &versionChecker);
   // Mismo punto único de configuración que el cliente ncurses (ver
   // ServerConfig.hpp) — editar ahí la IP/puerto por defecto, no aquí.
-  engine.rootContext()->setContextProperty("SERVER_HOST_DEFAULT",
+  engine->rootContext()->setContextProperty("SERVER_HOST_DEFAULT",
                                             QString::fromUtf8(net::SERVER_HOST));
-  engine.rootContext()->setContextProperty("SERVER_PORT_DEFAULT",
+  engine->rootContext()->setContextProperty("SERVER_PORT_DEFAULT",
                                             static_cast<int>(net::SERVER_PORT));
-  engine.loadFromModule("PokerQuick", "Main");
-  return app.exec();
+  engine->loadFromModule("PokerQuick", "Main");
+  const int codigo = app.exec();
+  // Primero la interfaz, luego lo que usa (ver la declaración de "engine").
+  // modoJuego guarda el rootContext() de este motor, pero solo lo toca desde
+  // activarModoLocal()/activarModoRed(), que ya no pueden llamarse.
+  engine.reset();
+  return codigo;
 }

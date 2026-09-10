@@ -11,8 +11,8 @@ Item {
     id: zonaTactil
     property bool activo: false
     signal alternado()
-    width: Tema.tamanoMinTactil
-    height: Tema.tamanoMinTactil
+    width: Tema.tactil
+    height: Tema.tactil
 
     Rectangle {
         id: interruptor

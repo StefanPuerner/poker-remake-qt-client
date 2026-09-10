@@ -1,12 +1,13 @@
 # PokerRemake — cliente Qt
 
 Clientes gráficos (Qt Quick/QML) para jugar Texas Hold'em en red contra un
-servidor [PokerRemake](https://github.com/StefanPuerner/poker-remake). Este
-repo contiene **solo el cliente** — de escritorio y móvil —: crea/lista
-salas, juega la partida, chatea, guarda/carga partidas y muestra
-estadísticas al terminar (manos disputadas, mejor mano de la partida,
-racha de eliminaciones) hablando el protocolo TCP/JSON del servidor. No
-incluye el motor de juego ni la lógica de servidor.
+servidor [PokerRemake](https://github.com/StefanPuerner/poker-remake), o sin
+conexión contra bots. Este repo contiene **los clientes** — de escritorio y
+móvil — y todo lo que hace falta para compilarlos, incluido el motor de
+juego, que va embebido para el modo sin conexión: crea/lista salas, juega la
+partida, chatea, guarda/carga partidas y muestra estadísticas al terminar
+(manos disputadas, mejor mano de la partida, racha de eliminaciones)
+hablando el protocolo TCP/JSON del servidor. No incluye el servidor.
 
 - **`PokerClientQt`** — interfaz de escritorio, ratón/teclado.
 - **`PokerClientMobile`** — interfaz táctil, pensada para landscape en
@@ -35,7 +36,8 @@ instalar una versión nueva encima de la anterior sin desinstalar primero.
 
 - CMake ≥ 3.16
 - Compilador C++17
-- Qt6 (`Quick`, `QuickControls2`, `Network`) — para `PokerClientMobile` en
+- Qt6 (`Quick`, `QuickControls2`, `Network` y `ShaderTools`; además
+  `Multimedia` para `PokerClientQt`) — para `PokerClientMobile` en
   Android hace falta además el SDK/NDK de Android y un Qt cross-compilado
   para Android; la forma más simple de conseguir un APK es lanzar el
   workflow `Build Android` desde la pestaña Actions de GitHub (o esperar
@@ -80,7 +82,9 @@ cmake --build build -j$(nproc)
 
 Genera `PokerClientQt` y `PokerClientMobile` en `build/` (los dos como
 binarios de escritorio normales — cross-compilar `PokerClientMobile` a
-Android es aparte, ver "Descargas" arriba).
+Android es aparte, ver "Descargas" arriba). También salen `AvatarTest` y
+`LocalOfflineSmokeTest`, dos bancos de prueba del desarrollo; para compilar
+solo un cliente: `cmake --build build --target PokerClientQt`.
 
 ## Ejecutar
 
@@ -106,9 +110,23 @@ include/net-qt/NetworkClient.hpp
 include/net/Protocol.hpp, src/net/Protocol.cpp
                                   — protocolo TCP/JSON compartido con el servidor
 include/net/ServerConfig.hpp     — host/puerto/pin del certificado TLS por defecto (ver arriba)
+include/local-qt/                — modo sin conexión: el motor en su propio hilo, hablando
+                                    con el QML igual que lo haría el servidor
+include/*.hpp, src/*.cpp         — motor de juego (reglas, bote, bots, evaluación de manos)
+cmake/                           — reglas de compilación de los clientes (ver abajo)
+assets/iconos/, assets/shaders/  — cosméticos del avatar y dithering de degradados
 assets/fonts/                    — EB Garamond (SIL Open Font License)
 docs/guia/                       — guía de Qt Quick/QML usada para construir este cliente
 ```
+
+### De dónde sale el código
+
+Este repo es una foto de los clientes del proyecto completo, sincronizada
+desde allí con un script. El código y `cmake/` se editan allí, no aquí: la
+siguiente sincronización pisaría cualquier cambio hecho en este repo.
+`.sincronizado-desde-privado` lista los ficheros sueltos que trae el
+script. Lo propio de este repo es el README, la licencia, los workflows de
+release y el `CMakeLists.txt`, que se limita a incluir `cmake/`.
 
 ## Documentación
 

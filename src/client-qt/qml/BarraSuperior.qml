@@ -8,11 +8,22 @@
 // "required property" desde cada sitio donde se instancia (son 5).
 pragma ComponentBehavior: Bound
 import QtQuick
+// SOLO para el brillo dorado del trébol de marca (2026-09-02, pedido
+// explícito: "pon el efecto dorado y brillo al trebol del logo en la
+// barra superior") -- mismo criterio ya usado en el mini-riel/
+// SelectorSegmentado, nativo de Qt 6.5+, sin coste de import nuevo en
+// CMake.
+import QtQuick.Effects
 
 Item {
     id: barra
     property string textoCentro: ""
     property bool mostrarSaldo: false
+    // Saldo de Tréboles (Tienda) -- pedido explícito 2026-09-02: "hay
+    // que encontrar mejor sitio para indicar cuantos treboles tienes"
+    // (antes vivía metido en la propia columna del catálogo). -1 = no
+    // mostrar (resto de pantallas no lo necesitan).
+    property int treboles: -1
     // Solo tiene sentido en Partida (chuleta de combinaciones) — igual
     // criterio que mostrarSaldo, en vez de mostrar el botón siempre y
     // que quien lo pulse en Lobby/Salas no tenga nada que ver.
@@ -48,15 +59,25 @@ Item {
     // Al ser un único elemento por pantalla (no 17 cartas a la vez),
     // el coste es irrelevante; aun así se usa la receta barata por
     // coherencia con el resto del programa.
-    Rectangle {
-        anchors.left: fondoBarra.left
-        anchors.right: fondoBarra.right
-        anchors.top: fondoBarra.top
-        anchors.topMargin: 4
-        height: fondoBarra.height
-        radius: fondoBarra.radius
-        color: "black"
-        opacity: 0.28
+    // Sombra en TRES pasadas, cada una un poco más abajo y más
+    // tenue. Un solo rectángulo negro desplazado se veía "muy
+    // sencillo" (reportado 2026-09-09) porque tiene el canto tan
+    // duro como la propia barra: parece otra barra detrás, no una
+    // sombra. Escalonarlas imita un desenfoque a ojo, y sale
+    // gratis -- ningún efecto, ninguna capa, tres Rectangle.
+    Repeater {
+        model: [{ d: 2, o: 0.22 }, { d: 5, o: 0.16 }, { d: 9, o: 0.10 }]
+        delegate: Rectangle {
+            required property var modelData
+            anchors.left: fondoBarra.left
+            anchors.right: fondoBarra.right
+            anchors.top: fondoBarra.top
+            anchors.topMargin: modelData.d
+            height: fondoBarra.height
+            radius: fondoBarra.radius
+            color: "black"
+            opacity: modelData.o
+        }
     }
 
     Rectangle {
@@ -74,9 +95,24 @@ Item {
         // Degradado sutil en vez de color plano — deriva de
         // colorPanel con Qt.lighter() para que funcione igual en los
         // cuatro temas sin tener que definir un valor por tema.
+        // Cuatro paradas en vez de dos: claro arriba, un corte a media
+        // altura (el reflejo que cruza una pieza de metal) y algo más
+        // oscuro abajo. Va aquí dentro, y no en una capa de brillo
+        // aparte, porque este degradado ya pasa por el dithering de
+        // abajo -- una capa suelta habría bandeado igual que bandeó el
+        // primer MarcoHueco.
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.55) }
-            GradientStop { position: 1.0; color: Tema.colorPanel }
+            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.9) }
+            GradientStop { position: 0.46; color: Qt.lighter(Tema.colorPanel, 1.3) }
+            GradientStop { position: 0.54; color: Tema.colorPanel }
+            GradientStop { position: 1.0; color: Qt.darker(Tema.colorPanel, 1.14) }
+        }
+        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+        layer.enabled: true
+        layer.effect: ShaderEffect {
+            property variant source
+            property real amplitud: 30.0
+            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
         }
 
         Rectangle {
@@ -86,7 +122,20 @@ Item {
             anchors.leftMargin: 14
             anchors.rightMargin: 14
             height: 1
-            color: Qt.rgba(1, 1, 1, 0.12)
+            color: Qt.rgba(1, 1, 1, 0.22)
+        }
+
+        // Canto oscuro de abajo -- cierra el volumen por el otro lado.
+        // Sin él, la barra tiene luz arriba y nada abajo, y se lee plana.
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 14
+            anchors.rightMargin: 14
+            anchors.bottomMargin: 1
+            height: 1
+            color: Qt.rgba(0, 0, 0, 0.45)
         }
 
         Row {
@@ -94,10 +143,54 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.leftMargin: 16
             spacing: 8 * Tema.escala
-            Text {
-                text: "♣"
-                color: Tema.colorAccent
-                font.pixelSize: 20 * Tema.escala
+            // Envuelto en un Item -- dentro de un Row (positioner) un
+            // hijo no puede anclarse a otro hijo, y el propio Row ya
+            // controla la "x" de cada hijo, con lo que un MultiEffect
+            // suelto como hijo directo del Row competiría con eso. El
+            // wrapper mide igual que el trébol, así que no le come sitio
+            // de más a "PokerRemake".
+            Item {
+                width: treboLogo.width
+                height: treboLogo.height
+                Text {
+                    id: treboLogo
+                    text: "♣"
+                    color: Qt.darker(Tema.colorAccent, 1.15)
+                    font.pixelSize: 20 * Tema.escala
+                }
+                // Reflejo/brillo -- pedido explícito 2026-09-02: "no solo
+                // quiero el resplandor... sino tambien el reflejo/brillo
+                // que tenian los botones" (el degradado metálico de 3
+                // paradas del mini-riel/SelectorSegmentado). Un Text no
+                // admite degradado de relleno -- mismo truco "barato" que
+                // el resto del proyecto (aproximar con capas en vez de un
+                // shader): una segunda copia del glifo en un tono más
+                // claro, recortada a solo el tercio de arriba, imita el
+                // brillo superior del degradado sin dibujar nada a mano.
+                Item {
+                    anchors.fill: treboLogo
+                    height: treboLogo.height * 0.42
+                    clip: true
+                    Text {
+                        text: "♣"
+                        color: Qt.lighter(Tema.colorAccent, 1.5)
+                        font.pixelSize: treboLogo.font.pixelSize
+                    }
+                }
+                // Brillo dorado real detrás del trébol de marca -- mismo
+                // criterio que el mini-riel/SelectorSegmentado.
+                MultiEffect {
+                    anchors.fill: treboLogo
+                    source: treboLogo
+                    autoPaddingEnabled: true
+                    shadowEnabled: true
+                    shadowColor: Tema.colorAccent
+                    shadowOpacity: 0.6
+                    shadowBlur: 0.7
+                    shadowHorizontalOffset: 0
+                    shadowVerticalOffset: 0
+                    z: -1
+                }
             }
             Text {
                 text: "PokerRemake"
@@ -125,13 +218,42 @@ Item {
             anchors.rightMargin: 16
             spacing: 16 * Tema.escala
 
-            Text {
+            Row {
                 visible: barra.mostrarSaldo
                 anchors.verticalCenter: parent.verticalCenter
-                text: barra.miSaldoActual + " fichas"
-                color: Tema.colorAccent
-                font.bold: true
-                font.pixelSize: 13 * Tema.escala
+                spacing: 3 * Tema.escala
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: barra.miSaldoActual + ""
+                    color: Tema.colorAccent
+                    font.bold: true
+                    font.pixelSize: 13 * Tema.escala
+                }
+                IconoFicha {
+                    width: 11 * Tema.escala
+                    height: width
+                    anchors.verticalCenter: parent.verticalCenter
+                    colorFicha: Tema.colorAccent
+                }
+            }
+
+            Row {
+                visible: barra.treboles >= 0
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3 * Tema.escala
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: barra.treboles + ""
+                    color: Tema.colorAccent
+                    font.bold: true
+                    font.pixelSize: 13 * Tema.escala
+                }
+                IconoTrebol {
+                    width: 11 * Tema.escala
+                    height: width
+                    anchors.verticalCenter: parent.verticalCenter
+                    colorTrebol: Tema.colorAccent
+                }
             }
 
             // Estado de conexión: Lobby/Partida/Fin solo se llega a ellas
@@ -182,6 +304,13 @@ Item {
                         color: botonChuletaBarraArea.containsMouse ? Qt.darker(Tema.colorAccent, 1.25) : "transparent"
                     }
                 }
+                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property variant source
+                    property real amplitud: 3.0
+                    fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                }
                 Text {
                     anchors.centerIn: parent
                     text: "?"
@@ -219,6 +348,13 @@ Item {
                         position: 1.0
                         color: botonRefrescarBarraArea.containsMouse ? Qt.darker(Tema.colorAccent, 1.25) : "transparent"
                     }
+                }
+                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property variant source
+                    property real amplitud: 3.0
+                    fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
                 }
                 Text {
                     anchors.centerIn: parent
@@ -293,6 +429,13 @@ Item {
                         position: 1.0
                         color: botonAjustesBarraArea.containsMouse ? Qt.darker(Tema.colorAccent, 1.25) : "transparent"
                     }
+                }
+                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property variant source
+                    property real amplitud: 3.0
+                    fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
                 }
                 // Tres puntos de verdad (Rectangle redondos) en vez del
                 // carácter "⋮" — el glifo depende de la fuente y ni

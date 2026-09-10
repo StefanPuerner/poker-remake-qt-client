@@ -28,8 +28,12 @@ QtObject {
         },
         {
             nombre: "Azul medianoche",
+            // Acento dorado desde 2026-09-10 (antes plateado, #B8C4CE): el
+            // azul marino con oro se ve mucho mejor (idea del usuario). Es el
+            // mismo dorado que Burdeos, más cálido que el del verde -- sobre
+            // azul, casi complementario, resalta más.
             fondo: "#0A141F", tapete: "#173250", panel: "#0D1B29", borde: "#2A4A63",
-            accent: "#B8C4CE", texto: "#FFFFFF", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
+            accent: "#D4A24E", texto: "#FFFFFF", textoTenue: "#9AACB8", textoMuyTenue: "#5E7A8C", nombreAjeno: "#7C93A8"
         },
         {
             nombre: "Burdeos",
@@ -76,6 +80,12 @@ QtObject {
     // silencio. Los últimos 6 caracteres son siempre "RRGGBB" en los dos
     // casos, así que esto da un hex limpio pase lo que pase.
     function colorHex(c) {
+        // Guarda añadida (2026-09-03): "c" puede llegar null en el primer
+        // frame de un binding que todavía no resolvió su color real (visto
+        // en real: "TypeError: Cannot read property 'toString' of null",
+        // repetido en consola en cuanto se abre cualquier pantalla que
+        // llame a esto antes de que su color de origen esté listo).
+        if (!c) return "#000000";
         return "#" + c.toString().slice(-6);
     }
 
@@ -83,11 +93,31 @@ QtObject {
     // Avatar.qml) -- provisionales, sin datos de uso real todavía que los
     // calibren. Un único sitio para los dos: Asiento (cualquier jugador
     // sentado, vía GAME_STATE) y la fila de Ranking (vía CONSULTAR_RANKING).
-    function marcoPorPartidasGanadas(n) {
-        if (n >= 100) return "platino";
-        if (n >= 50) return "oro";
-        if (n >= 25) return "plata";
-        if (n >= 10) return "bronce";
+    // Umbrales bajados de 10/25/50/100 a 5/15/25/50 (pedido explícito
+    // 2026-08-31): con pocos jugadores reales, 10 partidas GANADAS ya era
+    // excesivo para el primer marco -- nadie del grupo de amigos del
+    // usuario lo había alcanzado todavía. El salto final (25→50, +25) se
+    // deja más grande que los anteriores (+10, +10) a propósito: Platino
+    // sigue siendo el hito de verdad, no un escalón más.
+    // tieneMarcoBasico: bug real 2026-08-31 -- este segundo parámetro se
+    // pasaba desde TODOS los sitios que llaman a esta función pero la
+    // función en sí lo ignoraba por completo (firma solo con "n"), así
+    // que Hierro nunca se activaba salvo con partidas_ganadas real
+    // (n >= 1, el contador CON el antifarm) -- exactamente lo que este
+    // parámetro existe para evitar. Corregido: ahora sí se mira.
+    function marcoPorPartidasGanadas(n, tieneMarcoBasico) {
+        if (n >= 50) return "platino";
+        if (n >= 25) return "oro";
+        if (n >= 15) return "plata";
+        if (n >= 5) return "bronce";
+        // Hierro -- marco básico, se gana con CUALQUIER partida ganada,
+        // también contra bots (pedido explícito 2026-08-31: antes de esto
+        // no había NINGÚN marco, y la Tienda mostraba un gris "sin
+        // material" al previsualizar Textura/Efecto/Decoraciones sin
+        // haber ganado nunca -- una vista previa que no reflejaba nada
+        // real. Ahora comprar/equipar esos accesorios exige tener ya
+        // Hierro, ver AccountManager::comprarObjeto()/equiparObjeto()).
+        if (n >= 1 || tieneMarcoBasico) return "hierro";
         return "ninguno";
     }
 

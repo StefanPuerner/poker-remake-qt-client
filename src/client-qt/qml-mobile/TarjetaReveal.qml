@@ -64,6 +64,13 @@ Rectangle {
                     GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.55) }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
+                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property variant source
+                    property real amplitud: 3.0
+                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                }
                 SequentialAnimation on x {
                     running: tarjetaReveal.datos.esGanador
                     loops: Animation.Infinite

@@ -365,13 +365,23 @@ Rectangle {
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
                     }
-                    Text {
+                    Row {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Bote: " + cajon.bote
-                        color: Tema.colorAccent
-                        font.bold: true
-                        font.family: Tema.fuenteElegante
-                        font.pixelSize: 13 * Tema.escala
+                        spacing: 4 * Tema.escala
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Bote: " + cajon.bote
+                            color: Tema.colorAccent
+                            font.bold: true
+                            font.family: Tema.fuenteElegante
+                            font.pixelSize: 13 * Tema.escala
+                        }
+                        IconoFicha {
+                            width: 11 * Tema.escala
+                            height: width
+                            anchors.verticalCenter: parent.verticalCenter
+                            colorFicha: Tema.colorAccent
+                        }
                     }
                 }
 
@@ -562,7 +572,7 @@ Rectangle {
                     TextField {
                         id: textoChatCajon
                         width: parent.width - botonEnviarCajon.width - parent.spacing
-                        height: Tema.tamanoMinTactil
+                        height: Tema.tactil
                         color: Tema.colorTexto
                         font.pixelSize: 11 * Tema.escala
                         // Ver CampoEmergente.qml: sin esto, borrar una
@@ -570,17 +580,15 @@ Rectangle {
                         inputMethodHints: Qt.ImhNoPredictiveText
                         placeholderText: "Escribe un mensaje…"
                         placeholderTextColor: Tema.colorTextoTenue
-                        background: Rectangle {
-                            color: Tema.colorFondo
+                        background: MarcoHueco {
                             radius: 6 * Tema.escala
-                            border.width: 1
-                            border.color: textoChatCajon.activeFocus ? Tema.colorAccent : Tema.colorBorde
+                            activo: textoChatCajon.activeFocus
                         }
                         onAccepted: botonEnviarCajon.clicked()
                     }
                     BotonRelleno {
                         id: botonEnviarCajon
-                        height: Tema.tamanoMinTactil
+                        height: Tema.tactil
                         text: "Enviar"
                         onClicked: {
                             if (textoChatCajon.text.length === 0) return;

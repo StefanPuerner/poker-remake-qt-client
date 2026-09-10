@@ -48,6 +48,13 @@ Item {
             GradientStop { position: 0.0; color: Qt.lighter(Tema.colorTapete, 1.22) }
             GradientStop { position: 1.0; color: Tema.colorTapete }
         }
+        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+        layer.enabled: true
+        layer.effect: ShaderEffect {
+            property variant source
+            property real amplitud: 30.0
+            fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+        }
     }
 
     Column {
@@ -64,13 +71,23 @@ Item {
                 }
             }
         }
-        Text {
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Bote: " + mesa.bote
-            color: Tema.colorAccent
-            font.bold: true
-            font.pixelSize: 14 * Tema.escala
-            font.family: Tema.fuenteElegante
+            spacing: 4 * Tema.escala
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Bote: " + mesa.bote
+                color: Tema.colorAccent
+                font.bold: true
+                font.pixelSize: 14 * Tema.escala
+                font.family: Tema.fuenteElegante
+            }
+            IconoFicha {
+                width: 12 * Tema.escala
+                height: width
+                anchors.verticalCenter: parent.verticalCenter
+                colorFicha: Tema.colorAccent
+            }
         }
     }
 
@@ -81,6 +98,14 @@ Item {
             required property string nombre
             required property string saldo
             required property int partidasGanadas
+            // Visibilidad a otros jugadores, parte B (2026-09-01) -- ver
+            // Asiento.qml para cómo se usan.
+            required property bool tieneMarcoBasico
+            required property string textura
+            required property string efecto
+            required property string decoracionLateral1
+            required property string decoracionLateral2
+            required property string decoracionSuperior
             required property int index
 
             property int indiceRelativo: (index - mesa.miIndice + mesa.jugadores.count) % mesa.jugadores.count
@@ -104,6 +129,12 @@ Item {
                 nombre: posicionador.nombre
                 saldo: posicionador.saldo
                 partidasGanadas: posicionador.partidasGanadas
+                tieneMarcoBasico: posicionador.tieneMarcoBasico
+                textura: posicionador.textura
+                efecto: posicionador.efecto
+                decoracionLateral1: posicionador.decoracionLateral1
+                decoracionLateral2: posicionador.decoracionLateral2
+                decoracionSuperior: posicionador.decoracionSuperior
                 activo: posicionador.nombre === mesa.turnoNombre
                 fraccionTiempo: posicionador.nombre === mesa.turnoNombre ? mesa.fraccionTiempo : 1.0
                 retirado: mesa.retirados.indexOf(posicionador.nombre) !== -1

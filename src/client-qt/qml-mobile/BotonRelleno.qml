@@ -41,6 +41,14 @@ Button {
                 GradientStop { position: 0.5; color: botonRelleno.colorBorde }
                 GradientStop { position: 1.0; color: Qt.darker(botonRelleno.colorBorde, 1.2) }
             }
+            // Sin capa de dithering a propósito (2026-09-09, pedido explícito:
+            // "los botones dorados en cualquier sitio no deberían tenerla").
+            // El ruido se puso para matar el bandeo de los degradados, pero
+            // sobre un dorado pequeño se percibe como la textura de tapete de
+            // los paneles y le quita el aspecto de metal limpio -- que es justo
+            // lo que tiene que distinguir a un botón del paño sobre el que se
+            // apoya. Aquí no hace falta: la rampa es corta y el elemento
+            // pequeño, así que no llega a bandear.
         }
     }
     contentItem: Text {

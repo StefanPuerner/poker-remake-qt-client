@@ -1,0 +1,105 @@
+#pragma once
+
+// VersionChecker.hpp — comprueba en segundo plano, sin bloquear Inicio, si
+// hay una versión más reciente publicada en el repo público de GitHub que
+// la que trae este binario. Consulta la API pública de releases (sin
+// autenticación, sujeta al límite de peticiones anónimas de GitHub — de
+// sobra para una comprobación puntual al arrancar) en vez de que el
+// servidor reporte una versión "recomendada": la API de GitHub siempre
+// está exacta en cuanto se publica un release, sin depender de que alguien
+// se acuerde de actualizar un valor a mano en otro sitio. Ver diseño en
+// memoria qt_progression_system_design.md, sección "Aviso de versión
+// antigua + release de Android".
+//
+// POKER_APP_VERSION lo define cmake/ClientesQt.cmake (target_compile_definitions)
+// a partir del mismo "MAYOR.MENOR.PARCHE" que llevan los tags de git
+// (v0.7.1 → "0.7.1") — un único sitio que actualizar en cada release.
+
+#include <algorithm>
+
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QObject>
+#include <QString>
+#include <QStringList>
+#include <QUrl>
+
+#ifndef POKER_APP_VERSION
+#define POKER_APP_VERSION "0.0.0"
+#endif
+
+class VersionChecker : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(QString versionActual READ versionActual CONSTANT)
+  Q_PROPERTY(bool hayVersionNueva READ hayVersionNueva NOTIFY hayVersionNuevaChanged)
+  Q_PROPERTY(QString versionRemota READ versionRemota NOTIFY hayVersionNuevaChanged)
+  Q_PROPERTY(QString urlRelease READ urlRelease NOTIFY hayVersionNuevaChanged)
+
+ public:
+  explicit VersionChecker(QObject* parent = nullptr) : QObject(parent) {}
+
+  QString versionActual() const { return QString::fromUtf8(POKER_APP_VERSION); }
+  bool hayVersionNueva() const { return hayVersionNueva_; }
+  QString versionRemota() const { return versionRemota_; }
+  QString urlRelease() const { return urlRelease_; }
+
+  // Se llama una vez al arrancar (ver Main.qml, Component.onCompleted de
+  // la ventana raíz). Fallo silencioso a propósito en cualquier error (sin
+  // red, API caída, JSON inesperado) — esto es un aviso de cortesía, nunca
+  // debe interrumpir ni retrasar que la app arranque.
+  Q_INVOKABLE void comprobar() {
+    auto* manager = new QNetworkAccessManager(this);
+    QNetworkRequest peticion(QUrl(
+        "https://api.github.com/repos/StefanPuerner/poker-remake-qt-client/releases/latest"));
+    // La API de GitHub devuelve 403 sin esto, sea cual sea el valor.
+    peticion.setRawHeader("User-Agent", "PokerRemake-VersionChecker");
+    QNetworkReply* respuesta = manager->get(peticion);
+    connect(respuesta, &QNetworkReply::finished, this, [this, respuesta, manager]() {
+      respuesta->deleteLater();
+      manager->deleteLater();
+      if (respuesta->error() != QNetworkReply::NoError) return;
+
+      QJsonDocument doc = QJsonDocument::fromJson(respuesta->readAll());
+      if (!doc.isObject()) return;
+      QJsonObject obj = doc.object();
+      QString tag = obj.value("tag_name").toString();  // p.ej. "v0.7.1"
+      QString url = obj.value("html_url").toString();
+      if (tag.isEmpty()) return;
+
+      QString remota = tag.startsWith('v') ? tag.mid(1) : tag;
+      if (esVersionMasNueva(remota, versionActual())) {
+        versionRemota_ = remota;
+        urlRelease_ = url;
+        hayVersionNueva_ = true;
+        emit hayVersionNuevaChanged();
+      }
+    });
+  }
+
+ signals:
+  void hayVersionNuevaChanged();
+
+ private:
+  bool hayVersionNueva_ = false;
+  QString versionRemota_;
+  QString urlRelease_;
+
+  // Compara dos versiones "MAYOR.MENOR.PARCHE" numéricas componente a
+  // componente -- suficiente para el esquema de tags que ya usa el
+  // proyecto, sin traer una librería de semver completa para un caso tan
+  // simple.
+  static bool esVersionMasNueva(const QString& remota, const QString& actual) {
+    QStringList r = remota.split('.');
+    QStringList a = actual.split('.');
+    int n = std::max(r.size(), a.size());
+    for (int i = 0; i < n; ++i) {
+      int vr = i < r.size() ? r.at(i).toInt() : 0;
+      int va = i < a.size() ? a.at(i).toInt() : 0;
+      if (vr != va) return vr > va;
+    }
+    return false;
+  }
+};

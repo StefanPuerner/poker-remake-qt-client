@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 
@@ -45,6 +46,10 @@ class NetworkClient : public QObject {
   // que las cuatro propiedades de arriba (bug de Android con señales de
   // muchos parámetros), un único QVariantMap en vez de veinte campos sueltos.
   Q_PROPERTY(QVariantMap estadisticasCuenta READ estadisticasCuenta NOTIFY estadisticasCuentaCambiaron)
+  // Fase 5 del sistema de progresión -- mismo motivo que estadisticasCuenta:
+  // un único QVariantMap con las 6 claves del marco equipado en vez de 6
+  // parámetros sueltos en la señal.
+  Q_PROPERTY(QVariantMap loadoutMarco READ loadoutMarco NOTIFY loadoutMarcoCambiaron)
   // Perfil de OTRO jugador (Amigos/Recientes/Búsqueda/Ranking) -- Q_PROPERTY
   // SEPARADA de estadisticasCuenta, a propósito: son las mismas ~19
   // estadísticas pero de una cuenta ajena, no la propia -- mirar el perfil
@@ -76,6 +81,7 @@ class NetworkClient : public QObject {
   QString mejorManoJugadorFinal() const { return mejorManoJugadorFinal_; }
   QString eliminacionesFinalCsv() const { return eliminacionesFinalCsv_; }
   QVariantMap estadisticasCuenta() const { return estadisticasCuenta_; }
+  QVariantMap loadoutMarco() const { return loadoutMarco_; }
   QVariantMap perfilJugador() const { return perfilJugador_; }
 
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
@@ -362,12 +368,55 @@ class NetworkClient : public QObject {
   // Aquí ni siquiera hacen falta propiedades sueltas por campo -- un único
   // QVariantMap ya evita el problema (una señal de UN parámetro) y QML lo
   // desestructura por nombre de campo, no por posición.
+  /**
+   * @brief Entrega al servidor el XP acumulado jugando SIN CONEXIÓN.
+   *
+   * El servidor NO se cree el número tal cual: lo acota a lo plausible para
+   * el tiempo real transcurrido desde la última sincronización (ver
+   * AccountManager::sincronizarXpOffline()). Por eso la respuesta trae
+   * "acreditado" además de "reclamado" -- pueden no coincidir, y el cliente
+   * debe descontar de su bolsa local lo que de verdad se acreditó, no lo
+   * que pidió.
+   */
+  // ── Paridad con LocalGameClient ─────────────────────────────────────────
+  //  QML llama a estas dos sobre "redcliente" solo en rutas donde ese
+  //  objeto es el cliente LOCAL (justo después de modoJuego.activarModoLocal()).
+  //  Existen aquí igualmente, como no-ops, para que una llamada por error
+  //  desde el modo red sea inocua en vez de un TypeError silencioso en
+  //  consola -- la parte cara de este proyecto ha sido justamente perseguir
+  //  esa clase de fallo. La paridad va en los DOS sentidos: si mañana se
+  //  añade un Q_INVOKABLE a uno de los dos clientes que QML pueda invocar,
+  //  el otro lo necesita también.
+  Q_INVOKABLE void iniciarPartidaLocal(const QString&, int, int, int, int, int, bool, int,
+                                       int, bool, bool) {}
+  Q_INVOKABLE void setAcumularXpOffline(bool) {}
+
+  Q_INVOKABLE void sincronizarXpOffline(const QString& host, quint16 puerto, QString token,
+                                        int xp) {
+    if (token.isEmpty() || xp <= 0) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::SINCRONIZAR_XP_OFFLINE,
+                      {{"token", token.toStdString()}, {"xp", std::to_string(xp)}}),
+        [this](const std::string& payload) {
+          emit xpOfflineSincronizado(
+              net::jsonGetInt(payload, "acreditado"),
+              net::jsonGetInt(payload, "reclamado"),
+              QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+        });
+  }
+
   Q_INVOKABLE void consultarEstadisticas(const QString& host, quint16 puerto, QString token) {
     if (token.isEmpty()) return;
     enviarPeticionEfimera(host, puerto,
         net::buildMsg(net::MsgType::CONSULTAR_ESTADISTICAS, {{"token", token.toStdString()}}),
         [this](const std::string& payload) {
           QVariantMap m;
+          m["esAdmin"] = net::jsonGetInt(payload, "es_admin") != 0;
+          m["xpTotal"] = net::jsonGetInt(payload, "xp_total");
+          m["treboles"] = net::jsonGetInt(payload, "treboles");
+          m["tieneMarcoBasico"] = net::jsonGetInt(payload, "tiene_marco_basico") != 0;
+          m["vecesGanoSinShowdown"] = net::jsonGetInt(payload, "veces_gano_sin_showdown");
+          m["rachaManosGanadas"] = net::jsonGetInt(payload, "racha_manos_ganadas");
           m["manosJugadas"] = net::jsonGetInt(payload, "manos_jugadas");
           m["manosGanadas"] = net::jsonGetInt(payload, "manos_ganadas");
           m["partidasJugadas"] = net::jsonGetInt(payload, "partidas_jugadas");
@@ -390,6 +439,142 @@ class NetworkClient : public QObject {
           estadisticasCuenta_ = m;
           emit estadisticasCuentaCambiaron();
         });
+  }
+
+  /// Fase 1 del sistema de progresión (ver memoria qt_progression_system_design)
+  /// -- dispara la herramienta de estadísticas mínima. Solo tiene efecto si
+  /// la cuenta del token es admin (accounts.es_admin, ver
+  /// AccountManager::migrarEsquema v6); el botón de QML que llama a esto ya
+  /// se oculta si estadisticasCuenta.esAdmin es false, pero el servidor es
+  /// quien de verdad lo hace cumplir.
+  Q_INVOKABLE void exportarEstadisticas(const QString& host, quint16 puerto, QString token) {
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::EXPORTAR_ESTADISTICAS, {{"token", token.toStdString()}}),
+        [this](const std::string& payload) {
+          if (net::jsonGetStr(payload, "evento") == "ESTADISTICAS_EXPORTADAS") {
+            emit estadisticasExportadas(QString::fromStdString(net::jsonGetStr(payload, "archivo")));
+          } else {
+            emit estadisticasExportadasError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+          }
+        });
+  }
+
+  /// Fase 4 del sistema de progresión (ver memoria qt_progression_system_design)
+  /// -- catálogo completo de logros + cuáles tiene desbloqueados la cuenta
+  /// del token. Exige sesión (a diferencia de consultarRanking()) -- token
+  /// vacío ni se manda, mismo criterio que consultarEstadisticas().
+  Q_INVOKABLE void consultarLogros(const QString& host, quint16 puerto, QString token) {
+    if (token.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::CONSULTAR_LOGROS, {{"token", token.toStdString()}}),
+        [this](const std::string& payload) {
+          static const QStringList campos = {"codigo", "rareza", "xpRecompensa",
+                                              "desbloqueado", "desbloqueadoEn",
+                                              "nombre", "descripcion"};
+          emit logrosActualizados(
+              parsearFilasChat(net::jsonGetStr(payload, "logros"), campos));
+        });
+  }
+
+  // ── Fase 5 del sistema de progresión: marcos v2 + tienda ────────────────
+  //  Mismo criterio de sesión obligatoria que consultarLogros().
+
+  Q_INVOKABLE void consultarTienda(const QString& host, quint16 puerto, QString token) {
+    if (token.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::CONSULTAR_TIENDA, {{"token", token.toStdString()}}),
+        [this](const std::string& payload) {
+          static const QStringList campos = {"codigo", "categoria", "precioTreboles",
+                                              "nivelMinimo", "esDeLogro", "poseido",
+                                              "equipado", "nombre", "rareza", "logroNombre"};
+          emit tiendaActualizada(
+              parsearFilasChat(net::jsonGetStr(payload, "tienda"), campos));
+        });
+  }
+
+  Q_INVOKABLE void comprarObjeto(const QString& host, quint16 puerto, QString token, QString codigo) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::COMPRAR_OBJETO, {
+        {"token",  token.toStdString()},
+        {"codigo", codigo.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "OBJETO_COMPRADO") {
+        emit objetoComprado(QString::fromStdString(net::jsonGetStr(payload, "codigo")));
+      } else {
+        emit objetoCompraError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  /// @param codigo vacío desequipa ese slot.
+  Q_INVOKABLE void equiparObjeto(const QString& host, quint16 puerto, QString token,
+                                  QString slot, QString codigo) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::EQUIPAR_OBJETO, {
+        {"token",  token.toStdString()},
+        {"slot",   slot.toStdString()},
+        {"codigo", codigo.toStdString()},
+    }), [this](const std::string& payload) {
+      if (net::jsonGetStr(payload, "evento") == "OBJETO_EQUIPADO") {
+        emit objetoEquipado(QString::fromStdString(net::jsonGetStr(payload, "slot")),
+                             QString::fromStdString(net::jsonGetStr(payload, "codigo")));
+      } else {
+        emit objetoEquiparError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  Q_INVOKABLE void consultarLoadout(const QString& host, quint16 puerto, QString token) {
+    if (token.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::CONSULTAR_LOADOUT, {{"token", token.toStdString()}}),
+        [this](const std::string& payload) {
+          QVariantMap m;
+          m["textura"] = QString::fromStdString(net::jsonGetStr(payload, "textura"));
+          m["efecto"] = QString::fromStdString(net::jsonGetStr(payload, "efecto"));
+          m["decoracionLateral1"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_lateral_1"));
+          m["decoracionLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_lateral_2"));
+          m["decoracionSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_superior"));
+          m["titulo"] = QString::fromStdString(net::jsonGetStr(payload, "titulo"));
+          loadoutMarco_ = m;
+          emit loadoutMarcoCambiaron();
+        });
+  }
+
+  /// Herramienta de pruebas/admin, punto 2 de la prioridad confirmada
+  /// (2026-09-01, ver memoria qt_progression_review_2026_09_01) -- concede
+  /// @p codigo (logro u objeto de tienda) a @p usernameDestino de un
+  /// tirón. El permiso real (es_admin) lo comprueba el servidor.
+  Q_INVOKABLE void adminConcederItem(const QString& host, quint16 puerto, QString token,
+                                      QString usernameDestino, QString codigo) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::ADMIN_CONCEDER_ITEM, {
+        {"token",            token.toStdString()},
+        {"username_destino", usernameDestino.toStdString()},
+        {"codigo",           codigo.toStdString()},
+    }), [this](const std::string& payload) {
+      QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+      if (net::jsonGetStr(payload, "evento") == "ADMIN_CONCEDER_OK") {
+        emit adminConcederOk(mensaje);
+      } else {
+        emit adminConcederError(mensaje);
+      }
+    });
+  }
+
+  /// Segunda mitad del punto 2 (mismo día) -- fabrica @p cantidad cuentas
+  /// de prueba con partidas/elo variados. El permiso real (es_admin) lo
+  /// comprueba el servidor.
+  Q_INVOKABLE void adminFabricarCuentasPrueba(const QString& host, quint16 puerto, QString token,
+                                               int cantidad) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::ADMIN_FABRICAR_CUENTAS, {
+        {"token",    token.toStdString()},
+        {"cantidad", std::to_string(cantidad)},
+    }), [this](const std::string& payload) {
+      QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+      if (net::jsonGetStr(payload, "evento") == "ADMIN_FABRICAR_OK") {
+        emit adminFabricarOk(mensaje);
+      } else {
+        emit adminFabricarError(mensaje);
+      }
+    });
   }
 
   // ── Social ────────────────────────────────────────────────────────────────
@@ -593,6 +778,19 @@ class NetworkClient : public QObject {
           m["vecesPoker"] = net::jsonGetInt(payload, "veces_poker");
           m["vecesEscaleraColor"] = net::jsonGetInt(payload, "veces_escalera_color");
           m["vecesEscaleraReal"] = net::jsonGetInt(payload, "veces_escalera_real");
+          // Visibilidad a otros jugadores (2026-09-01) -- marco/loadout
+          // completo y % de logros de ESTA cuenta (no la propia). Mismos
+          // nombres de campo que loadoutMarco (Q_PROPERTY) para poder
+          // reutilizar el mismo Avatar/CajaTitulo en QML sin traducir.
+          m["tieneMarcoBasico"] = net::jsonGetInt(payload, "tiene_marco_basico") != 0;
+          m["textura"] = QString::fromStdString(net::jsonGetStr(payload, "textura"));
+          m["efecto"] = QString::fromStdString(net::jsonGetStr(payload, "efecto"));
+          m["decoracionLateral1"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_lateral_1"));
+          m["decoracionLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_lateral_2"));
+          m["decoracionSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "decoracion_superior"));
+          m["titulo"] = QString::fromStdString(net::jsonGetStr(payload, "titulo"));
+          m["logrosDesbloqueados"] = net::jsonGetInt(payload, "logros_desbloqueados");
+          m["logrosTotal"] = net::jsonGetInt(payload, "logros_total");
           perfilJugador_ = m;
           emit perfilJugadorCambiaron();
         });
@@ -853,13 +1051,47 @@ class NetworkClient : public QObject {
   void conexionComprobada(bool conectado);
   /// Respuesta a listarGuardadas(): "archivo:fecha:humanos:bots;..." (puede ser "").
   void guardadasActualizadas(QString guardadasCsv);
-  /// Respuesta a consultarRanking(): "partidasJugadas:partidasGanadas:username;..." (puede ser "").
+  /// Respuesta a consultarRanking(): "accountId:partidasJugadas:partidasGanadas:elo:
+  /// tieneMarcoBasico:textura:efecto:decoracionLateral1:decoracionLateral2:
+  /// decoracionSuperior:titulo:username;..." (puede ser ""). El loadout
+  /// completo se añadió 2026-09-01 para el podio de Ranking (ver memoria
+  /// qt_progression_review_2026_09_01) -- username se queda el último a
+  /// propósito, por si acaso lleva ':'.
   void rankingActualizado(QString rankingCsv);
   /// Avisa de que la propiedad estadisticasCuenta ya está al día --
   /// respuesta a consultarEstadisticas() (las propias). Ver el comentario
   /// largo junto a consultarEstadisticas() para el porqué de un
   /// QVariantMap en vez de parámetros sueltos.
   void estadisticasCuentaCambiaron();
+  /// Respuesta a exportarEstadisticas() -- ver la Fase 1 del sistema de
+  /// progresión. "archivo" es solo el nombre (vive en data/ del servidor,
+  /// no viaja por el protocolo).
+  void estadisticasExportadas(QString archivo);
+  void estadisticasExportadasError(QString mensaje);
+  /// Respuesta a consultarLogros() -- ya parseado (parsearFilasChat(), ver
+  /// LOGROS_LISTA en Protocol.hpp), un QVariantMap por logro con
+  /// codigo/rareza/xpRecompensa/desbloqueado/desbloqueadoEn/nombre/descripcion.
+  /// "desbloqueado" llega como int (0/1), no bool -- mismo motivo que
+  /// ultimoEsMio en el chat, coerce con !! en QML si hace falta.
+  void logrosActualizados(QVariantList logros);
+
+  // Fase 5 del sistema de progresión -- ver consultarTienda()/
+  // comprarObjeto()/equiparObjeto()/consultarLoadout().
+  void tiendaActualizada(QVariantList tienda);
+  void objetoComprado(QString codigo);
+  void objetoCompraError(QString mensaje);
+  void objetoEquipado(QString slot, QString codigo);
+  void objetoEquiparError(QString mensaje);
+  /// Avisa de que la propiedad loadoutMarco ya está al día -- mismo
+  /// criterio que estadisticasCuentaCambiaron().
+  void loadoutMarcoCambiaron();
+  /// Respuesta a adminConcederItem() -- herramienta de pruebas/admin
+  /// (2026-09-01, ver memoria qt_progression_review_2026_09_01).
+  void adminConcederOk(QString mensaje);
+  void adminConcederError(QString mensaje);
+  /// Respuesta a adminFabricarCuentasPrueba() -- misma herramienta.
+  void adminFabricarOk(QString mensaje);
+  void adminFabricarError(QString mensaje);
   /// Respuesta a renombrarGuardada() — mensaje vacío si fue bien.
   void guardadaRenombrada(QString mensaje);
   /// Respuesta a borrarGuardada() — mensaje vacío si fue bien.
@@ -914,6 +1146,10 @@ class NetworkClient : public QObject {
                               QString codigo, QString nombreSala);
   /// Respuesta a consultarPerfilJugador() -- ver Q_PROPERTY perfilJugador.
   void perfilJugadorCambiaron();
+  /// Respuesta a sincronizarXpOffline(). "acreditado" puede ser MENOR que
+  /// "reclamado" (topes del servidor); "mensaje" explica el recorte si lo
+  /// hubo, y va vacío si se acreditó todo.
+  void xpOfflineSincronizado(int acreditado, int reclamado, QString mensaje);
 
  private:
   /**
@@ -949,15 +1185,19 @@ class NetworkClient : public QObject {
 
   /**
    * @brief Mismo propósito que parsearFilasSocial() pero para
-   * CONVERSACION_LISTA/RESUMEN_CHATS_LISTA, que llevan texto LIBRE de
-   * chat -- separadores de control '\x1F' (campo) / '\x1E' (fila) en vez
-   * de ':'/';' , porque un mensaje real puede contener cualquiera de esos
-   * dos caracteres (ver el comentario de esos MsgType en Protocol.hpp).
-   * Sin el truco de "el último campo absorbe el resto": no hace falta,
-   * '\x1F' nunca aparece en texto normal, un split exacto ya basta. Los
-   * campos "texto"/"ultimoTexto"/"username" NUNCA se auto-detectan como
-   * número (a diferencia de parsearFilasSocial()) -- un mensaje que sea
-   * solo dígitos ("123") debe seguir siendo una QString, no un int.
+   * CONVERSACION_LISTA/RESUMEN_CHATS_LISTA (texto LIBRE de chat) y, desde
+   * la Fase 4 del sistema de progresión, LOGROS_LISTA (nombre/descripcion
+   * de cada logro) -- separadores de control '\x1F' (campo) / '\x1E'
+   * (fila) en vez de ':'/';' , porque un mensaje real puede contener
+   * cualquiera de esos dos caracteres (ver el comentario de esos MsgType
+   * en Protocol.hpp; los de logros son texto fijo de la app, no entrada
+   * de usuario, pero se reutiliza el mismo framing por si algún día no lo
+   * son). Sin el truco de "el último campo absorbe el resto": no hace
+   * falta, '\x1F' nunca aparece en texto normal, un split exacto ya
+   * basta. Los campos de texto libre ("texto"/"ultimoTexto"/"username"/
+   * "nombre"/"descripcion"/"rareza"/"codigo") NUNCA se auto-detectan como
+   * número (a diferencia de parsearFilasSocial()) -- un mensaje o código
+   * que sea solo dígitos debe seguir siendo una QString, no un int.
    */
   static QVariantList parsearFilasChat(const std::string& csv, const QStringList& campos) {
     QVariantList filas;
@@ -972,7 +1212,9 @@ class NetworkClient : public QObject {
         const QString& nombreCampo = campos[i];
         const QString& valor = valores[i];
         if (nombreCampo == QLatin1String("texto") || nombreCampo == QLatin1String("ultimoTexto") ||
-            nombreCampo == QLatin1String("username")) {
+            nombreCampo == QLatin1String("username") || nombreCampo == QLatin1String("nombre") ||
+            nombreCampo == QLatin1String("descripcion") || nombreCampo == QLatin1String("rareza") ||
+            nombreCampo == QLatin1String("codigo")) {
           fila[nombreCampo] = valor;
           continue;
         }
@@ -1467,7 +1709,6 @@ class NetworkClient : public QObject {
             emit reconectado();
           }
 
-          qDebug() << "Mensaje completo:" << QString::fromStdString(payload);
           std::string tipo = net::jsonGetStr(payload, "type");
           if (tipo == "LOBBY_UPDATE") {
             QString jugadores =
@@ -1867,6 +2108,7 @@ class NetworkClient : public QObject {
   QString mejorManoJugadorFinal_;
   QString eliminacionesFinalCsv_;
   QVariantMap estadisticasCuenta_;
+  QVariantMap loadoutMarco_;  ///< Fase 5 del sistema de progresión -- ver consultarLoadout().
   QVariantMap perfilJugador_;  ///< Perfil de OTRA cuenta -- ver el comentario del Q_PROPERTY.
 
   // ── Social: socket de presencia ──────────────────────────────────────

@@ -12,7 +12,12 @@
 #include <QSslSocket>
 #include <QDebug>
 
+#include <memory>
+
+#include "../../include/local-qt/LocalGameClient.hpp"
+#include "../../include/local-qt/ModoJuegoCoordinador.hpp"
 #include "../../include/net-qt/NetworkClient.hpp"
+#include "../../include/net-qt/VersionChecker.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
 #ifdef Q_OS_ANDROID
@@ -98,7 +103,7 @@ void extenderBajoElRecorte() {
 int main(int argc, char* argv[]) {
 #ifdef Q_OS_WIN
   // Solo relevante cuando PokerClientMobile se compila como binario de
-  // escritorio normal en Windows (ver el comentario en CMakeLists.txt) --
+  // escritorio normal en Windows (ver el comentario en cmake/ClientesQt.cmake) --
   // mismo motivo que en src/client-qt/main.cpp: Schannel es el backend
   // TLS nativo de Windows, sin .dll que empaquetar.
   if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
@@ -118,12 +123,20 @@ int main(int argc, char* argv[]) {
   // cada cliente guarda los suyos.
   QGuiApplication::setOrganizationName("PokerRemake");
   QGuiApplication::setApplicationName("PokerClientMobile");
-  QQmlApplicationEngine engine;
+  // Destruido a mano al salir -- ver el comentario gemelo en
+  // src/client-qt/main.cpp.
+  auto engine = std::make_unique<QQmlApplicationEngine>();
   NetworkClient client;
-  engine.rootContext()->setContextProperty("redcliente", &client);
-  engine.rootContext()->setContextProperty("SERVER_HOST_DEFAULT",
+  // Modo offline -- ver el comentario gemelo en src/client-qt/main.cpp.
+  LocalGameClient clienteLocal;
+  ModoJuegoCoordinador modoJuego(engine->rootContext(), &client, &clienteLocal);
+  VersionChecker versionChecker;
+  engine->rootContext()->setContextProperty("redcliente", &client);
+  engine->rootContext()->setContextProperty("modoJuego", &modoJuego);
+  engine->rootContext()->setContextProperty("versionChecker", &versionChecker);
+  engine->rootContext()->setContextProperty("SERVER_HOST_DEFAULT",
                                             QString::fromUtf8(net::SERVER_HOST));
-  engine.rootContext()->setContextProperty("SERVER_PORT_DEFAULT",
+  engine->rootContext()->setContextProperty("SERVER_PORT_DEFAULT",
                                             static_cast<int>(net::SERVER_PORT));
 
 #ifdef Q_OS_ANDROID
@@ -148,6 +161,11 @@ int main(int argc, char* argv[]) {
   });
 #endif
 
-  engine.loadFromModule("PokerQuickMobile", "Main");
-  return app.exec();
+  engine->loadFromModule("PokerQuickMobile", "Main");
+  const int codigo = app.exec();
+  // Primero la interfaz, luego lo que usa (ver la declaración de "engine").
+  // modoJuego guarda el rootContext() de este motor, pero solo lo toca desde
+  // activarModoLocal()/activarModoRed(), que ya no pueden llamarse.
+  engine.reset();
+  return codigo;
 }

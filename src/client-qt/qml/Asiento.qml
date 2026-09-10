@@ -4,12 +4,25 @@ pragma ComponentBehavior: Bound
 import QtQuick
 
 Column {
+    id: asiento
     property string saldo
     property string nombre
     // Para el marco de avatar permanente (ver Tema.marcoPorPartidasGanadas
     // y Avatar.qml) -- viene de GAME_STATE, así que funciona para
     // CUALQUIER jugador sentado, no solo el propio.
     property int partidasGanadas: 0
+    // Visibilidad a otros jugadores, parte B (2026-09-01 -- ver memoria
+    // qt_progression_review_2026_09_01): loadout REAL de quien esté
+    // sentado aquí, no solo el tier de marco -- mismos campos que ya
+    // pinta PopupPerfilJugador.qml para un perfil público, ahora también
+    // en la mesa. "" = nada equipado en ese slot, igual que en todo el
+    // resto de la app.
+    property bool tieneMarcoBasico: false
+    property string textura: ""
+    property string efecto: ""
+    property string decoracionLateral1: ""
+    property string decoracionLateral2: ""
+    property string decoracionSuperior: ""
     // "activo": este asiento tiene el turno ahora mismo (lo sabe
     // cualquiera, viene de GAME_STATE). "fraccionTiempo": 1.0 = tiempo
     // completo, 0.0 = agotado — el servidor difunde el mismo timeout_ms
@@ -39,8 +52,22 @@ Column {
         // queda pegado a la izquierda por defecto. Centramos a mano con
         // "x", que Column no toca (solo gestiona la posición vertical).
         x: (parent.width - width) / 2
-        width: 56 * Tema.escala + 10
-        height: 56 * Tema.escala + 10
+        // Math.round(56*Tema.escala) -- MISMO valor que Avatar.qml calcula
+        // internamente para su propio "width" (avatar.tamano ahí abajo es
+        // este mismo "56 * Tema.escala"). Bug real corregido aquí
+        // (2026-09-01): antes este contenedor NO redondeaba, así que su
+        // ancho fraccionario no coincidía en resto con el ancho YA
+        // redondeado del Avatar centrado dentro -- el mismo desfase de
+        // subpíxel que "Sistema visual" ya documentó para marcoMetalico/
+        // nucleo en Avatar.qml, aquí aplicado al aro de resplandor del
+        // turno (los dos Rectangle "activo" de abajo, centrados en ESTE
+        // Item): al no compartir resto fraccionario con el Avatar de
+        // dentro, el halo quedaba centrado en el contenedor pero no en el
+        // avatar que realmente se ve, dando un anillo visualmente
+        // descentrado. Con los dos como enteros, la diferencia (10) es
+        // exacta, sin resto.
+        width: Math.round(56 * Tema.escala) + 10
+        height: width
 
         // Halo del asiento activo: dos anillos concéntricos con
         // opacidad decreciente en vez de blur de verdad (ver "Sistema
@@ -59,8 +86,15 @@ Column {
         Rectangle {
             visible: activo
             anchors.centerIn: parent
-            width: parent.width + 5
-            height: parent.height + 5
+            // "+6", no "+5" -- mismo motivo que el redondeo de arriba:
+            // con un contenedor ya entero, un margen IMPAR deja una
+            // diferencia impar entre este anillo y su padre, y
+            // anchors.centerIn calcula su posición como esa diferencia
+            // entre 2 -- con 5 (impar) da .5, medio píxel de desfase
+            // otra vez, esta vez en el propio anillo interior. Con 6
+            // (par) la diferencia entre 2 siempre cae en un entero.
+            width: parent.width + 6
+            height: parent.height + 6
             radius: width / 2
             color: "transparent"
             border.width: 3 * Tema.escala
@@ -95,7 +129,17 @@ Column {
             anchors.centerIn: parent
             letra: nombre.charAt(0)
             tamano: 56 * Tema.escala
-            marco: Tema.marcoPorPartidasGanadas(partidasGanadas)
+            // tieneMarcoBasico como 2º argumento -- bug real encontrado
+            // aquí también (2026-09-01, tercera vez en un sitio distinto,
+            // ver memoria qt_marco_seat_ring_contrast_bug): sin él, un
+            // jugador con Hierro por victoria contra bots (sin
+            // partidasGanadas "de verdad") se veía sin marco en la mesa.
+            marco: Tema.marcoPorPartidasGanadas(partidasGanadas, tieneMarcoBasico)
+            textura: asiento.textura
+            efecto: asiento.efecto
+            decoracionLateral1: asiento.decoracionLateral1
+            decoracionLateral2: asiento.decoracionLateral2
+            decoracionSuperior: asiento.decoracionSuperior
             // Dorado solo cuando de verdad es tu turno — antes era
             // dorado siempre, así que "activo" no se distinguía de un
             // asiento cualquiera más que por el aro del tiempo.
@@ -179,12 +223,22 @@ Column {
                 font.pixelSize: 13 * Tema.escala
                 font.family: Tema.fuenteElegante
             }
-            Text {
-                text: saldo
-                color: Tema.colorAccent
-                font.bold: true
-                font.pixelSize: 13 * Tema.escala
-                font.family: Tema.fuenteElegante
+            Row {
+                spacing: 3 * Tema.escala
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: saldo
+                    color: Tema.colorAccent
+                    font.bold: true
+                    font.pixelSize: 13 * Tema.escala
+                    font.family: Tema.fuenteElegante
+                }
+                IconoFicha {
+                    width: 10 * Tema.escala
+                    height: width
+                    anchors.verticalCenter: parent.verticalCenter
+                    colorFicha: Tema.colorAccent
+                }
             }
         }
     }
