@@ -553,6 +553,11 @@ ApplicationWindow {
             return base + "carta_7_diamantes.png";
         case "cuatro_ases":
             return base + "carta_ace_corazones.png";
+        // Representativo -- el selector "+" tiene las 52. Faltaba aquí y no en
+        // escritorio: la miniatura pedía "_baraja.png", que no existe
+        // ("Cannot open", log del móvil del 2026-09-10).
+        case "_baraja":
+            return base + "carta_ace_picas.png";
         }
         if (categoria === "decoracion_lateral" || categoria === "decoracion_superior") {
             return base + codigo + ".png";

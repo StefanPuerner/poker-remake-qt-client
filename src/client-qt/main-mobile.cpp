@@ -115,6 +115,25 @@ int main(int argc, char* argv[]) {
   QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
       Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
+  // Las imágenes de 256 px o más NO van al atlas de texturas de Qt. Ver el
+  // comentario gemelo en src/client-qt/main.cpp; aquí va entero porque el
+  // móvil es donde más se nota (pantallas pequeñas, iconos muy encogidos).
+  //
+  // Todas las nuestras (iconos de 512, naipes de 320) se pintan con mipmap,
+  // y una Image con mipmap saca su textura del atlas (QQuickImage::
+  // updatePaintNode → removedFromAtlas()). Si el atlas ya la había subido a
+  // la GPU, ya no guarda la QImage (la suelta al subirla), la copia sale sin
+  // datos y Qt IGNORA el mipmap: el icono se ve dentado igual, y solo lo
+  // delata un "QSGPlainTexture: Mipmap settings changed without having image
+  // data available" (9 veces en el log del móvil del 2026-09-10). El límite
+  // por defecto es la mitad del atlas, que crece con la ventana (1024 px con
+  // una de 1920 de ancho), así que los iconos caían dentro. 256 es lo que
+  // Qt usa con la ventana más pequeña; las imágenes pequeñas de verdad siguen
+  // aprovechando el atlas. Solo si nadie lo ha fijado ya desde fuera.
+  if (!qEnvironmentVariableIsSet("QSG_ATLAS_SIZE_LIMIT")) {
+    qputenv("QSG_ATLAS_SIZE_LIMIT", "256");
+  }
+
   QGuiApplication app(argc, argv);
   // Sin esto, Qt.labs.settings (nombre/sonido/tema persistentes, ver
   // qml-mobile/Main.qml) no sabe dónde escribir -- mismo motivo que en el
