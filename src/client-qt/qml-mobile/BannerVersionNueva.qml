@@ -43,7 +43,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - 12 * Tema.escala - botonesBanner.width
             wrapMode: Text.WordWrap
-            text: "Hay una versión nueva disponible (v" + banner.versionRemota + ")"
+            text: Idioma.tf("etiqueta_version_nueva_banner", [banner.versionRemota])
             color: Tema.colorTexto
             font.pixelSize: 12 * Tema.escala
         }
@@ -52,13 +52,13 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8 * Tema.escala
             BotonRelleno {
-                text: "Ver"
+                text: Idioma.t("boton_ver")
                 onClicked: {
                     if (banner.urlRelease !== "") Qt.openUrlExternally(banner.urlRelease);
                 }
             }
             BotonContorno {
-                text: "Descartar"
+                text: Idioma.t("boton_descartar")
                 onClicked: banner.visible = false
             }
         }

@@ -56,7 +56,7 @@ Popup {
     }
     Connections {
         target: redcliente
-        function onInvitacionEnviada() { popup.mensajeEstado = "Invitación enviada."; }
+        function onInvitacionEnviada() { popup.mensajeEstado = "invitacion_enviada"; }
         function onInvitacionError(mensaje) { popup.mensajeEstado = mensaje; }
     }
 
@@ -72,7 +72,7 @@ Popup {
 
         Text {
             width: parent.width
-            text: "Invitar a la sala"
+            text: Idioma.t("titulo_invitar_sala")
             color: Tema.colorTexto
             font.family: Tema.fuenteElegante
             font.bold: true
@@ -83,7 +83,7 @@ Popup {
             width: parent.width
             visible: popup.amigosConectados.length === 0
             wrapMode: Text.WordWrap
-            text: "Ninguno de tus amigos está conectado ahora mismo."
+            text: Idioma.t("vacio_amigos_conectados")
             color: Tema.colorTextoTenue
             font.pixelSize: 12 * Tema.escala
         }
@@ -110,7 +110,7 @@ Popup {
                 }
                 BotonContorno {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Invitar"
+                    text: Idioma.t("boton_invitar")
                     onClicked: {
                         popup.mensajeEstado = "";
                         redcliente.invitarASala(popup.servidorHost, popup.servidorPuerto,
@@ -124,7 +124,7 @@ Popup {
             visible: popup.mensajeEstado !== ""
             width: parent.width
             wrapMode: Text.WordWrap
-            text: popup.mensajeEstado
+            text: Idioma.t(popup.mensajeEstado)
             color: Tema.colorTextoTenue
             font.pixelSize: 12 * Tema.escala
         }

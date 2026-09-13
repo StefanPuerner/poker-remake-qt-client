@@ -58,7 +58,10 @@ Rectangle {
     signal decisionEnviada()
     signal recompraPedida()
 
-    property string pestanaActiva: "Turno"
+    // Código estable (no el texto mostrado, que se traduce vía
+    // nombrePestana()) -- ver el comentario largo junto a
+    // tiraPestanas.codigosPestanas más abajo.
+    property string pestanaActiva: "turno"
 
     // Llamado desde Main.qml (onEsMiTurno) al empezar un turno nuevo:
     // resetea el estado LOCAL de los controles de "Opciones" que
@@ -68,6 +71,19 @@ Rectangle {
     function prepararNuevoTurno(valorInicialSubida) {
         botonAllInCajon.confirmando = false;
         selectorSubidaCajon.valor = valorInicialSubida;
+    }
+
+    // Traduce un código estable de tiraPestanas.codigosPestanas al texto
+    // que se pinta -- ver el comentario largo junto a esa property.
+    function nombrePestana(codigo) {
+        switch (codigo) {
+            case "turno": return Idioma.t("tab_turno");
+            case "cartas": return Idioma.t("tab_cartas");
+            case "estimacion": return Idioma.t("tab_estimacion");
+            case "historial": return Idioma.t("tab_historial");
+            case "chat": return Idioma.t("tab_chat");
+        }
+        return codigo;
     }
 
     radius: 10 * Tema.escala
@@ -165,16 +181,23 @@ Rectangle {
             // pestaña menos sin perder utilidad): la misma pestaña
             // muestra el estado del turno cuando no es el tuyo, y los
             // botones de acción en cuanto lo es.
-            readonly property var nombres: ["Turno", "Cartas", "Estim.", "Historial", "Chat"]
+            //
+            // Códigos estables, NO el texto mostrado -- antes el propio
+            // nombre en español era el identificador de estado
+            // (cajon.pestanaActiva), así que traducirlo habría roto todas
+            // las comparaciones ("=== 'Turno'", etc.) y las hubiera dejado
+            // dependiendo del idioma activo. nombrePestana() hace la
+            // traducción solo en el texto que se pinta.
+            readonly property var codigosPestanas: ["turno", "cartas", "estimacion", "historial", "chat"]
 
             Repeater {
-                model: tiraPestanas.nombres
+                model: tiraPestanas.codigosPestanas
                 delegate: Item {
                     id: pestana
                     required property string modelData
                     required property int index
                     readonly property bool activa: cajon.pestanaActiva === modelData
-                    width: tiraPestanas.width / tiraPestanas.nombres.length
+                    width: tiraPestanas.width / tiraPestanas.codigosPestanas.length
                     height: tiraPestanas.height
 
                     Rectangle {
@@ -185,7 +208,7 @@ Rectangle {
                     }
                     Text {
                         anchors.centerIn: parent
-                        text: pestana.modelData
+                        text: cajon.nombrePestana(pestana.modelData)
                         color: pestana.activa ? Tema.colorAccent : Tema.colorTextoMuyTenue
                         font.pixelSize: 10 * Tema.escala
                         font.bold: pestana.activa
@@ -193,7 +216,7 @@ Rectangle {
                     // Aviso de decisión pendiente: solo si es tu turno Y no
                     // estás ya mirando la pestaña que la resuelve.
                     Rectangle {
-                        visible: cajon.tuTurno && pestana.modelData === "Turno" && !pestana.activa
+                        visible: cajon.tuTurno && pestana.modelData === "turno" && !pestana.activa
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.topMargin: 4 * Tema.escala
@@ -224,12 +247,12 @@ Rectangle {
 
             // — Cartas —
             Column {
-                visible: cajon.pestanaActiva === "Cartas"
+                visible: cajon.pestanaActiva === "cartas"
                 anchors.centerIn: parent
                 spacing: 10 * Tema.escala
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "TUS CARTAS"
+                    text: Idioma.t("titulo_tus_cartas")
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 10 * Tema.escala
                 }
@@ -243,15 +266,15 @@ Rectangle {
 
             // — Estimación —
             Column {
-                visible: cajon.pestanaActiva === "Estim."
+                visible: cajon.pestanaActiva === "estimacion"
                 anchors.centerIn: parent
                 width: parent.width - 30 * Tema.escala
                 spacing: 12 * Tema.escala
                 Repeater {
                     model: [
-                        { etq: "Actual", val: cajon.comboActual, color: Tema.colorTexto },
-                        { etq: "Probable", val: cajon.comboProbable, color: Tema.colorTextoTenue },
-                        { etq: "Máxima", val: cajon.comboMaxima, color: Tema.colorAccent }
+                        { etq: Idioma.t("etiqueta_combo_actual"), val: cajon.comboActual, color: Tema.colorTexto },
+                        { etq: Idioma.t("etiqueta_combo_probable"), val: cajon.comboProbable, color: Tema.colorTextoTenue },
+                        { etq: Idioma.t("etiqueta_combo_maxima"), val: cajon.comboMaxima, color: Tema.colorAccent }
                     ]
                     delegate: Column {
                         required property var modelData
@@ -283,7 +306,7 @@ Rectangle {
             // alto disponible del cajón; así los de más abajo quedan
             // accesibles con scroll en vez de cortados.
             Flickable {
-                visible: cajon.pestanaActiva === "Turno"
+                visible: cajon.pestanaActiva === "turno"
                 anchors.fill: parent
                 anchors.margins: 12 * Tema.escala
                 contentWidth: width
@@ -350,7 +373,7 @@ Rectangle {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: cajon.turnoNombre !== "" ? "Turno de " + cajon.turnoNombre : "—"
+                        text: cajon.turnoNombre !== "" ? Idioma.tf("etiqueta_turno_de", [cajon.turnoNombre]) : "—"
                         color: Tema.colorTexto
                         font.bold: true
                         font.family: Tema.fuenteElegante
@@ -361,7 +384,7 @@ Rectangle {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: cajon.rondaActual + " · Mano " + cajon.manoActual + " / " + cajon.objetivoManos
+                        text: Idioma.tf("etiqueta_ronda_mano", [cajon.rondaActual, cajon.manoActual, cajon.objetivoManos])
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
                     }
@@ -370,7 +393,7 @@ Rectangle {
                         spacing: 4 * Tema.escala
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Bote: " + cajon.bote
+                            text: Idioma.tf("etiqueta_bote_total", [cajon.bote])
                             color: Tema.colorAccent
                             font.bold: true
                             font.family: Tema.fuenteElegante
@@ -391,7 +414,7 @@ Rectangle {
                     spacing: 8 * Tema.escala
                     BotonContorno {
                         width: parent.width
-                        text: "Retirarse"
+                        text: Idioma.t("boton_retirarse")
                         colorBorde: Tema.colorPeligro
                         onClicked: {
                             redcliente.enviarAccion("FOLD", 0);
@@ -400,7 +423,7 @@ Rectangle {
                     }
                     BotonContorno {
                         width: parent.width
-                        text: cajon.aPagarParaIgualar > 0 ? "Igualar " + cajon.aPagarParaIgualar : "Pasar"
+                        text: cajon.aPagarParaIgualar > 0 ? Idioma.tf("boton_igualar_movil", [cajon.aPagarParaIgualar]) : Idioma.t("boton_pasar")
                         onClicked: {
                             redcliente.enviarAccion(cajon.aPagarParaIgualar > 0 ? "CALL" : "CHECK",
                                                      Math.min(cajon.aPagarParaIgualar, cajon.miSaldoActual));
@@ -416,7 +439,7 @@ Rectangle {
                     }
                     BotonRelleno {
                         width: parent.width
-                        text: "Subir"
+                        text: Idioma.t("boton_subir")
                         enabled: cajon.maxSubidaActual > 0
                         onClicked: {
                             var total = Math.min(cajon.aPagarParaIgualar + selectorSubidaCajon.valor, cajon.miSaldoActual);
@@ -428,7 +451,7 @@ Rectangle {
                         id: botonAllInCajon
                         property bool confirmando: false
                         width: parent.width
-                        text: confirmando ? "¿Seguro?" : "ALL"
+                        text: confirmando ? Idioma.t("boton_confirmar_borrado") : Idioma.t("texto_all")
                         colorBorde: Tema.colorPeligro
                         onClicked: {
                             if (cajon.confirmarAllIn && !confirmando) { confirmando = true; return; }
@@ -445,14 +468,14 @@ Rectangle {
                     spacing: 8 * Tema.escala
                     Text {
                         width: parent.width
-                        text: "Sin fichas"
+                        text: Idioma.t("texto_sin_fichas_corto")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                         horizontalAlignment: Text.AlignHCenter
                     }
                     BotonRelleno {
                         width: parent.width
-                        text: cajon.recompraSolicitada ? "Enviada…" : "Recomprar"
+                        text: cajon.recompraSolicitada ? Idioma.t("texto_enviada_corta") : Idioma.t("boton_recomprar")
                         enabled: !cajon.recompraSolicitada
                         onClicked: {
                             redcliente.pedirRecompra();
@@ -465,7 +488,7 @@ Rectangle {
 
             // — Historial —
             ListView {
-                visible: cajon.pestanaActiva === "Historial"
+                visible: cajon.pestanaActiva === "historial"
                 anchors.fill: parent
                 anchors.margins: 10 * Tema.escala
                 clip: true
@@ -495,7 +518,7 @@ Rectangle {
 
             // — Chat —
             Item {
-                visible: cajon.pestanaActiva === "Chat"
+                visible: cajon.pestanaActiva === "chat"
                 anchors.fill: parent
                 anchors.margins: 10 * Tema.escala
 
@@ -540,7 +563,7 @@ Rectangle {
                             width: Math.min(medidorCajon.implicitWidth + 20, parent.width * 0.85)
                             spacing: 1
                             Text {
-                                text: esPropio ? "Tú" : autor
+                                text: esPropio ? Idioma.t("yo_chat") : autor
                                 color: Tema.colorTextoMuyTenue
                                 font.pixelSize: 9 * Tema.escala
                             }
@@ -578,7 +601,7 @@ Rectangle {
                         // Ver CampoEmergente.qml: sin esto, borrar una
                         // letra solo retrocedía el cursor sin borrarla.
                         inputMethodHints: Qt.ImhNoPredictiveText
-                        placeholderText: "Escribe un mensaje…"
+                        placeholderText: Idioma.t("placeholder_mensaje_chat")
                         placeholderTextColor: Tema.colorTextoTenue
                         background: MarcoHueco {
                             radius: 6 * Tema.escala
@@ -589,7 +612,7 @@ Rectangle {
                     BotonRelleno {
                         id: botonEnviarCajon
                         height: Tema.tactil
-                        text: "Enviar"
+                        text: Idioma.t("boton_enviar")
                         onClicked: {
                             if (textoChatCajon.text.length === 0) return;
                             redcliente.enviarChat(textoChatCajon.text, "partida");

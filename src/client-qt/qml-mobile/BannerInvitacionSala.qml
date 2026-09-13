@@ -50,7 +50,7 @@ Rectangle {
         Text {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: banner.fromUsername + " te invitó a su sala" +
+            text: Idioma.tf("etiqueta_invitacion_sala", [banner.fromUsername]) +
                   (banner.nombreSala !== "" ? " (" + banner.nombreSala + ")" : "")
             color: Tema.colorTexto
             font.pixelSize: 11 * Tema.escala
@@ -59,14 +59,14 @@ Rectangle {
             anchors.right: parent.right
             spacing: 8 * Tema.escala
             BotonRelleno {
-                text: "Unirse"
+                text: Idioma.t("boton_unirse")
                 onClicked: {
                     banner.unirse(banner.salaId, banner.codigo);
                     banner.visible = false;
                 }
             }
             BotonContorno {
-                text: "Descartar"
+                text: Idioma.t("boton_descartar")
                 onClicked: banner.visible = false
             }
         }

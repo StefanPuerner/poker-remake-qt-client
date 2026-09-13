@@ -20,7 +20,7 @@ Row {
 
     spacing: 8 * Tema.escala
     BotonRelleno {
-        text: "Continuar a la siguiente mano"
+        text: Idioma.t("boton_continuar_siguiente_mano")
         // Ya NO cierra el panel al pulsar -- ver el comentario largo en
         // PanelVoto.qml de qml/: quien instancie esto cierra su propio
         // "votoAbierto" solo con el ack real del servidor
@@ -28,7 +28,7 @@ Row {
         onClicked: redcliente.votar();
     }
     BotonContorno {
-        text: "Abandonar partida"
+        text: Idioma.t("boton_abandonar_partida")
         colorBorde: Tema.colorPeligro
         onClicked: {
             if (panelVoto.contariaComoPerdida) {
@@ -41,7 +41,7 @@ Row {
     }
     BotonContorno {
         visible: soyHost
-        text: "Guardar y salir"
+        text: Idioma.t("boton_guardar_salir")
         onClicked: {
             redcliente.guardarYSalir();
             guardarYSalir();
@@ -73,7 +73,7 @@ Row {
             spacing: 14 * Tema.escala
             Text {
                 width: parent.width
-                text: "¿Abandonar la partida?"
+                text: Idioma.t("titulo_confirmar_abandono")
                 color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.bold: true
@@ -82,7 +82,7 @@ Row {
             }
             Text {
                 width: parent.width
-                text: "Se contará como partida perdida en tus estadísticas si la partida ya lleva manos suficientes jugadas. Tus fichas se reparten entre el resto."
+                text: Idioma.t("texto_confirmar_abandono_descripcion")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 12 * Tema.escala
                 wrapMode: Text.WordWrap
@@ -92,12 +92,12 @@ Row {
                 spacing: 12 * Tema.escala
                 BotonContorno {
                     width: (parent.width - parent.spacing) / 2
-                    text: "Cancelar"
+                    text: Idioma.t("boton_cancelar")
                     onClicked: confirmarAbandonoMovil.close()
                 }
                 BotonRelleno {
                     width: (parent.width - parent.spacing) / 2
-                    text: "Abandonar"
+                    text: Idioma.t("boton_abandonar")
                     colorBorde: Tema.colorPeligro
                     onClicked: {
                         redcliente.abandonar();

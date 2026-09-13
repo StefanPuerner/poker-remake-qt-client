@@ -76,7 +76,7 @@ Rectangle {
             Text {
                 id: textoTabHistorial
                 anchors.centerIn: parent
-                text: "Historial"
+                text: Idioma.t("tab_historial")
                 color: !panelLateral.mostrandoChat ? Tema.colorPanel : Tema.colorTextoTenue
                 font.bold: !panelLateral.mostrandoChat
                 font.pixelSize: 12 * Tema.escala
@@ -94,7 +94,7 @@ Rectangle {
             Text {
                 id: textoTabChat
                 anchors.centerIn: parent
-                text: "Chat"
+                text: Idioma.t("tab_chat")
                 color: panelLateral.mostrandoChat ? Tema.colorPanel : Tema.colorTextoTenue
                 font.bold: panelLateral.mostrandoChat
                 font.pixelSize: 12 * Tema.escala
@@ -211,7 +211,7 @@ Rectangle {
                     spacing: 2 * Tema.escala
 
                     Text {
-                        text: (esPropio ? "Tú" : autor) + " · " + hora
+                        text: (esPropio ? Idioma.t("yo_chat") : autor) + " · " + hora
                         color: Tema.colorTextoMuyTenue
                         font.pixelSize: 10 * Tema.escala
                     }
@@ -250,7 +250,7 @@ Rectangle {
                 // el placeholder de Material flota hacia arriba al
                 // enfocar y se solapa con nuestro borde dibujado a
                 // mano — más simple ocultarlo directamente.
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
+                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_mensaje_chat")
                 placeholderTextColor: Tema.colorTextoTenue
                 // Antes sin "background": salía con el estilo por
                 // defecto de Qt Quick Controls (gris claro), fuera de
@@ -266,7 +266,7 @@ Rectangle {
             BotonRelleno {
                 id: botonEnviarPanel
                 height: 44 * Tema.escala
-                text: "Enviar"
+                text: Idioma.t("boton_enviar")
                 onClicked: {
                     // Enter en el campo vacío ya no debe mandar un
                     // mensaje en blanco (ver el comentario en ChatBox.qml).

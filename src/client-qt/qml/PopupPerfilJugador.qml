@@ -70,7 +70,7 @@ Popup {
             visible: !popup.datosListos
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: "Cargando perfil..."
+            text: Idioma.t("texto_cargando_perfil")
             color: Tema.colorTextoTenue
             font.pixelSize: 13 * Tema.escala
         }
@@ -80,7 +80,7 @@ Popup {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: "Ese jugador ya no existe."
+            text: Idioma.t("texto_jugador_no_existe")
             color: Tema.colorTextoTenue
             font.pixelSize: 13 * Tema.escala
         }
@@ -140,8 +140,9 @@ Popup {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: (popup.perfil.logrosTotal || 0) > 0
-                text: (popup.perfil.logrosDesbloqueados || 0) + " / " + (popup.perfil.logrosTotal || 0) + " logros (" +
-                      Math.round(100 * (popup.perfil.logrosDesbloqueados || 0) / Math.max(1, popup.perfil.logrosTotal || 1)) + "%)"
+                text: Idioma.tf("etiqueta_logros_porcentaje",
+                          [(popup.perfil.logrosDesbloqueados || 0), (popup.perfil.logrosTotal || 0),
+                           Math.round(100 * (popup.perfil.logrosDesbloqueados || 0) / Math.max(1, popup.perfil.logrosTotal || 1))])
                 color: Tema.colorTextoTenue
                 font.pixelSize: 12 * Tema.escala
             }
@@ -154,15 +155,15 @@ Popup {
                 spacing: 6 * Tema.escala
                 Repeater {
                     model: [
-                        { etiqueta: "Partidas jugadas", valor: (popup.perfil.partidasJugadas || 0) + "" },
-                        { etiqueta: "Partidas ganadas", valor: (popup.perfil.partidasGanadas || 0) + "" },
-                        { etiqueta: "Ratio de victorias", valor: Math.round(100 * (popup.perfil.partidasGanadas || 0) / (popup.perfil.partidasJugadas || 1)) + "%" },
-                        { etiqueta: "Racha actual", valor: (popup.perfil.rachaActual || 0) + "" },
-                        { etiqueta: "Mejor racha", valor: (popup.perfil.rachaMaxima || 0) + "" },
-                        { etiqueta: "Manos jugadas", valor: (popup.perfil.manosJugadas || 0) + "" },
-                        { etiqueta: "Manos ganadas", valor: (popup.perfil.manosGanadas || 0) + "" },
-                        { etiqueta: "Mayor bote ganado", valor: (popup.perfil.mayorBote || 0) + "", esDinero: true },
-                        { etiqueta: "Mejor mano", valor: (popup.perfil.mejorManoFecha || 0) > 0
+                        { etiqueta: Idioma.t("stat_partidas_jugadas"), valor: (popup.perfil.partidasJugadas || 0) + "" },
+                        { etiqueta: Idioma.t("stat_partidas_ganadas"), valor: (popup.perfil.partidasGanadas || 0) + "" },
+                        { etiqueta: Idioma.t("stat_ratio_victorias"), valor: Math.round(100 * (popup.perfil.partidasGanadas || 0) / (popup.perfil.partidasJugadas || 1)) + "%" },
+                        { etiqueta: Idioma.t("stat_racha_actual"), valor: (popup.perfil.rachaActual || 0) + "" },
+                        { etiqueta: Idioma.t("stat_mejor_racha"), valor: (popup.perfil.rachaMaxima || 0) + "" },
+                        { etiqueta: Idioma.t("stat_manos_jugadas"), valor: (popup.perfil.manosJugadas || 0) + "" },
+                        { etiqueta: Idioma.t("stat_manos_ganadas"), valor: (popup.perfil.manosGanadas || 0) + "" },
+                        { etiqueta: Idioma.t("stat_mayor_bote_ganado"), valor: (popup.perfil.mayorBote || 0) + "", esDinero: true },
+                        { etiqueta: Idioma.t("stat_mejor_mano"), valor: (popup.perfil.mejorManoFecha || 0) > 0
                               ? popup.perfil.mejorManoNombre + " (" + new Date(popup.perfil.mejorManoFecha * 1000).toLocaleDateString() + ")"
                               : "—" }
                     ]
@@ -198,7 +199,7 @@ Popup {
                 }
 
                 Text {
-                    text: "COMBINACIONES MOSTRADAS"
+                    text: Idioma.t("titulo_combinaciones_mostradas")
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 10 * Tema.escala
                     font.letterSpacing: 1
@@ -211,16 +212,16 @@ Popup {
                     rowSpacing: 4 * Tema.escala
                     Repeater {
                         model: [
-                            { etiqueta: "Carta alta", valor: popup.perfil.vecesCartaAlta || 0 },
-                            { etiqueta: "Pareja", valor: popup.perfil.vecesPareja || 0 },
-                            { etiqueta: "Doble pareja", valor: popup.perfil.vecesDoblePareja || 0 },
-                            { etiqueta: "Trío", valor: popup.perfil.vecesTrio || 0 },
-                            { etiqueta: "Escalera", valor: popup.perfil.vecesEscalera || 0 },
-                            { etiqueta: "Color", valor: popup.perfil.vecesColor || 0 },
-                            { etiqueta: "Full House", valor: popup.perfil.vecesFullHouse || 0 },
-                            { etiqueta: "Póker", valor: popup.perfil.vecesPoker || 0 },
-                            { etiqueta: "Escalera de color", valor: popup.perfil.vecesEscaleraColor || 0 },
-                            { etiqueta: "Escalera real", valor: popup.perfil.vecesEscaleraReal || 0 }
+                            { etiqueta: Idioma.t("combo_carta_alta"), valor: popup.perfil.vecesCartaAlta || 0 },
+                            { etiqueta: Idioma.t("combo_pareja"), valor: popup.perfil.vecesPareja || 0 },
+                            { etiqueta: Idioma.t("combo_doble_pareja"), valor: popup.perfil.vecesDoblePareja || 0 },
+                            { etiqueta: Idioma.t("combo_trio"), valor: popup.perfil.vecesTrio || 0 },
+                            { etiqueta: Idioma.t("combo_escalera"), valor: popup.perfil.vecesEscalera || 0 },
+                            { etiqueta: Idioma.t("combo_color"), valor: popup.perfil.vecesColor || 0 },
+                            { etiqueta: Idioma.t("combo_full_house"), valor: popup.perfil.vecesFullHouse || 0 },
+                            { etiqueta: Idioma.t("combo_poker"), valor: popup.perfil.vecesPoker || 0 },
+                            { etiqueta: Idioma.t("combo_escalera_color"), valor: popup.perfil.vecesEscaleraColor || 0 },
+                            { etiqueta: Idioma.t("combo_escalera_real"), valor: popup.perfil.vecesEscaleraReal || 0 }
                         ]
                         delegate: Row {
                             required property var modelData
@@ -250,7 +251,7 @@ Popup {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Todavía no tiene estadísticas registradas."
+                text: Idioma.t("texto_sin_estadisticas_ajenas")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 12 * Tema.escala
             }

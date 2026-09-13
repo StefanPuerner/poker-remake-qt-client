@@ -97,7 +97,7 @@ Row {
     CampoEmergente {
         id: campoExacto
         parent: Overlay.overlay
-        etiqueta: "Valor exacto"
+        etiqueta: Idioma.t("etiqueta_valor_exacto")
         soloNumerico: true
         onAceptado: (texto) => {
             var n = parseInt(texto, 10);

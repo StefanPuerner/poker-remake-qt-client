@@ -76,7 +76,7 @@ Item {
             spacing: 4 * Tema.escala
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Bote: " + mesa.bote
+                text: Idioma.tf("etiqueta_bote_total", [mesa.bote])
                 color: Tema.colorAccent
                 font.bold: true
                 font.pixelSize: 14 * Tema.escala

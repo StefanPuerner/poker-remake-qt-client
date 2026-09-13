@@ -676,6 +676,266 @@ QtObject {
             es: "Ver la última versión en GitHub", en: "View the latest version on GitHub",
             de: "Neueste Version auf GitHub ansehen"
         },
+
+        // ── Pantalla Lobby (sala de espera) ──────────────────────────────────
+        "titulo_sala_de": { es: "Sala de {0}", en: "{0}'s Room", de: "{0}s Raum" },
+        "titulo_sala_espera": { es: "Sala de espera", en: "Waiting Room", de: "Warteraum" },
+        "etiqueta_listos": { es: "{0} / {1} listos", en: "{0} / {1} ready", de: "{0} / {1} bereit" },
+        "etiqueta_codigo_invitar": {
+            es: "Código para invitar: {0}", en: "Invite code: {0}", de: "Einladungscode: {0}"
+        },
+        "texto_copiado": { es: "Copiado", en: "Copied", de: "Kopiert" },
+        "boton_copiar": { es: "Copiar", en: "Copy", de: "Kopieren" },
+        "etiqueta_nombres_esperados": {
+            es: "Nombres esperados: {0}", en: "Expected names: {0}", de: "Erwartete Namen: {0}"
+        },
+        "boton_empezar_ahora": { es: "Empezar ahora", en: "Start now", de: "Jetzt starten" },
+        "boton_invitar_amigos": { es: "Invitar amigos", en: "Invite friends", de: "Freunde einladen" },
+        "boton_abandonar_sala": { es: "Abandonar sala", en: "Leave room", de: "Raum verlassen" },
+        "etiqueta_esperando_sentarse": {
+            es: "Esperando a sentarse: {0}", en: "Waiting to sit down: {0}", de: "Warten auf Platznahme: {0}"
+        },
+
+        // ── Pantalla Partida (Mesa) ──────────────────────────────────────────
+        "etiqueta_estado_mesa": {
+            es: "{0} · Mano {1} · Ciega {2}/{3} · Turno de {4}",
+            en: "{0} · Hand {1} · Blind {2}/{3} · {4}'s turn",
+            de: "{0} · Hand {1} · Blind {2}/{3} · {4} ist am Zug"
+        },
+        "titulo_ranking_manos": { es: "Ranking de manos", en: "Hand ranking", de: "Handrangliste" },
+        "etiqueta_combo_actual": { es: "ACTUAL", en: "CURRENT", de: "AKTUELL" },
+        "etiqueta_combo_probable": { es: "PROBABLE", en: "LIKELY", de: "WAHRSCHEINLICH" },
+        "etiqueta_combo_maxima": { es: "MÁXIMA", en: "BEST POSSIBLE", de: "MAXIMAL" },
+        "boton_retirarse": { es: "Retirarse", en: "Fold", de: "Aussteigen" },
+        "boton_igualar": { es: "Igualar · {0}", en: "Call · {0}", de: "Mitgehen · {0}" },
+        "boton_pasar": { es: "Pasar", en: "Check", de: "Schieben" },
+        "boton_subir": { es: "Subir", en: "Raise", de: "Erhöhen" },
+        "texto_all": { es: "ALL", en: "ALL", de: "ALL" },
+        "texto_sin_fichas": {
+            es: "Te has quedado sin fichas", en: "You've run out of chips", de: "Du hast keine Chips mehr"
+        },
+        "texto_recompra_enviada": { es: "Recompra enviada…", en: "Rebuy sent…", de: "Rebuy gesendet…" },
+        "boton_recomprar": { es: "Recomprar", en: "Rebuy", de: "Rebuy" },
+        "texto_ventana_pequena": {
+            es: "La ventana es demasiado pequeña para mostrar la partida correctamente.\nAgrándala para continuar.",
+            en: "The window is too small to display the game correctly.\nMake it bigger to continue.",
+            de: "Das Fenster ist zu klein, um die Partie korrekt anzuzeigen.\nVergrößere es, um fortzufahren."
+        },
+        "texto_conexion_perdida": {
+            es: "Conexión perdida — reconectando...", en: "Connection lost — reconnecting...",
+            de: "Verbindung verloren — Wiederverbindung..."
+        },
+        "etiqueta_segundos_restantes": {
+            es: "{0}s restantes", en: "{0}s remaining", de: "Noch {0}s"
+        },
+        "titulo_showdown": { es: "SHOWDOWN", en: "SHOWDOWN", de: "SHOWDOWN" },
+        "etiqueta_bote_total": { es: "Bote: {0}", en: "Pot: {0}", de: "Pot: {0}" },
+        "etiqueta_bote_principal": { es: "Bote principal", en: "Main pot", de: "Hauptpot" },
+        "etiqueta_side_pot": { es: "Side pot {0}", en: "Side pot {0}", de: "Side Pot {0}" },
+        "etiqueta_compiten": { es: " — compiten {0}", en: " — competing: {0}", de: " — es kämpfen: {0}" },
+        "etiqueta_gano_bote": { es: " · ganó {0} (+{1})", en: " · {0} won (+{1})", de: " · {0} hat gewonnen (+{1})" },
+        "titulo_fin_mano": { es: "Fin de la mano", en: "End of hand", de: "Ende der Hand" },
+        "boton_si_extender": { es: "Sí, extender", en: "Yes, extend", de: "Ja, verlängern" },
+        "boton_no_terminar": { es: "No, terminar aquí", en: "No, end here", de: "Nein, hier beenden" },
+        "texto_gano_sin_mostrar": {
+            es: "Se llevó el bote sin mostrar cartas", en: "Took the pot without showing cards",
+            de: "Hat den Pot gewonnen, ohne Karten zu zeigen"
+        },
+        "boton_continuar_siguiente_mano": {
+            es: "Continuar a la siguiente mano", en: "Continue to the next hand",
+            de: "Weiter zur nächsten Hand"
+        },
+        "boton_abandonar_partida": { es: "Abandonar partida", en: "Leave game", de: "Partie verlassen" },
+        "boton_guardar_salir": { es: "Guardar y salir", en: "Save and exit", de: "Speichern und beenden" },
+        "titulo_confirmar_abandono": {
+            es: "¿Abandonar la partida?", en: "Leave the game?", de: "Partie verlassen?"
+        },
+        "texto_confirmar_abandono_descripcion": {
+            es: "Se contará como partida perdida en tus estadísticas si la partida ya lleva manos suficientes jugadas. Tus fichas se reparten entre el resto.",
+            en: "It will count as a loss in your statistics if the game has already played enough hands. Your chips are split among the rest.",
+            de: "Es zählt in deinen Statistiken als Niederlage, wenn die Partie schon genug Hände gespielt hat. Deine Chips werden unter den übrigen aufgeteilt."
+        },
+        "boton_abandonar": { es: "Abandonar", en: "Leave", de: "Verlassen" },
+        "tab_historial": { es: "Historial", en: "History", de: "Verlauf" },
+        "tab_chat": { es: "Chat", en: "Chat", de: "Chat" },
+        // BarraSuperior.qml -- compartida por (casi) todas las pantallas.
+        "texto_reconectando_corto": {
+            es: "Reconectando… · ", en: "Reconnecting… · ", de: "Verbindung wird wiederhergestellt… · "
+        },
+        "boton_salir_sesion": { es: "Salir", en: "Exit", de: "Verlassen" },
+        // PopupPerfilJugador.qml
+        "texto_cargando_perfil": { es: "Cargando perfil...", en: "Loading profile...", de: "Profil wird geladen..." },
+        "texto_jugador_no_existe": {
+            es: "Ese jugador ya no existe.", en: "That player no longer exists.",
+            de: "Dieser Spieler existiert nicht mehr."
+        },
+        "etiqueta_logros_porcentaje": {
+            es: "{0} / {1} logros ({2}%)", en: "{0} / {1} achievements ({2}%)", de: "{0} / {1} Erfolge ({2}%)"
+        },
+        // Distinto de stat_partidas_oficiales_ganadas (Cuenta) -- este
+        // popup de perfil AJENO nunca recibió el cambio de etiqueta
+        // pedido para el propio (ver docs/plan-idiomas.md), así que
+        // conserva su texto real tal cual, sin renombrarlo de más.
+        "stat_partidas_ganadas": { es: "Partidas ganadas", en: "Games won", de: "Gewonnene Partien" },
+        "texto_sin_estadisticas_ajenas": {
+            es: "Todavía no tiene estadísticas registradas.", en: "Doesn't have any statistics recorded yet.",
+            de: "Hat noch keine Statistiken erfasst."
+        },
+        // PopupInvitarAmigos.qml
+        "titulo_invitar_sala": { es: "Invitar a la sala", en: "Invite to the room", de: "In den Raum einladen" },
+        "vacio_amigos_conectados": {
+            es: "Ninguno de tus amigos está conectado ahora mismo.",
+            en: "None of your friends are online right now.",
+            de: "Gerade ist keiner deiner Freunde online."
+        },
+        "boton_invitar": { es: "Invitar", en: "Invite", de: "Einladen" },
+        "invitacion_enviada": { es: "Invitación enviada.", en: "Invitation sent.", de: "Einladung gesendet." },
+        // BannerInvitacionSala.qml
+        "etiqueta_invitacion_sala": {
+            es: "{0} te invitó a su sala", en: "{0} invited you to their room", de: "{0} hat dich zu seinem Raum eingeladen"
+        },
+        "boton_descartar": { es: "Descartar", en: "Dismiss", de: "Verwerfen" },
+        // BannerVersionNueva.qml
+        "etiqueta_version_nueva_banner": {
+            es: "Hay una versión nueva disponible (v{0})", en: "A new version is available (v{0})",
+            de: "Eine neue Version ist verfügbar (v{0})"
+        },
+        "boton_ver": { es: "Ver", en: "View", de: "Ansehen" },
+        // Solo qml-mobile/ -- pista de scroll del overlay de showdown.
+        "texto_mas_abajo": { es: "más abajo", en: "more below", de: "weiter unten" },
+        // CajonPartida.qml -- solo qml-mobile/ (el cajón de pestañas que
+        // sustituye la barra de acciones + PanelLateral de escritorio).
+        "tab_turno": { es: "Turno", en: "Turn", de: "Zug" },
+        "tab_cartas": { es: "Cartas", en: "Cards", de: "Karten" },
+        "tab_estimacion": { es: "Estim.", en: "Est.", de: "Sch." },
+        "titulo_tus_cartas": { es: "TUS CARTAS", en: "YOUR CARDS", de: "DEINE KARTEN" },
+        "etiqueta_turno_de": { es: "Turno de {0}", en: "{0}'s turn", de: "{0} ist am Zug" },
+        "etiqueta_ronda_mano": {
+            es: "{0} · Mano {1} / {2}", en: "{0} · Hand {1} / {2}", de: "{0} · Hand {1} / {2}"
+        },
+        // Sin el punto medio de boton_igualar (escritorio) -- versión más
+        // compacta para el botón estrecho del cajón móvil.
+        "boton_igualar_movil": { es: "Igualar {0}", en: "Call {0}", de: "Mitgehen {0}" },
+        "texto_sin_fichas_corto": { es: "Sin fichas", en: "Out of chips", de: "Keine Chips mehr" },
+        "texto_enviada_corta": { es: "Enviada…", en: "Sent…", de: "Gesendet…" },
+        // SelectorNumerico.qml -- solo qml-mobile/ (stepper de subida/manos extra).
+        "etiqueta_valor_exacto": { es: "Valor exacto", en: "Exact value", de: "Genauer Wert" },
+
+        // ── Pantalla Fin (resultado de la partida) ──────────────────────────
+        "titulo_partida_guardada": { es: "PARTIDA GUARDADA", en: "GAME SAVED", de: "PARTIE GESPEICHERT" },
+        "titulo_partida_finalizada": { es: "PARTIDA FINALIZADA", en: "GAME OVER", de: "PARTIE BEENDET" },
+        "etiqueta_ganador": { es: "Ganador", en: "Winner", de: "Gewinner" },
+        "etiqueta_fichas": { es: "{0} fichas", en: "{0} chips", de: "{0} Chips" },
+        "texto_fin_por_limite": {
+            es: "Se alcanzó el límite de manos.", en: "The hand limit was reached.",
+            de: "Das Handlimit wurde erreicht."
+        },
+        "texto_fin_por_eliminacion": {
+            es: "El resto de jugadores ha quedado eliminado.", en: "The rest of the players have been eliminated.",
+            de: "Die übrigen Spieler wurden eliminiert."
+        },
+        "etiqueta_manos_disputadas": {
+            es: "Manos disputadas: {0}", en: "Hands played: {0}", de: "Gespielte Hände: {0}"
+        },
+        "titulo_mejor_mano_partida": {
+            es: "MEJOR MANO DE LA PARTIDA", en: "BEST HAND OF THE GAME", de: "BESTE HAND DER PARTIE"
+        },
+        "texto_sigue_en_juego": { es: "Sigue en juego", en: "Still in the game", de: "Noch im Spiel" },
+        "etiqueta_mano_numero": { es: "Mano {0}", en: "Hand {0}", de: "Hand {0}" },
+        "texto_host_puede_continuar": {
+            es: "El Host puede continuar la partida desde sus partidas guardadas.",
+            en: "The Host can continue the game from their saved games.",
+            de: "Der Host kann die Partie über seine gespeicherten Partien fortsetzen."
+        },
+        "boton_volver_a_salas": { es: "Volver a salas", en: "Back to rooms", de: "Zurück zu den Räumen" },
+
+        // ── Pantalla CrearSala ───────────────────────────────────────────────
+        "titulo_partida_local_seccion": {
+            es: "PARTIDA LOCAL", en: "LOCAL GAME", de: "LOKALES SPIEL"
+        },
+        "etiqueta_numero_bots": {
+            es: "Número de bots (rivales)", en: "Number of bots (opponents)", de: "Anzahl Bots (Gegner)"
+        },
+        "titulo_seccion_sala": { es: "SALA", en: "ROOM", de: "RAUM" },
+        "placeholder_nombre_sala": {
+            es: "Nombre de la sala", en: "Room name", de: "Raumname"
+        },
+        "etiqueta_sala_publica": { es: "Sala pública", en: "Public room", de: "Öffentlicher Raum" },
+        "etiqueta_tamano_sala": {
+            es: "Tamaño de sala (asientos totales, máx. 9)",
+            en: "Room size (total seats, max. 9)",
+            de: "Raumgröße (Plätze insgesamt, max. 9)"
+        },
+        "etiqueta_rellenar_bots": {
+            es: "Rellenar con bots los asientos vacíos", en: "Fill empty seats with bots",
+            de: "Leere Plätze mit Bots auffüllen"
+        },
+        "texto_ayuda_rellenar_bots": {
+            es: "Si faltan humanos al arrancar (o alguien se va con fichas), un bot ocupa el asiento en vez de perderlo o repartir sus fichas.",
+            en: "If there aren't enough humans at the start (or someone leaves with chips), a bot takes the seat instead of losing it or splitting the chips.",
+            de: "Fehlen beim Start Menschen (oder verlässt jemand das Spiel mit Chips), übernimmt ein Bot den Platz, statt ihn zu verlieren oder die Chips aufzuteilen."
+        },
+        "etiqueta_abierta_tras_iniciar": {
+            es: "Abierta tras iniciar", en: "Open after starting", de: "Offen nach dem Start"
+        },
+        "texto_ayuda_abierta_tras_iniciar": {
+            es: "Con esto activo, cualquier asiento ocupado por un bot se puede sustituir por un jugador nuevo en cualquier momento de la partida.",
+            en: "With this on, any seat occupied by a bot can be replaced by a new player at any point in the game.",
+            de: "Ist dies aktiv, kann jeder von einem Bot besetzte Platz jederzeit während der Partie von einem neuen Spieler übernommen werden."
+        },
+        "titulo_seccion_reglas_apuesta": {
+            es: "REGLAS DE APUESTA", en: "BETTING RULES", de: "SETZREGELN"
+        },
+        "etiqueta_dificultad_bots": { es: "Dificultad de bots", en: "Bot difficulty", de: "Bot-Schwierigkeit" },
+        "dificultad_facil": { es: "Fácil", en: "Easy", de: "Leicht" },
+        "dificultad_normal": { es: "Normal", en: "Normal", de: "Normal" },
+        "dificultad_experto": { es: "Experto", en: "Expert", de: "Experte" },
+        "etiqueta_monte_fijo": { es: "Cantidad fija por raise", en: "Fixed raise amount", de: "Fester Erhöhungsbetrag" },
+        "etiqueta_min_raise_obligatorio": {
+            es: "Min-raise obligatorio", en: "Mandatory min-raise", de: "Mindest-Erhöhung Pflicht"
+        },
+        "etiqueta_permitir_recompra": {
+            es: "Permitir recompra al quedarse sin fichas", en: "Allow rebuy when out of chips",
+            de: "Rebuy erlauben, wenn keine Chips mehr vorhanden sind"
+        },
+        "titulo_seccion_partida": { es: "PARTIDA", en: "GAME", de: "PARTIE" },
+        "etiqueta_numero_manos": { es: "Número de manos", en: "Number of hands", de: "Anzahl Hände" },
+        "etiqueta_preguntar_extension": {
+            es: "Preguntar si extender al llegar al límite de manos",
+            en: "Ask whether to extend when the hand limit is reached",
+            de: "Beim Erreichen des Handlimits nach Verlängerung fragen"
+        },
+        "etiqueta_ciega_grande": { es: "Ciega grande", en: "Big blind", de: "Big Blind" },
+        "etiqueta_saldo_inicial": { es: "Saldo inicial", en: "Starting stack", de: "Startguthaben" },
+        "boton_empezar_partida": { es: "Empezar partida", en: "Start game", de: "Partie starten" },
+        // Solo qml-mobile/: dos etiquetas más cortas que su equivalente de
+        // escritorio, sin "totales"/"de manos" -- caben mejor en la
+        // columna estrecha del formulario móvil.
+        "etiqueta_tamano_sala_movil": {
+            es: "Tamaño de sala (asientos, máx. 9)", en: "Room size (seats, max. 9)",
+            de: "Raumgröße (Plätze, max. 9)"
+        },
+        "etiqueta_preguntar_extension_movil": {
+            es: "Preguntar si extender al llegar al límite",
+            en: "Ask whether to extend when the limit is reached",
+            de: "Beim Erreichen des Limits nach Verlängerung fragen"
+        },
+        // Solo qml-mobile/ -- CampoEmergente para el nombre propio (guest)
+        // y para renombrar una partida guardada.
+        "etiqueta_tu_nombre": { es: "Tu nombre", en: "Your name", de: "Dein Name" },
+        "etiqueta_nuevo_nombre": { es: "Nuevo nombre", en: "New name", de: "Neuer Name" },
+        // Nombre de la tarjeta sintética "la baraja entera" en el
+        // catálogo de la Tienda (los dos árboles) -- ver esCartaBaraja().
+        "nombre_carta_baraja": { es: "Carta de póker", en: "Poker card", de: "Pokerkarte" },
+        // Prefijo del nombre de invitado generado al azar ("Invitado42891")
+        // -- sin dependencias en C++/otro QML que busquen este texto
+        // literal, seguro de traducir sin más (los dos árboles).
+        "prefijo_invitado": { es: "Invitado", en: "Guest", de: "Gast" },
+        // Prefijo de mensajeErrorConexion cuando NetworkClient manda un
+        // error de conexión genérico (onError) -- el resto del mensaje
+        // sigue viniendo en español fijo del servidor (ver el punto 3 de
+        // docs/plan-idiomas.md), esto solo traduce la palabra "Error:".
+        "prefijo_error": { es: "Error: ", en: "Error: ", de: "Fehler: " },
         "boton_renombrar": { es: "Renombrar", en: "Rename", de: "Umbenennen" },
         "boton_borrar": { es: "Borrar", en: "Delete", de: "Löschen" },
 

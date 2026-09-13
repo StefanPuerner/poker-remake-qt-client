@@ -275,7 +275,7 @@ Item {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: (barra.reconectandoAhora ? "Reconectando… · " : "") + barra.servidorHost + ":" + barra.servidorPuerto
+                    text: (barra.reconectandoAhora ? Idioma.t("texto_reconectando_corto") : "") + barra.servidorHost + ":" + barra.servidorPuerto
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
                 }
@@ -389,7 +389,7 @@ Item {
                 Text {
                     id: textoSalirBarra
                     anchors.centerIn: parent
-                    text: "Salir"
+                    text: Idioma.t("boton_salir_sesion")
                     font.pixelSize: 12 * Tema.escala
                     color: botonSalirBarraArea.containsMouse ? Tema.colorPanel : Tema.colorPeligro
                 }
