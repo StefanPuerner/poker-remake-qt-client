@@ -336,6 +336,11 @@ class LocalGameClient : public QObject {
   Q_INVOKABLE void sincronizarXpOffline(const QString&, quint16, QString, int) {}
   Q_INVOKABLE void comprarObjeto(const QString&, quint16, QString, QString) {}
   Q_INVOKABLE void equiparObjeto(const QString&, quint16, QString, QString, QString, QString = QString()) {}
+  // Reclamar recompensa de reto exige conexión real -- ver el comentario
+  // gemelo en NetworkClient.hpp. En modo offline nunca debería llegar a
+  // llamarse (la pantalla de Torneos oculta el botón "Reclamar" sin
+  // conexión), pero el stub existe por paridad de API con NetworkClient.
+  Q_INVOKABLE void reclamarRecompensaReto(const QString&, quint16, QString, QString) {}
   // Ranking / social / perfiles ajenos
   Q_INVOKABLE void consultarRanking(const QString&, quint16) {}
   Q_INVOKABLE void consultarPerfilJugador(const QString&, quint16, int) {}
@@ -522,6 +527,8 @@ class LocalGameClient : public QObject {
   void registroError(QString mensaje);
   void logoutOk();
   void sesionInvalida(QString mensaje);
+  void retoReclamado(QString codigoReto, int treboles);
+  void retoReclamarError(QString mensaje);
   void reautenticacionSinRespuesta();
   void usernameCambiado(QString nuevoUsername);
   void usernameError(QString mensaje);

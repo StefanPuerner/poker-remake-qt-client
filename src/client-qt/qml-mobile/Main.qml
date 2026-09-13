@@ -97,6 +97,100 @@ ApplicationWindow {
     // qml/Main.qml (escritorio).
     property bool modoOfflineActivo: false
     property bool sesionOffline: false
+
+    // ── Torneos > Solitario (Fase 6, ver docs/plan-torneos-solitario.md) ──
+    // Código del reto que se está jugando AHORA MISMO ("" si ninguno) --
+    // puesto por el botón "Jugar" de cada tarjeta, leído por onFinDePartida
+    // para saber si ese fin de partida corresponde a un reto (y si ganaste).
+    // Transitorio, no persiste -- si la app se cierra a media partida, se
+    // pierde igual que la propia partida.
+    property string retoEnCurso: ""
+    // CSV de retos ganados pero SIN reclamar todavía (persistido, ver
+    // Settings más abajo) -- separado de "ya reclamado" (que vive en
+    // logrosModel, viene del servidor) porque jugar un reto no necesita
+    // conexión y reclamarlo sí (pedido explícito del usuario, 2026-09-12):
+    // se puede ganar toda la escalera sin conexión y reclamar de golpe al
+    // volver a tener servidor. Gestionado por retoGanadoPendiente()/
+    // marcarRetoGanadoPendiente()/quitarRetoGanadoPendiente() más abajo --
+    // nunca a mano.
+    property string retosGanadosPendientesCsv: ""
+    function retoGanadoPendiente(codigo) {
+        return retosGanadosPendientesCsv.split(",").indexOf(codigo) !== -1;
+    }
+    function marcarRetoGanadoPendiente(codigo) {
+        if (retoGanadoPendiente(codigo)) return;
+        retosGanadosPendientesCsv = retosGanadosPendientesCsv === ""
+            ? codigo : retosGanadosPendientesCsv + "," + codigo;
+    }
+    function quitarRetoGanadoPendiente(codigo) {
+        retosGanadosPendientesCsv = retosGanadosPendientesCsv.split(",")
+            .filter(function(c) { return c !== "" && c !== codigo; }).join(",");
+    }
+    // Desbloqueado server-side de verdad (ya reclamado en algún momento,
+    // en esta sesión o en una anterior) -- a diferencia de
+    // retoGanadoPendiente(), esto SÍ requiere haber tenido conexión alguna
+    // vez para este logro. logrosModel ya se pide al iniciar sesión (ver
+    // pedirDatosDeCuenta()) y se refresca al reclamar (onRetoReclamado).
+    function retoLogroDesbloqueado(codigo) {
+        for (var i = 0; i < logrosModel.count; i++) {
+            var l = logrosModel.get(i);
+            if (l.codigo === codigo) return !!l.desbloqueado;
+        }
+        return false;
+    }
+    // Disponible para JUGAR (no para reclamar): el primero siempre, los
+    // demás en cuanto el anterior esté ganado -- pendiente de reclamar o ya
+    // reclamado, cualquiera de los dos cuenta.
+    function retoDisponible(codigoPredecesor) {
+        return codigoPredecesor === "" || retoGanadoPendiente(codigoPredecesor)
+               || retoLogroDesbloqueado(codigoPredecesor);
+    }
+    // La escalera entera -- un único sitio con todos los parámetros reales
+    // de cada peldaño (los mismos que recibe iniciarPartidaLocal()) más lo
+    // puramente decorativo (nombre/descripción). Los Tréboles de aquí son
+    // SOLO para mostrarlos en la tarjeta -- el servidor nunca se fía de
+    // este número, los vuelve a fijar él mismo (ver kRetosSolitario,
+    // AccountManager.cpp); si algún día no coincidieran, ganaría siempre el
+    // servidor. codigoPredecesor "" en el primero -- sin requisito.
+    readonly property var retosSolitario: [
+        { codigo: "reto_solitario_1", codigoPredecesor: "",
+          nombre: "Reto 1 · Primeros pasos",
+          descripcion: "2 bots, dificultad fácil, hasta que alguien se quede con todas las fichas.",
+          numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 20 },
+        { codigo: "reto_solitario_2", codigoPredecesor: "reto_solitario_1",
+          nombre: "Reto 2 · Mesa concurrida",
+          descripcion: "5 bots, dificultad fácil, hasta que alguien se quede con todas las fichas.",
+          numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 35 },
+        { codigo: "reto_solitario_3", codigoPredecesor: "reto_solitario_2",
+          nombre: "Reto 3 · Cara a cara",
+          descripcion: "1 solo bot, dificultad experta -- mano a mano, sin nadie más en la mesa.",
+          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 40 },
+        { codigo: "reto_solitario_4", codigoPredecesor: "reto_solitario_3",
+          nombre: "Reto 4 · Contrarreloj",
+          descripcion: "3 bots, dificultad normal, solo 12 manos -- gana quien más fichas tenga al final.",
+          numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12, treboles: 50 },
+        { codigo: "reto_solitario_5", codigoPredecesor: "reto_solitario_4",
+          nombre: "Reto 5 · La gran mesa",
+          descripcion: "5 bots, dificultad experta -- el peldaño final de la escalera.",
+          numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200, treboles: 60 },
+    ]
+    // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
+    // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
+    function iniciarReto(reto) {
+        // Reasignar "redcliente" ANTES de llamar a iniciarPartidaLocal() --
+        // confirmado que la reasignación se propaga de inmediato, dentro
+        // del mismo bloque de JS (ver el comentario de
+        // ModoJuegoCoordinador.hpp).
+        modoJuego.activarModoLocal();
+        ventana.modoOfflineActivo = true;
+        retoEnCurso = reto.codigo;
+        redcliente.iniciarPartidaLocal(
+            nombreJugador, reto.numBots, reto.numManos,
+            /*ciegaGrande=*/20, reto.saldo, /*tipoLimite=*/0,
+            /*aplicarMinRaise=*/false, /*monteFijo=*/0,
+            reto.dificultadBots, /*permitirRecompra=*/false,
+            /*preguntarExtension=*/false);
+    }
     property bool offlineConCuenta: false
     // "¿Hay cuenta detrás de esta sesión?" para decidir qué PINTAR -- ver
     // el comentario gemelo en qml/Main.qml (escritorio). No sustituye a
@@ -227,6 +321,8 @@ ApplicationWindow {
         // alias a un singleton (mismo aviso de "tema" un poco más abajo).
         property alias tokenGuardado: ventana.tokenSesion
         property alias sonido: ventana.sonidoActivado
+        // Torneos > Solitario -- ver el comentario de retosGanadosPendientesCsv.
+        property alias retosGanadosPendientes: ventana.retosGanadosPendientesCsv
         property int temaGuardado: 0
     }
     Component.onCompleted: {
@@ -564,6 +660,7 @@ ApplicationWindow {
     // ── Cuenta > Personalizar (Fase M1 del port a móvil, 2026-09-01) ────
     property int pestanaPersonalizarActual: 0  // 0=Texturas,1=Efectos,2=Decoraciones,3=Títulos
     property string mensajeTienda: ""
+    property string mensajeTorneos: ""
     // Categoría(s) de shop_items que corresponde a cada pestaña -- port
     // directo de escritorio.
     function categoriasPersonalizar(indice) {
@@ -1088,6 +1185,16 @@ ApplicationWindow {
         function onObjetoEquiparError(mensaje) {
             ventana.mensajeTienda = mensaje;
         }
+        // ── Torneos > Solitario ──────────────────────────────────────────
+        function onRetoReclamado(codigoReto, treboles) {
+            ventana.quitarRetoGanadoPendiente(codigoReto);
+            ventana.mensajeTorneos = "+" + treboles + " Tréboles.";
+            redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+            redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+        function onRetoReclamarError(mensaje) {
+            ventana.mensajeTorneos = mensaje;
+        }
         function onSesionInvalida(mensaje) {
             // Token caducado/revocado -- se olvida y se deja Inicio tal
             // cual (ya es la pantalla por defecto al arrancar, antes de
@@ -1488,6 +1595,15 @@ ApplicationWindow {
             votoExtensionAbierto = false;
             esperandoManosExtra = false;
             soyYoQuienElige = false;
+            // Torneos > Solitario: si esto era un reto (retoEnCurso), se
+            // comprueba aquí si lo ganaste -- "ganador" es el parámetro de
+            // esta misma función. NO se reclama nada todavía (eso exige
+            // conexión, ver retoGanadoPendiente()); solo se marca
+            // localmente, tenga o no tenga conexión la app después.
+            if (retoEnCurso !== "" && ganador === nombreJugador) {
+                marcarRetoGanadoPendiente(retoEnCurso);
+            }
+            retoEnCurso = "";
             pantalla = "Fin";
             // Modo offline (Torneos > Solitario) -- ver el comentario
             // gemelo en qml/Main.qml (escritorio). Va ANTES de las
@@ -2294,6 +2410,15 @@ ApplicationWindow {
                     redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
                     redcliente.consultarTienda(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
                     redcliente.consultarLoadout(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                }
+            }
+            if (nombre === "Torneos") {
+                ventana.mensajeTorneos = "";
+                // Refresca logros por si se reclamó algo desde otro
+                // dispositivo -- ya se pidió al iniciar sesión
+                // (pedirDatosDeCuenta()), esto solo lo pone al día.
+                if (ventana.tokenSesion !== "") {
                     redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
                 }
             }
@@ -3245,9 +3370,9 @@ ApplicationWindow {
         titulo: "Torneos"
         descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
     }
-    // Torneos Solitario (Fase 6, ver CLAUDE.md) -- mismo contenido que
-    // qml/Main.qml (escritorio), ver el comentario largo ahí. "Multijugador"
-    // sigue siendo un placeholder puro.
+    // Torneos Solitario (Fase 6, ver docs/plan-torneos-solitario.md) --
+    // mismo contenido que qml/Main.qml (escritorio), ver el comentario
+    // largo ahí. "Multijugador" sigue siendo un placeholder puro.
     Item {
         visible: ventana.pantalla === "Torneos" && torneosHabilitados
         anchors.top: barraTorneosMovil.bottom
@@ -3255,80 +3380,150 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
 
-        Column {
-            anchors.centerIn: parent
-            spacing: 20 * Tema.escala
-            width: 300 * Tema.escala
+        ScrollView {
+            anchors.fill: parent
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-            Text {
-                text: "Torneos Solitario"
-                color: Tema.colorTexto
-                font.bold: true
-                font.pixelSize: 18 * Tema.escala
-                font.family: Tema.fuenteElegante
+            Column {
                 anchors.horizontalCenter: parent.horizontalCenter
-            }
-            Text {
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                color: Tema.colorTextoTenue
-                font.pixelSize: 12 * Tema.escala
-                text: "Una escalera de desafíos contra bots está en camino. De momento, un único reto para probarlo."
-            }
+                topPadding: 16 * Tema.escala
+                bottomPadding: 16 * Tema.escala
+                spacing: 16 * Tema.escala
+                width: 300 * Tema.escala
 
-            Rectangle {
-                width: parent.width
-                height: columnaRetoMovil.height + 28 * Tema.escala
-                radius: 12 * Tema.escala
-                color: Tema.colorPanel
-                border.width: 1
-                border.color: Tema.colorBorde
-                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property variant source
-                    property real amplitud: 30.0
-                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                Text {
+                    text: "Torneos Solitario"
+                    color: Tema.colorTexto
+                    font.bold: true
+                    font.pixelSize: 18 * Tema.escala
+                    font.family: Tema.fuenteElegante
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 12 * Tema.escala
+                    text: "Una escalera de 5 retos contra bots, cada uno más difícil que el anterior. Jugar no necesita conexión -- reclamar la recompensa, sí."
+                }
+                Text {
+                    visible: ventana.mensajeTorneos !== ""
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: Tema.colorAccent
+                    font.pixelSize: 12 * Tema.escala
+                    text: ventana.mensajeTorneos
                 }
 
-                Column {
-                    id: columnaRetoMovil
-                    anchors.centerIn: parent
-                    width: parent.width - 32 * Tema.escala
-                    spacing: 10 * Tema.escala
+                Repeater {
+                    model: ventana.retosSolitario
+                    delegate: Rectangle {
+                        id: tarjetaRetoMovil
+                        required property var modelData
+                        readonly property bool disponible: ventana.retoDisponible(modelData.codigoPredecesor)
+                        readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
+                        readonly property bool completado: ventana.retoLogroDesbloqueado(modelData.codigo)
+                        readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
 
-                    Text {
-                        text: "Reto 1 · Primeros pasos"
-                        color: Tema.colorAccent
-                        font.bold: true
-                        font.pixelSize: 14 * Tema.escala
-                    }
-                    Text {
                         width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: "2 bots, dificultad fácil, hasta que alguien se quede con todas las fichas."
-                        color: Tema.colorTexto
-                        font.pixelSize: 12 * Tema.escala
-                    }
-                    BotonRelleno {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Jugar"
-                        onClicked: {
-                            modoJuego.activarModoLocal();
-                            ventana.modoOfflineActivo = true;
-                            redcliente.iniciarPartidaLocal(
-                                nombreJugador, /*numBots=*/2, /*numManos=*/200,
-                                /*ciegaGrande=*/20, /*saldo=*/500, /*tipoLimite=*/0,
-                                /*aplicarMinRaise=*/false, /*monteFijo=*/0,
-                                /*dificultadBots=*/0, /*permitirRecompra=*/false,
-                                /*preguntarExtension=*/false);
+                        height: columnaRetoMovil.height + 24 * Tema.escala
+                        radius: 12 * Tema.escala
+                        color: Tema.colorPanel
+                        border.width: 1
+                        border.color: Tema.colorBorde
+                        opacity: disponible ? 1.0 : 0.55
+                        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                        layer.enabled: true
+                        layer.effect: ShaderEffect {
+                            property variant source
+                            property real amplitud: 30.0
+                            fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                        }
+
+                        Column {
+                            id: columnaRetoMovil
+                            anchors.centerIn: parent
+                            width: parent.width - 28 * Tema.escala
+                            spacing: 8 * Tema.escala
+
+                            Row {
+                                width: parent.width
+                                Text {
+                                    width: parent.width - marcaCompletadoMovil.width
+                                    text: tarjetaRetoMovil.modelData.nombre
+                                    color: Tema.colorAccent
+                                    font.bold: true
+                                    font.pixelSize: 13 * Tema.escala
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    id: marcaCompletadoMovil
+                                    visible: tarjetaRetoMovil.completado
+                                    text: "✓ Completado"
+                                    color: Tema.colorAccent
+                                    font.pixelSize: 10 * Tema.escala
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: tarjetaRetoMovil.modelData.descripcion
+                                color: Tema.colorTexto
+                                font.pixelSize: 11 * Tema.escala
+                            }
+                            Text {
+                                visible: !tarjetaRetoMovil.disponible
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: "Completa antes el reto anterior de la escalera."
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 10 * Tema.escala
+                            }
+                            Text {
+                                visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.completado
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: "Recompensa: " + tarjetaRetoMovil.modelData.treboles + " Tréboles + título."
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 10 * Tema.escala
+                            }
+
+                            BotonRelleno {
+                                visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.completado
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                enabled: tarjetaRetoMovil.puedeReclamar
+                                text: tarjetaRetoMovil.puedeReclamar ? "Reclamar recompensa" : "Necesitas conexión para reclamar"
+                                onClicked: redcliente.reclamarRecompensaReto(
+                                    ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                    tarjetaRetoMovil.modelData.codigo)
+                            }
+                            BotonRelleno {
+                                visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "Jugar"
+                                onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
+                            }
+                            Text {
+                                visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado)
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "Jugar de nuevo"
+                                color: Tema.colorAccent
+                                font.pixelSize: 11 * Tema.escala
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+
 
     BarraSuperior {
         id: barraSocialMovil

@@ -98,6 +98,8 @@ ApplicationWindow {
         // poco más abajo, ya documentado el mismo problema).
         property alias tokenGuardado: ventana.tokenSesion
         property alias sonido: ventana.sonidoActivado
+        // Torneos > Solitario -- ver el comentario de retosGanadosPendientesCsv.
+        property alias retosGanadosPendientes: ventana.retosGanadosPendientesCsv
         // "tema" NO es un property alias a Tema.temaActual a propósito:
         // un alias a una propiedad de un SINGLETON (a diferencia de un id
         // normal dentro de este mismo documento) da un alias que el
@@ -193,6 +195,100 @@ ApplicationWindow {
     // Solitario estando conectado, en cambio, solo dura lo que dura la
     // partida y luego se vuelve a red. Ver docs/plan-modo-offline.md.
     property bool sesionOffline: false
+
+    // ── Torneos > Solitario (Fase 6, ver docs/plan-torneos-solitario.md) ──
+    // Código del reto que se está jugando AHORA MISMO ("" si ninguno) --
+    // puesto por el botón "Jugar" de cada tarjeta, leído por onFinDePartida
+    // para saber si ese fin de partida corresponde a un reto (y si ganaste).
+    // Transitorio, no persiste -- si la app se cierra a media partida, se
+    // pierde igual que la propia partida.
+    property string retoEnCurso: ""
+    // CSV de retos ganados pero SIN reclamar todavía (persistido, ver
+    // Settings más abajo) -- separado de "ya reclamado" (que vive en
+    // logrosModel, viene del servidor) porque jugar un reto no necesita
+    // conexión y reclamarlo sí (pedido explícito del usuario, 2026-09-12):
+    // se puede ganar toda la escalera sin conexión y reclamar de golpe al
+    // volver a tener servidor. Gestionado por retoGanadoPendiente()/
+    // marcarRetoGanadoPendiente()/quitarRetoGanadoPendiente() más abajo --
+    // nunca a mano.
+    property string retosGanadosPendientesCsv: ""
+    function retoGanadoPendiente(codigo) {
+        return retosGanadosPendientesCsv.split(",").indexOf(codigo) !== -1;
+    }
+    function marcarRetoGanadoPendiente(codigo) {
+        if (retoGanadoPendiente(codigo)) return;
+        retosGanadosPendientesCsv = retosGanadosPendientesCsv === ""
+            ? codigo : retosGanadosPendientesCsv + "," + codigo;
+    }
+    function quitarRetoGanadoPendiente(codigo) {
+        retosGanadosPendientesCsv = retosGanadosPendientesCsv.split(",")
+            .filter(function(c) { return c !== "" && c !== codigo; }).join(",");
+    }
+    // Desbloqueado server-side de verdad (ya reclamado en algún momento,
+    // en esta sesión o en una anterior) -- a diferencia de
+    // retoGanadoPendiente(), esto SÍ requiere haber tenido conexión alguna
+    // vez para este logro. logrosModel ya se pide al iniciar sesión (ver
+    // pedirDatosDeCuenta()) y se refresca al reclamar (onRetoReclamado).
+    function retoLogroDesbloqueado(codigo) {
+        for (var i = 0; i < logrosModel.count; i++) {
+            var l = logrosModel.get(i);
+            if (l.codigo === codigo) return !!l.desbloqueado;
+        }
+        return false;
+    }
+    // Disponible para JUGAR (no para reclamar): el primero siempre, los
+    // demás en cuanto el anterior esté ganado -- pendiente de reclamar o ya
+    // reclamado, cualquiera de los dos cuenta.
+    function retoDisponible(codigoPredecesor) {
+        return codigoPredecesor === "" || retoGanadoPendiente(codigoPredecesor)
+               || retoLogroDesbloqueado(codigoPredecesor);
+    }
+    // La escalera entera -- un único sitio con todos los parámetros reales
+    // de cada peldaño (los mismos que recibe iniciarPartidaLocal()) más lo
+    // puramente decorativo (nombre/descripción). Los Tréboles de aquí son
+    // SOLO para mostrarlos en la tarjeta -- el servidor nunca se fía de
+    // este número, los vuelve a fijar él mismo (ver kRetosSolitario,
+    // AccountManager.cpp); si algún día no coincidieran, ganaría siempre el
+    // servidor. codigoPredecesor "" en el primero -- sin requisito.
+    readonly property var retosSolitario: [
+        { codigo: "reto_solitario_1", codigoPredecesor: "",
+          nombre: "Reto 1 · Primeros pasos",
+          descripcion: "2 bots, dificultad fácil, hasta que alguien se quede con todas las fichas.",
+          numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 20 },
+        { codigo: "reto_solitario_2", codigoPredecesor: "reto_solitario_1",
+          nombre: "Reto 2 · Mesa concurrida",
+          descripcion: "5 bots, dificultad fácil, hasta que alguien se quede con todas las fichas.",
+          numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 35 },
+        { codigo: "reto_solitario_3", codigoPredecesor: "reto_solitario_2",
+          nombre: "Reto 3 · Cara a cara",
+          descripcion: "1 solo bot, dificultad experta -- mano a mano, sin nadie más en la mesa.",
+          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 40 },
+        { codigo: "reto_solitario_4", codigoPredecesor: "reto_solitario_3",
+          nombre: "Reto 4 · Contrarreloj",
+          descripcion: "3 bots, dificultad normal, solo 12 manos -- gana quien más fichas tenga al final.",
+          numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12, treboles: 50 },
+        { codigo: "reto_solitario_5", codigoPredecesor: "reto_solitario_4",
+          nombre: "Reto 5 · La gran mesa",
+          descripcion: "5 bots, dificultad experta -- el peldaño final de la escalera.",
+          numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200, treboles: 60 },
+    ]
+    // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
+    // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
+    function iniciarReto(reto) {
+        // Reasignar "redcliente" ANTES de llamar a iniciarPartidaLocal() --
+        // confirmado que la reasignación se propaga de inmediato, dentro
+        // del mismo bloque de JS (ver el comentario de
+        // ModoJuegoCoordinador.hpp).
+        modoJuego.activarModoLocal();
+        ventana.modoOfflineActivo = true;
+        retoEnCurso = reto.codigo;
+        redcliente.iniciarPartidaLocal(
+            nombreUsuario.text, reto.numBots, reto.numManos,
+            /*ciegaGrande=*/20, reto.saldo, /*tipoLimite=*/0,
+            /*aplicarMinRaise=*/false, /*monteFijo=*/0,
+            reto.dificultadBots, /*permitirRecompra=*/false,
+            /*preguntarExtension=*/false);
+    }
     // Identidad con la que se entró sin conexión: true = cuenta cacheada de
     // la última sesión con servidor, false = invitado (sandbox puro, sin
     // nada persistido). Ver LocalGameClient::hayIdentidadCacheada().
@@ -386,6 +482,7 @@ ApplicationWindow {
     // progreso"), ese contenido vive ahora en Progreso.
     property int pestanaPersonalizarActual: 0  // 0=Texturas,1=Efectos,2=Decoraciones,3=Títulos
     property string mensajeTienda: ""
+    property string mensajeTorneos: ""
     // Búsqueda en vivo del catálogo (pedido explícito 2026-08-31: "añade
     // facilidad al buscar") -- filtra por nombre, sin distinguir
     // mayúsculas/minúsculas, sobre lo que ya haya en tiendaCrudo (sin
@@ -1258,6 +1355,15 @@ ApplicationWindow {
                         redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
                         redcliente.consultarTienda(servidorHost, servidorPuerto, tokenSesion);
                         redcliente.consultarLoadout(servidorHost, servidorPuerto, tokenSesion);
+                    }
+                }
+                if (nombre === "Torneos") {
+                    mensajeTorneos = "";
+                    // Refresca logros por si se reclamó algo desde otro
+                    // dispositivo -- ya se pidió al iniciar sesión
+                    // (pedirDatosDeCuenta()), esto solo lo pone al día.
+                    if (tokenSesion !== "") {
+                        redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
                     }
                 }
                 if (nombre === "Tienda") {
@@ -2791,18 +2897,18 @@ ApplicationWindow {
             titulo: "Torneos"
             descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
         }
-        // Torneos Solitario (Fase 6, ver CLAUDE.md) -- primer desafío fijo
-        // de lo que será una escalera completa (diseño de la escalera
-        // todavía sin cerrar, ver el propio CLAUDE.md: "hay que pulirlo").
-        // Deliberadamente mínimo por ahora: un único reto contra bots, sin
-        // premio ni logro todavía (eso engancha al motor de logros ya
-        // existente, pendiente de decidir el código/nombre del logro) --
-        // sirve para validar en un cliente real LocalGameClient/
-        // LocalGameObserver/JugadorLocalQt (ver docs/plan-modo-offline.md),
-        // ya probados en aislado vía LocalOfflineSmokeTest pero nunca
-        // todavía contra la UI de verdad. "Multijugador" (eliminatorias con
-        // jugadores reales) sigue siendo un placeholder puro -- ni
-        // diseñado, ver CLAUDE.md.
+        // Torneos Solitario (Fase 6, ver docs/plan-torneos-solitario.md) --
+        // escalera de 5 retos fijos contra bots (dificultad/saldo/manos
+        // preestablecidos, sin elegir nada). JUGAR no necesita conexión
+        // (motor local, LocalGameClient/LocalGameObserver/JugadorLocalQt) --
+        // RECLAMAR sí (pedido explícito del usuario, 2026-09-12: "prefiero
+        // que los tréboles se reclamen en la interfaz de los retos, no que
+        // vengan con logros"), así que se puede ganar la escalera entera
+        // sin conexión y reclamar de golpe al volver a tener servidor. El
+        // orden lo fuerza también el servidor (ver
+        // AccountManager::reclamarRecompensaReto()), no solo esta pantalla.
+        // "Multijugador" (eliminatorias con jugadores reales) sigue siendo
+        // un placeholder puro -- ni diseñado, ver CLAUDE.md.
         Item {
             visible: pantalla === "Torneos" && torneosHabilitados
             anchors.top: barraTorneos.bottom
@@ -2810,82 +2916,152 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
 
-            Column {
-                anchors.centerIn: parent
-                spacing: 20 * Tema.escala
-                width: 340 * Tema.escala
+            ScrollView {
+                anchors.fill: parent
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                Text {
-                    text: "Torneos Solitario"
-                    color: Tema.colorTexto
-                    font.bold: true
-                    font.pixelSize: 20 * Tema.escala
-                    font.family: Tema.fuenteElegante
+                Column {
                     anchors.horizontalCenter: parent.horizontalCenter
-                }
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    color: Tema.colorTextoTenue
-                    font.pixelSize: 12 * Tema.escala
-                    text: "Una escalera de desafíos contra bots está en camino. De momento, un único reto para probarlo."
-                }
+                    topPadding: 20 * Tema.escala
+                    bottomPadding: 20 * Tema.escala
+                    spacing: 20 * Tema.escala
+                    width: 340 * Tema.escala
 
-                // Tarjeta del reto -- mismo lenguaje visual "ficha de
-                // casino" que el resto de la app (ver CLAUDE.md,
-                // "Convenciones de diseño").
-                Rectangle {
-                    width: parent.width
-                    height: columnaReto.height + 28 * Tema.escala
-                    radius: 12 * Tema.escala
-                    color: Tema.colorPanel
-                    border.width: 1
-                    border.color: Tema.colorBorde
-                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                    layer.enabled: true
-                    layer.effect: ShaderEffect {
-                        property variant source
-                        property real amplitud: 30.0
-                        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                    Text {
+                        text: "Torneos Solitario"
+                        color: Tema.colorTexto
+                        font.bold: true
+                        font.pixelSize: 20 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                    Text {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                        text: "Una escalera de 5 retos contra bots, cada uno más difícil que el anterior. Jugar no necesita conexión -- reclamar la recompensa, sí."
+                    }
+                    Text {
+                        visible: mensajeTorneos !== ""
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorAccent
+                        font.pixelSize: 12 * Tema.escala
+                        text: mensajeTorneos
                     }
 
-                    Column {
-                        id: columnaReto
-                        anchors.centerIn: parent
-                        width: parent.width - 32 * Tema.escala
-                        spacing: 10 * Tema.escala
+                    Repeater {
+                        model: retosSolitario
+                        delegate: Rectangle {
+                            id: tarjetaReto
+                            required property var modelData
+                            readonly property bool disponible: retoDisponible(modelData.codigoPredecesor)
+                            readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
+                            readonly property bool completado: retoLogroDesbloqueado(modelData.codigo)
+                            // Solo con cuenta real y conexión de verdad --
+                            // invitado no tiene dónde acreditar nada.
+                            readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
 
-                        Text {
-                            text: "Reto 1 · Primeros pasos"
-                            color: Tema.colorAccent
-                            font.bold: true
-                            font.pixelSize: 14 * Tema.escala
-                        }
-                        Text {
                             width: parent.width
-                            wrapMode: Text.WordWrap
-                            text: "2 bots, dificultad fácil, hasta que alguien se quede con todas las fichas."
-                            color: Tema.colorTexto
-                            font.pixelSize: 12 * Tema.escala
-                        }
-                        BotonRelleno {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Jugar"
-                            onClicked: {
-                                // Reasignar "redcliente" ANTES de llamar a
-                                // iniciarPartidaLocal() -- confirmado que la
-                                // reasignación se propaga de inmediato,
-                                // dentro del mismo bloque de JS (ver el
-                                // comentario de ModoJuegoCoordinador.hpp).
-                                modoJuego.activarModoLocal();
-                                ventana.modoOfflineActivo = true;
-                                redcliente.iniciarPartidaLocal(
-                                    nombreUsuario.text, /*numBots=*/2, /*numManos=*/200,
-                                    /*ciegaGrande=*/20, /*saldo=*/500, /*tipoLimite=*/0,
-                                    /*aplicarMinRaise=*/false, /*monteFijo=*/0,
-                                    /*dificultadBots=*/0, /*permitirRecompra=*/false,
-                                    /*preguntarExtension=*/false);
+                            height: columnaReto.height + 28 * Tema.escala
+                            radius: 12 * Tema.escala
+                            color: Tema.colorPanel
+                            border.width: 1
+                            border.color: Tema.colorBorde
+                            // Bloqueado -- mismo criterio que "Comprado"
+                            // (CLAUDE.md, "Convenciones de diseño"): opacidad
+                            // baja, sin Rectangle ni color especial nuevo.
+                            opacity: disponible ? 1.0 : 0.55
+                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                            layer.enabled: true
+                            layer.effect: ShaderEffect {
+                                property variant source
+                                property real amplitud: 30.0
+                                fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                            }
+
+                            Column {
+                                id: columnaReto
+                                anchors.centerIn: parent
+                                width: parent.width - 32 * Tema.escala
+                                spacing: 10 * Tema.escala
+
+                                Row {
+                                    width: parent.width
+                                    Text {
+                                        width: parent.width - marcaCompletado.width
+                                        text: tarjetaReto.modelData.nombre
+                                        color: Tema.colorAccent
+                                        font.bold: true
+                                        font.pixelSize: 14 * Tema.escala
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        id: marcaCompletado
+                                        visible: tarjetaReto.completado
+                                        text: "✓ Completado"
+                                        color: Tema.colorAccent
+                                        font.pixelSize: 11 * Tema.escala
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: tarjetaReto.modelData.descripcion
+                                    color: Tema.colorTexto
+                                    font.pixelSize: 12 * Tema.escala
+                                }
+                                Text {
+                                    visible: !tarjetaReto.disponible
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: "Completa antes el reto anterior de la escalera."
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Text {
+                                    visible: tarjetaReto.disponible && !tarjetaReto.completado
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: "Recompensa: " + tarjetaReto.modelData.treboles + " Tréboles + título."
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+
+                                // Reclamar es la acción principal en cuanto hay
+                                // algo que reclamar -- "Jugar de nuevo" queda
+                                // como enlace secundario, discreto, para quien
+                                // quiera practicar antes de reclamar.
+                                BotonRelleno {
+                                    visible: tarjetaReto.disponible && tarjetaReto.ganadoPendiente && !tarjetaReto.completado
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    enabled: tarjetaReto.puedeReclamar
+                                    text: tarjetaReto.puedeReclamar ? "Reclamar recompensa" : "Necesitas conexión para reclamar"
+                                    onClicked: redcliente.reclamarRecompensaReto(
+                                        servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
+                                }
+                                BotonRelleno {
+                                    visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Jugar"
+                                    onClicked: iniciarReto(tarjetaReto.modelData)
+                                }
+                                Text {
+                                    visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado)
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Jugar de nuevo"
+                                    color: Tema.colorAccent
+                                    font.pixelSize: 12 * Tema.escala
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: iniciarReto(tarjetaReto.modelData)
+                                    }
+                                }
                             }
                         }
                     }
@@ -5197,6 +5373,21 @@ ApplicationWindow {
             function onObjetoEquiparError(mensaje) {
                 mensajeTienda = mensaje;
             }
+            // ── Torneos > Solitario ──────────────────────────────────────
+            function onRetoReclamado(codigoReto, treboles) {
+                quitarRetoGanadoPendiente(codigoReto);
+                mensajeTorneos = "+" + treboles + " Tréboles.";
+                // El logro ya está desbloqueado server-side -- refrescar
+                // para que la tarjeta pase a "Completado" y, si toca, la
+                // siguiente deje de estar bloqueada. Estadísticas también,
+                // para que el saldo de Tréboles se ponga al día sin
+                // esperar a la próxima consulta.
+                redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+            }
+            function onRetoReclamarError(mensaje) {
+                mensajeTorneos = mensaje;
+            }
             // ── Social ────────────────────────────────────────────────────
             function onJugadoresBusquedaActualizados(jugadores) {
                 modeloBusqueda.clear();
@@ -5855,6 +6046,15 @@ ApplicationWindow {
                 votoExtensionAbierto = false;
                 esperandoManosExtra = false;
                 soyYoQuienElige = false;
+                // Torneos > Solitario: si esto era un reto (retoEnCurso), se
+                // comprueba aquí si lo ganaste -- "ganador" es el parámetro
+                // de esta misma función. NO se reclama nada todavía (eso
+                // exige conexión, ver retoGanadoPendiente()); solo se marca
+                // localmente, gane o no gane la app conexión después.
+                if (retoEnCurso !== "" && ganador === nombreUsuario.text) {
+                    marcarRetoGanadoPendiente(retoEnCurso);
+                }
+                retoEnCurso = "";
                 pantalla = "Fin";
                 // Modo offline (Torneos > Solitario) -- devolver "redcliente"
                 // a NetworkClient ANTES de las dos llamadas de red de abajo

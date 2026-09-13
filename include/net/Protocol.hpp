@@ -153,6 +153,7 @@ enum class MsgType {
     EQUIPAR_OBJETO,              ///< "token","slot","codigo" ("codigo" vacío desequipa), "acabado" opcional (decoraciones) -- ack vía GAME_EVENT.
     CONSULTAR_LOADOUT,           ///< "token" -- el marco equipado de la propia cuenta.
     LOADOUT_ACTUAL,              ///< Respuesta a CONSULTAR_LOADOUT -- campos JSON sueltos (textura/efecto/decoracion_lateral_1/decoracion_lateral_2/decoracion_superior/titulo).
+    RECLAMAR_RECOMPENSA_RETO,   ///< "token","codigo" (reto_solitario_N, Torneos > Solitario) -- ack vía GAME_EVENT (RETO_RECLAMADO/RETO_RECLAMAR_ERROR).
 
     // Herramienta de pruebas/admin, punto 2 de la prioridad confirmada
     // (2026-09-01, ver memoria qt_progression_review_2026_09_01) --

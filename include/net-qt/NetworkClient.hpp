@@ -541,6 +541,29 @@ class NetworkClient : public QObject {
     });
   }
 
+  /// Torneos > Solitario (Fase 6, ver docs/plan-torneos-solitario.md):
+  /// reclama la recompensa de @p codigoReto ("reto_solitario_N") -- exige
+  /// conexión real a propósito, a diferencia de JUGAR el reto (motor local,
+  /// sin servidor). El cliente NUNCA manda cuántos Tréboles son -- los fija
+  /// el servidor (ver kRetosSolitario, AccountManager.cpp).
+  Q_INVOKABLE void reclamarRecompensaReto(const QString& host, quint16 puerto, QString token,
+                                          QString codigoReto) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::RECLAMAR_RECOMPENSA_RETO, {
+        {"token",  token.toStdString()},
+        {"codigo", codigoReto.toStdString()},
+    }), [this, codigoReto](const std::string& payload) {
+      if (payload.empty()) {
+        emit retoReclamarError(QStringLiteral("No se pudo conectar con el servidor. Inténtalo de nuevo."));
+        return;
+      }
+      if (net::jsonGetStr(payload, "evento") == "RETO_RECLAMADO") {
+        emit retoReclamado(codigoReto, net::jsonGetInt(payload, "treboles"));
+      } else {
+        emit retoReclamarError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
   Q_INVOKABLE void consultarLoadout(const QString& host, quint16 puerto, QString token) {
     if (token.isEmpty()) return;
     enviarPeticionEfimera(host, puerto,
@@ -1119,6 +1142,10 @@ class NetworkClient : public QObject {
   /// Avisa de que la propiedad loadoutMarco ya está al día -- mismo
   /// criterio que estadisticasCuentaCambiaron().
   void loadoutMarcoCambiaron();
+  /// Respuesta a reclamarRecompensaReto() -- éxito, con los Tréboles
+  /// concedidos (los fija el servidor, nunca el cliente).
+  void retoReclamado(QString codigoReto, int treboles);
+  void retoReclamarError(QString mensaje);
   /// Respuesta a adminConcederItem() -- herramienta de pruebas/admin
   /// (2026-09-01, ver memoria qt_progression_review_2026_09_01).
   void adminConcederOk(QString mensaje);

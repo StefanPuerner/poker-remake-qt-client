@@ -130,6 +130,8 @@ const char* msgTypeStr(MsgType t) {
       return "COMPRAR_OBJETO";
     case MsgType::EQUIPAR_OBJETO:
       return "EQUIPAR_OBJETO";
+    case MsgType::RECLAMAR_RECOMPENSA_RETO:
+      return "RECLAMAR_RECOMPENSA_RETO";
     case MsgType::CONSULTAR_LOADOUT:
       return "CONSULTAR_LOADOUT";
     case MsgType::LOADOUT_ACTUAL:
@@ -200,6 +202,7 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "TIENDA_LISTA") return MsgType::TIENDA_LISTA;
   if (s == "COMPRAR_OBJETO") return MsgType::COMPRAR_OBJETO;
   if (s == "EQUIPAR_OBJETO") return MsgType::EQUIPAR_OBJETO;
+  if (s == "RECLAMAR_RECOMPENSA_RETO") return MsgType::RECLAMAR_RECOMPENSA_RETO;
   if (s == "CONSULTAR_LOADOUT") return MsgType::CONSULTAR_LOADOUT;
   if (s == "LOADOUT_ACTUAL") return MsgType::LOADOUT_ACTUAL;
   if (s == "ADMIN_CONCEDER_ITEM") return MsgType::ADMIN_CONCEDER_ITEM;
