@@ -1584,7 +1584,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            textoCentro: "Iniciar sesión"
+            textoCentro: Idioma.t("boton_iniciar_sesion")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -1604,7 +1604,7 @@ ApplicationWindow {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 16 * Tema.escala
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Usuario"
+                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_usuario")
                 onAccepted: campoPasswordLogin.forceActiveFocus()
             }
             CampoTexto {
@@ -1614,13 +1614,13 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 16 * Tema.escala
                 echoMode: TextInput.Password
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña"
+                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_password")
                 onAccepted: botonEntrarLogin.clicked()
             }
             BotonRelleno {
                 id: botonEntrarLogin
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: enviandoLogin ? "Entrando…" : "Entrar"
+                text: enviandoLogin ? Idioma.t("boton_entrando") : Idioma.t("boton_entrar")
                 enabled: !enviandoLogin
                 radioBorde: 999
                 // Siempre pulsable (salvo mientras viaja el login, que dice
@@ -1629,11 +1629,11 @@ ApplicationWindow {
                 // no basta como mensaje de error.
                 onClicked: {
                     if (campoUsuarioLogin.text.length === 0) {
-                        mensajeErrorLogin = "Escribe tu nombre de usuario.";
+                        mensajeErrorLogin = "error_falta_usuario";
                         return;
                     }
                     if (campoPasswordLogin.text.length === 0) {
-                        mensajeErrorLogin = "Escribe tu contraseña.";
+                        mensajeErrorLogin = "error_falta_password";
                         return;
                     }
                     mensajeErrorLogin = "";
@@ -1644,7 +1644,7 @@ ApplicationWindow {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "¿No tienes cuenta? Crear una"
+                text: Idioma.t("enlace_crear_cuenta")
                 color: Tema.colorAccent
                 font.pixelSize: 12 * Tema.escala
                 MouseArea {
@@ -1669,7 +1669,7 @@ ApplicationWindow {
             }
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Volver"
+                text: Idioma.t("boton_volver")
                 radioBorde: 999
                 onClicked: {
                     campoPasswordLogin.text = "";
@@ -1685,7 +1685,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            textoCentro: "Crear cuenta"
+            textoCentro: Idioma.t("boton_crear_cuenta")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -1705,7 +1705,7 @@ ApplicationWindow {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 16 * Tema.escala
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Usuario (mín. 3 caracteres)"
+                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_usuario_min3")
                 onAccepted: campoPasswordRegistro.forceActiveFocus()
             }
             CampoTexto {
@@ -1715,7 +1715,7 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 16 * Tema.escala
                 echoMode: TextInput.Password
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña (8+ caracteres)"
+                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_password_min8")
                 onAccepted: campoPasswordRegistroConfirmar.forceActiveFocus()
             }
             CampoTexto {
@@ -1725,13 +1725,13 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 16 * Tema.escala
                 echoMode: TextInput.Password
-                placeholderText: (activeFocus || text.length > 0) ? "" : "Repite la contraseña"
+                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_password_repetir")
                 onAccepted: botonCrearCuenta.clicked()
             }
             BotonRelleno {
                 id: botonCrearCuenta
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Crear cuenta"
+                text: Idioma.t("boton_crear_cuenta")
                 radioBorde: 999
                 // Siempre pulsable a propósito -- antes, con enabled ligado
                 // a los mínimos, no pasar el mínimo dejaba el botón mudo
@@ -1745,15 +1745,15 @@ ApplicationWindow {
                 // instante en vez de esperar la ida y vuelta de red.
                 onClicked: {
                     if (campoUsuarioRegistro.text.length < 3) {
-                        mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
+                        mensajeErrorLogin = "error_usuario_corto";
                         return;
                     }
                     if (campoPasswordRegistro.text.length < 8) {
-                        mensajeErrorLogin = "La contraseña debe tener al menos 8 caracteres.";
+                        mensajeErrorLogin = "error_password_corta";
                         return;
                     }
                     if (campoPasswordRegistro.text !== campoPasswordRegistroConfirmar.text) {
-                        mensajeErrorLogin = "Las contraseñas no coinciden.";
+                        mensajeErrorLogin = "error_passwords_no_coinciden";
                         return;
                     }
                     mensajeErrorLogin = "";
@@ -1763,7 +1763,7 @@ ApplicationWindow {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "¿Ya tienes cuenta? Iniciar sesión"
+                text: Idioma.t("enlace_iniciar_sesion")
                 color: Tema.colorAccent
                 font.pixelSize: 12 * Tema.escala
                 MouseArea {
@@ -1786,7 +1786,7 @@ ApplicationWindow {
             }
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Volver"
+                text: Idioma.t("boton_volver")
                 radioBorde: 999
                 onClicked: {
                     campoPasswordRegistro.text = "";

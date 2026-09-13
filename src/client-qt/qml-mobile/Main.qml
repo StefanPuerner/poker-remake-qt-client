@@ -2038,7 +2038,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 16 * Tema.escala
-        textoCentro: "Iniciar sesión"
+        textoCentro: Idioma.t("boton_iniciar_sesion")
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
     // Área bajo la barra -- el Column de campos se centra AQUÍ, no en toda
@@ -2073,7 +2073,7 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
-                text: cajaUsuarioLogin.valor !== "" ? cajaUsuarioLogin.valor : "Usuario"
+                text: cajaUsuarioLogin.valor !== "" ? cajaUsuarioLogin.valor : Idioma.t("placeholder_usuario")
                 color: cajaUsuarioLogin.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 14 * Tema.escala
             }
@@ -2085,7 +2085,7 @@ ApplicationWindow {
             CampoEmergente {
                 id: campoUsuarioLogin
                 parent: Overlay.overlay
-                etiqueta: "Usuario"
+                etiqueta: Idioma.t("placeholder_usuario")
                 onAceptado: (texto) => cajaUsuarioLogin.valor = texto
             }
         }
@@ -2104,7 +2104,7 @@ ApplicationWindow {
                 // de puntos, solo para confirmar visualmente que hay algo
                 // escrito (ver el mismo criterio en la sección Cuenta del
                 // cajón de ajustes, más abajo).
-                text: cajaPasswordLogin.valor !== "" ? "••••••••" : "Contraseña"
+                text: cajaPasswordLogin.valor !== "" ? "••••••••" : Idioma.t("placeholder_password")
                 color: cajaPasswordLogin.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 14 * Tema.escala
             }
@@ -2116,14 +2116,14 @@ ApplicationWindow {
             CampoEmergente {
                 id: campoPasswordLogin
                 parent: Overlay.overlay
-                etiqueta: "Contraseña"
+                etiqueta: Idioma.t("placeholder_password")
                 esPassword: true
                 onAceptado: (texto) => cajaPasswordLogin.valor = texto
             }
         }
         BotonRelleno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: ventana.enviandoLogin ? "Entrando…" : "Entrar"
+            text: ventana.enviandoLogin ? Idioma.t("boton_entrando") : Idioma.t("boton_entrar")
             enabled: !ventana.enviandoLogin
             radioBorde: 999
             // Siempre pulsable (salvo mientras viaja el login, que dice
@@ -2132,11 +2132,11 @@ ApplicationWindow {
             // en el Main.qml de escritorio).
             onClicked: {
                 if (cajaUsuarioLogin.valor.length === 0) {
-                    ventana.mensajeErrorLogin = "Escribe tu nombre de usuario.";
+                    ventana.mensajeErrorLogin = "error_falta_usuario";
                     return;
                 }
                 if (cajaPasswordLogin.valor.length === 0) {
-                    ventana.mensajeErrorLogin = "Escribe tu contraseña.";
+                    ventana.mensajeErrorLogin = "error_falta_password";
                     return;
                 }
                 ventana.mensajeErrorLogin = "";
@@ -2150,7 +2150,7 @@ ApplicationWindow {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "¿No tienes cuenta? Crear una"
+            text: Idioma.t("enlace_crear_cuenta")
             color: Tema.colorAccent
             font.pixelSize: 12 * Tema.escala
             MouseArea {
@@ -2173,7 +2173,7 @@ ApplicationWindow {
         }
         BotonContorno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Volver"
+            text: Idioma.t("boton_volver")
             radioBorde: 999
             onClicked: {
                 cajaPasswordLogin.valor = "";
@@ -2190,7 +2190,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 16 * Tema.escala
-        textoCentro: "Crear cuenta"
+        textoCentro: Idioma.t("boton_crear_cuenta")
         onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
     }
     // Mismo motivo que areaContenidoLogin más arriba: Registro tiene aún
@@ -2220,7 +2220,7 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
-                text: cajaUsuarioRegistro.valor !== "" ? cajaUsuarioRegistro.valor : "Usuario (mín. 3 caracteres)"
+                text: cajaUsuarioRegistro.valor !== "" ? cajaUsuarioRegistro.valor : Idioma.t("placeholder_usuario_min3")
                 color: cajaUsuarioRegistro.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 13 * Tema.escala
                 elide: Text.ElideRight
@@ -2234,7 +2234,7 @@ ApplicationWindow {
             CampoEmergente {
                 id: campoUsuarioRegistro
                 parent: Overlay.overlay
-                etiqueta: "Usuario"
+                etiqueta: Idioma.t("placeholder_usuario")
                 onAceptado: (texto) => cajaUsuarioRegistro.valor = texto
             }
         }
@@ -2249,7 +2249,7 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
-                text: cajaPasswordRegistro.valor !== "" ? "••••••••" : "Contraseña (8+ caracteres)"
+                text: cajaPasswordRegistro.valor !== "" ? "••••••••" : Idioma.t("placeholder_password_min8")
                 color: cajaPasswordRegistro.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 13 * Tema.escala
             }
@@ -2261,7 +2261,7 @@ ApplicationWindow {
             CampoEmergente {
                 id: campoPasswordRegistro
                 parent: Overlay.overlay
-                etiqueta: "Contraseña"
+                etiqueta: Idioma.t("placeholder_password")
                 esPassword: true
                 onAceptado: (texto) => cajaPasswordRegistro.valor = texto
             }
@@ -2277,7 +2277,7 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 10 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
-                text: cajaPasswordRegistroConfirmar.valor !== "" ? "••••••••" : "Repite la contraseña"
+                text: cajaPasswordRegistroConfirmar.valor !== "" ? "••••••••" : Idioma.t("placeholder_password_repetir")
                 color: cajaPasswordRegistroConfirmar.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
                 font.pixelSize: 13 * Tema.escala
             }
@@ -2289,7 +2289,7 @@ ApplicationWindow {
             CampoEmergente {
                 id: campoPasswordRegistroConfirmar
                 parent: Overlay.overlay
-                etiqueta: "Repite la contraseña"
+                etiqueta: Idioma.t("placeholder_password_repetir")
                 esPassword: true
                 onAceptado: (texto) => cajaPasswordRegistroConfirmar.valor = texto
             }
@@ -2297,7 +2297,7 @@ ApplicationWindow {
         BotonRelleno {
             id: botonCrearCuentaMovil
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Crear cuenta"
+            text: Idioma.t("boton_crear_cuenta")
             radioBorde: 999
             // Siempre pulsable -- las mismas reglas mínimas que ya exige
             // el servidor (username >= 3, password >= 8, ver
@@ -2307,15 +2307,15 @@ ApplicationWindow {
             // "esto está roto" (mismo criterio que en escritorio).
             onClicked: {
                 if (cajaUsuarioRegistro.valor.length < 3) {
-                    ventana.mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
+                    ventana.mensajeErrorLogin = "error_usuario_corto";
                     return;
                 }
                 if (cajaPasswordRegistro.valor.length < 8) {
-                    ventana.mensajeErrorLogin = "La contraseña debe tener al menos 8 caracteres.";
+                    ventana.mensajeErrorLogin = "error_password_corta";
                     return;
                 }
                 if (cajaPasswordRegistro.valor !== cajaPasswordRegistroConfirmar.valor) {
-                    ventana.mensajeErrorLogin = "Las contraseñas no coinciden.";
+                    ventana.mensajeErrorLogin = "error_passwords_no_coinciden";
                     return;
                 }
                 ventana.mensajeErrorLogin = "";
@@ -2327,7 +2327,7 @@ ApplicationWindow {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "¿Ya tienes cuenta? Iniciar sesión"
+            text: Idioma.t("enlace_iniciar_sesion")
             color: Tema.colorAccent
             font.pixelSize: 12 * Tema.escala
             MouseArea {
@@ -2349,7 +2349,7 @@ ApplicationWindow {
         }
         BotonContorno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Volver"
+            text: Idioma.t("boton_volver")
             radioBorde: 999
             onClicked: {
                 cajaPasswordRegistro.valor = "";

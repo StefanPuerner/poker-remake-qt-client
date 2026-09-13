@@ -91,6 +91,51 @@ QtObject {
             de: "Melde dich mindestens einmal an, während der Server erreichbar ist, um offline mit deinem Konto spielen zu können."
         },
 
+        // ── Login / Registro ────────────────────────────────────────────────
+        "boton_entrar": { es: "Entrar", en: "Log in", de: "Anmelden" },
+        "boton_entrando": { es: "Entrando…", en: "Logging in…", de: "Anmeldung läuft…" },
+        "boton_volver": { es: "Volver", en: "Back", de: "Zurück" },
+        "placeholder_usuario": { es: "Usuario", en: "Username", de: "Benutzername" },
+        "placeholder_usuario_min3": {
+            es: "Usuario (mín. 3 caracteres)", en: "Username (min. 3 characters)",
+            de: "Benutzername (mind. 3 Zeichen)"
+        },
+        "placeholder_password": { es: "Contraseña", en: "Password", de: "Passwort" },
+        "placeholder_password_min8": {
+            es: "Contraseña (8+ caracteres)", en: "Password (8+ characters)", de: "Passwort (8+ Zeichen)"
+        },
+        "placeholder_password_repetir": {
+            es: "Repite la contraseña", en: "Repeat the password", de: "Passwort wiederholen"
+        },
+        "enlace_crear_cuenta": {
+            es: "¿No tienes cuenta? Crear una", en: "Don't have an account? Create one",
+            de: "Kein Konto? Eins erstellen"
+        },
+        "enlace_iniciar_sesion": {
+            es: "¿Ya tienes cuenta? Iniciar sesión", en: "Already have an account? Log in",
+            de: "Schon ein Konto? Anmelden"
+        },
+        "error_falta_usuario": {
+            es: "Escribe tu nombre de usuario.", en: "Enter your username.",
+            de: "Gib deinen Benutzernamen ein."
+        },
+        "error_falta_password": {
+            es: "Escribe tu contraseña.", en: "Enter your password.", de: "Gib dein Passwort ein."
+        },
+        "error_usuario_corto": {
+            es: "El nombre de usuario debe tener al menos 3 caracteres.",
+            en: "The username must be at least 3 characters long.",
+            de: "Der Benutzername muss mindestens 3 Zeichen lang sein."
+        },
+        "error_password_corta": {
+            es: "La contraseña debe tener al menos 8 caracteres.",
+            en: "The password must be at least 8 characters long.",
+            de: "Das Passwort muss mindestens 8 Zeichen lang sein."
+        },
+        "error_passwords_no_coinciden": {
+            es: "Las contraseñas no coinciden.", en: "The passwords don't match.",
+            de: "Die Passwörter stimmen nicht überein."
+        },
         // ── Errores genéricos de red (NetworkClient.hpp) ────────────────────
         "error_conexion_timeout": {
             es: "No se pudo conectar con el servidor. Inténtalo de nuevo.",
