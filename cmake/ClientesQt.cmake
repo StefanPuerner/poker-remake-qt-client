@@ -132,7 +132,10 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     # Tema.colorX/escala). El propio motor de Qt en tiempo de ejecución no
     # se ve afectado (ya funcionaba antes de este fix), esto es solo para
     # que el linter entienda el singleton correctamente.
-    set_source_files_properties(src/client-qt/qml/Tema.qml PROPERTIES
+    # Idioma.qml -- traducción de la interfaz (ver docs/plan-idiomas.md),
+    # mismo motivo de singleton que Tema.qml justo arriba.
+    set_source_files_properties(src/client-qt/qml/Tema.qml
+                                 src/client-qt/qml/Idioma.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
     )
 
@@ -142,6 +145,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         QML_FILES
             src/client-qt/qml/Main.qml
             src/client-qt/qml/Tema.qml
+            src/client-qt/qml/Idioma.qml
             src/client-qt/qml/Carta.qml
             src/client-qt/qml/PaloIcono.qml
             src/client-qt/qml/IconoFicha.qml
@@ -398,8 +402,11 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     # Mismo motivo que el Tema.qml de escritorio más arriba: sin esto
     # qmllint no reconoce el singleton y "Member ... not found on type
     # Tema" sale como falso positivo en cualquier fichero que lo use.
+    # Idioma.qml -- traducción de la interfaz (ver docs/plan-idiomas.md),
+    # mismo motivo de singleton que Tema.qml/EstadoOverlays.qml.
     set_source_files_properties(src/client-qt/qml-mobile/Tema.qml
-                                 src/client-qt/qml-mobile/EstadoOverlays.qml PROPERTIES
+                                 src/client-qt/qml-mobile/EstadoOverlays.qml
+                                 src/client-qt/qml-mobile/Idioma.qml PROPERTIES
         QT_QML_SINGLETON_TYPE TRUE
     )
 
@@ -423,6 +430,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         QML_FILES
             src/client-qt/qml-mobile/Main.qml
             src/client-qt/qml-mobile/Tema.qml
+            src/client-qt/qml-mobile/Idioma.qml
             src/client-qt/qml-mobile/EstadoOverlays.qml
             src/client-qt/qml-mobile/BotonContorno.qml
             src/client-qt/qml-mobile/BotonRelleno.qml

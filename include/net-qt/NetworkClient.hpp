@@ -280,7 +280,10 @@ class NetworkClient : public QObject {
     }), [this](const std::string& payload) {
       // Vacío = la red falló o no contestó a tiempo, no un "no" del servidor:
       // sin mensaje propio, el error salía en blanco y parecía no hacer nada.
-      if (payload.empty()) { emit registroError(QStringLiteral("No se pudo conectar con el servidor. Inténtalo de nuevo.")); return; }
+      // Clave para Idioma.t() (ver docs/plan-idiomas.md), NO una frase en
+      // español: vacío = la red falló o no contestó a tiempo, no un "no"
+      // del servidor -- sin mensaje propio esto se veía en blanco.
+      if (payload.empty()) { emit registroError(QStringLiteral("error_conexion_timeout")); return; }
       if (net::jsonGetStr(payload, "evento") == "REGISTRO_OK") {
         token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
         nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
@@ -297,7 +300,10 @@ class NetworkClient : public QObject {
         {"password", password.toStdString()},
     }), [this](const std::string& payload) {
       // Ver registrar(): vacío = sin respuesta, no un error del servidor.
-      if (payload.empty()) { emit loginError(QStringLiteral("No se pudo conectar con el servidor. Inténtalo de nuevo.")); return; }
+      // Clave para Idioma.t() (ver docs/plan-idiomas.md), NO una frase en
+      // español: vacío = la red falló o no contestó a tiempo, no un "no"
+      // del servidor -- sin mensaje propio esto se veía en blanco.
+      if (payload.empty()) { emit loginError(QStringLiteral("error_conexion_timeout")); return; }
       if (net::jsonGetStr(payload, "evento") == "LOGIN_OK") {
         token_ = QString::fromStdString(net::jsonGetStr(payload, "token"));
         nombre_ = QString::fromStdString(net::jsonGetStr(payload, "username"));
@@ -553,7 +559,7 @@ class NetworkClient : public QObject {
         {"codigo", codigoReto.toStdString()},
     }), [this, codigoReto](const std::string& payload) {
       if (payload.empty()) {
-        emit retoReclamarError(QStringLiteral("No se pudo conectar con el servidor. Inténtalo de nuevo."));
+        emit retoReclamarError(QStringLiteral("error_conexion_timeout"));  // clave para Idioma.t()
         return;
       }
       if (net::jsonGetStr(payload, "evento") == "RETO_RECLAMADO") {

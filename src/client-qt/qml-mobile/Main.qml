@@ -324,9 +324,15 @@ ApplicationWindow {
         // Torneos > Solitario -- ver el comentario de retosGanadosPendientesCsv.
         property alias retosGanadosPendientes: ventana.retosGanadosPendientesCsv
         property int temaGuardado: 0
+        // Idioma (ver docs/plan-idiomas.md) -- mismo motivo de sincronizar
+        // a mano que "tema" justo arriba. "" = nunca elegido todavía, ver
+        // Component.onCompleted.
+        property string idiomaGuardado: ""
     }
     Component.onCompleted: {
         Tema.temaActual = ajustesPersistentesMovil.temaGuardado;
+        Idioma.actual = ajustesPersistentesMovil.idiomaGuardado !== ""
+            ? ajustesPersistentesMovil.idiomaGuardado : Idioma.idiomaDelSistema();
         // Reautenticación silenciosa: si hay un token guardado de una
         // sesión anterior, se intenta ANTES de que el usuario vea nada de
         // Inicio -- si el servidor lo acepta (onLoginOk), se entra directo
@@ -343,6 +349,10 @@ ApplicationWindow {
     Connections {
         target: Tema
         function onTemaActualChanged() { ajustesPersistentesMovil.temaGuardado = Tema.temaActual; }
+    }
+    Connections {
+        target: Idioma
+        function onActualChanged() { ajustesPersistentesMovil.idiomaGuardado = Idioma.actual; }
     }
     Connections {
         target: versionChecker
@@ -1188,11 +1198,13 @@ ApplicationWindow {
         // ── Torneos > Solitario ──────────────────────────────────────────
         function onRetoReclamado(codigoReto, treboles) {
             ventana.quitarRetoGanadoPendiente(codigoReto);
-            ventana.mensajeTorneos = "+" + treboles + " Tréboles.";
+            ventana.mensajeTorneos = Idioma.tf("reto_reclamado_treboles", [treboles]);
             redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
             redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
         }
         function onRetoReclamarError(mensaje) {
+            // "mensaje" ya es una CLAVE -- ver el comentario gemelo en
+            // qml/Main.qml.
             ventana.mensajeTorneos = mensaje;
         }
         function onSesionInvalida(mensaje) {
@@ -1882,7 +1894,7 @@ ApplicationWindow {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "MESA PRIVADA · TEXAS HOLD'EM"
+            text: Idioma.t("app_subtitulo")
             color: Tema.colorTextoTenue
             font.pixelSize: 10 * Tema.escala
             font.letterSpacing: 2
@@ -1906,8 +1918,8 @@ ApplicationWindow {
             Text {
                 color: Tema.colorTextoTenue
                 font.pixelSize: 11 * Tema.escala
-                text: ventana.comprobandoConexion ? "Comprobando conexión…"
-                      : (ventana.conectadoAlServidor ? "Conectado al servidor" : "Sin conexión con el servidor")
+                text: ventana.comprobandoConexion ? Idioma.t("conexion_comprobando")
+                      : (ventana.conectadoAlServidor ? Idioma.t("conexion_conectado") : Idioma.t("conexion_sin_conexion"))
             }
         }
         // Ya no hay campo de nombre libre: la identidad viene de una
@@ -1922,7 +1934,7 @@ ApplicationWindow {
             spacing: 10 * Tema.escala
             visible: ventana.conectadoAlServidor
             BotonRelleno {
-                text: "Iniciar sesión"
+                text: Idioma.t("boton_iniciar_sesion")
                 radioBorde: 999
                 onClicked: {
                     ventana.mensajeErrorLogin = "";
@@ -1930,7 +1942,7 @@ ApplicationWindow {
                 }
             }
             BotonContorno {
-                text: "Crear cuenta"
+                text: Idioma.t("boton_crear_cuenta")
                 radioBorde: 999
                 onClicked: {
                     ventana.mensajeErrorLogin = "";
@@ -1940,7 +1952,7 @@ ApplicationWindow {
         }
         BotonContorno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Entrar como invitado"
+            text: Idioma.t("boton_entrar_invitado")
             radioBorde: 999
             visible: ventana.conectadoAlServidor
             onClicked: {
@@ -1963,7 +1975,7 @@ ApplicationWindow {
         // Ver el comentario gemelo en el Main.qml de escritorio.
         BotonRelleno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Jugar sin conexión"
+            text: Idioma.t("boton_jugar_sin_conexion")
             radioBorde: 999
             visible: !ventana.conectadoAlServidor && !ventana.comprobandoConexion
                      && modoJuego.hayIdentidadCacheada
@@ -1971,7 +1983,7 @@ ApplicationWindow {
         }
         BotonContorno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Jugar como invitado"
+            text: Idioma.t("boton_jugar_como_invitado")
             radioBorde: 999
             visible: !ventana.conectadoAlServidor && !ventana.comprobandoConexion
             onClicked: ventana.entrarSinConexion(false)
@@ -1982,7 +1994,7 @@ ApplicationWindow {
                      && modoJuego.hayIdentidadCacheada
             color: Tema.colorTextoTenue
             font.pixelSize: 11 * Tema.escala
-            text: "Como " + modoJuego.usernameCacheado + " · sin Tréboles ni Elo"
+            text: Idioma.tf("offline_como_usuario", [modoJuego.usernameCacheado])
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -1993,12 +2005,12 @@ ApplicationWindow {
                      && !modoJuego.hayIdentidadCacheada
             color: Tema.colorTextoTenue
             font.pixelSize: 11 * Tema.escala
-            text: "Inicia sesión al menos una vez con el servidor disponible para poder jugar sin conexión con tu cuenta."
+            text: Idioma.t("offline_sin_cuenta_cacheada")
         }
 
         BotonContorno {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Salir"
+            text: Idioma.t("boton_salir")
             colorBorde: Tema.colorPeligro
             radioBorde: 999
             onClicked: {
@@ -2014,7 +2026,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: ventana.mensajeErrorConexion
+            text: Idioma.t(ventana.mensajeErrorConexion)
         }
     }
 
@@ -2156,7 +2168,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: ventana.mensajeErrorLogin
+            text: Idioma.t(ventana.mensajeErrorLogin)
             visible: ventana.mensajeErrorLogin !== ""
         }
         BotonContorno {
@@ -2332,7 +2344,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: ventana.mensajeErrorLogin
+            text: Idioma.t(ventana.mensajeErrorLogin)
             visible: ventana.mensajeErrorLogin !== ""
         }
         BotonContorno {
@@ -3385,10 +3397,18 @@ ApplicationWindow {
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
+            // Hijo directo del ScrollView: "parent.width" aquí SÍ es el
+            // ancho real del visor -- sin este envoltorio, el Column de las
+            // tarjetas de abajo (ancho fijo) quedaba centrado dentro de SÍ
+            // MISMO, pegado a la izquierda del visor de verdad (bug real
+            // reportado 2026-09-13, mismo motivo en qml/Main.qml).
             Column {
-                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
                 topPadding: 16 * Tema.escala
                 bottomPadding: 16 * Tema.escala
+
+            Column {
+                anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 16 * Tema.escala
                 width: 300 * Tema.escala
 
@@ -3415,7 +3435,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                     color: Tema.colorAccent
                     font.pixelSize: 12 * Tema.escala
-                    text: ventana.mensajeTorneos
+                    text: Idioma.t(ventana.mensajeTorneos)
                 }
 
                 Repeater {
@@ -3519,6 +3539,7 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -4339,7 +4360,7 @@ ApplicationWindow {
                         Repeater {
                             model: [
                                 { etiqueta: "Partidas jugadas", valor: ventana.statsPartidasJugadas + "" },
-                                { etiqueta: "Partidas ganadas", valor: ventana.statsPartidasGanadas + "" },
+                                { etiqueta: "Partidas oficiales ganadas", valor: ventana.statsPartidasGanadas + "" },
                                 { etiqueta: "Ratio de victorias", valor: Math.round(100 * ventana.statsPartidasGanadas / ventana.statsPartidasJugadas) + "%" },
                                 { etiqueta: "Racha actual", valor: ventana.statsRachaActual + "" },
                                 { etiqueta: "Mejor racha", valor: ventana.statsRachaMaxima + "" },
@@ -4563,7 +4584,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         color: Tema.colorPeligro
                         font.pixelSize: 11 * Tema.escala
-                        text: ventana.mensajeErrorLogin
+                        text: Idioma.t(ventana.mensajeErrorLogin)
                         visible: ventana.mensajeErrorLogin !== ""
                     }
 
@@ -7290,7 +7311,25 @@ ApplicationWindow {
                         font.pixelSize: 10 * Tema.escala
                         font.letterSpacing: 1
                     }
+                    // Idioma (ver docs/plan-idiomas.md) -- mismo hueco que
+                    // dejó libre el interruptor de sonido, oculto justo
+                    // debajo. Ver el comentario gemelo en qml/Main.qml.
+                    Text {
+                        text: "Idioma"
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    SelectorSegmentado {
+                        width: parent.width
+                        opciones: [Idioma.nombreIdioma.es, Idioma.nombreIdioma.en, Idioma.nombreIdioma.de]
+                        seleccionado: Idioma.idiomasDisponibles.indexOf(Idioma.actual)
+                        onElegido: (indice) => Idioma.actual = Idioma.idiomasDisponibles[indice]
+                    }
+                    // Oculto (pedido explícito, 2026-09-13) -- el ajuste
+                    // (sonidoActivado) y el propio sonido de "tu turno" se
+                    // quedan intactos, solo desaparece el control de Ajustes.
                     Row {
+                        visible: false
                         width: parent.width
                         Text {
                             width: parent.width - 46 * Tema.escala

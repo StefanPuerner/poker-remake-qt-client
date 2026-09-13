@@ -110,9 +110,17 @@ ApplicationWindow {
         // un entero normal y se sincroniza a mano en los dos sentidos más
         // abajo, mismo patrón que la Binding de fuenteElegante de arriba.
         property int temaGuardado: 0
+        // Idioma (ver docs/plan-idiomas.md) -- mismo motivo de sincronizar
+        // a mano que "tema" justo arriba (un alias directo a la propiedad
+        // de un singleton no escribe nada). "" = nunca elegido todavía,
+        // ver Component.onCompleted: detecta el del sistema UNA vez y, a
+        // partir de ahí, se queda con lo último que se guardó aquí.
+        property string idiomaGuardado: ""
     }
     Component.onCompleted: {
         Tema.temaActual = ajustesPersistentes.temaGuardado;
+        Idioma.actual = ajustesPersistentes.idiomaGuardado !== ""
+            ? ajustesPersistentes.idiomaGuardado : Idioma.idiomaDelSistema();
         // Reautenticación silenciosa: si hay un token guardado de una
         // sesión anterior, se intenta ANTES de que el usuario vea nada de
         // Inicio -- si el servidor lo acepta (onLoginOk), se entra directo
@@ -133,6 +141,10 @@ ApplicationWindow {
                 bannerVersionNueva.mostrar(versionChecker.versionRemota, versionChecker.urlRelease);
             }
         }
+    }
+    Connections {
+        target: Idioma
+        function onActualChanged() { ajustesPersistentes.idiomaGuardado = Idioma.actual; }
     }
     Connections {
         target: Tema
@@ -1433,7 +1445,7 @@ ApplicationWindow {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "MESA PRIVADA · TEXAS HOLD'EM"
+                text: Idioma.t("app_subtitulo")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 11 * Tema.escala
                 font.letterSpacing: 2
@@ -1456,8 +1468,8 @@ ApplicationWindow {
                 Text {
                     color: Tema.colorTextoTenue
                     font.pixelSize: 11 * Tema.escala
-                    text: comprobandoConexion ? "Comprobando conexión…"
-                          : (conectadoAlServidor ? "Conectado al servidor" : "Sin conexión con el servidor")
+                    text: comprobandoConexion ? Idioma.t("conexion_comprobando")
+                          : (conectadoAlServidor ? Idioma.t("conexion_conectado") : Idioma.t("conexion_sin_conexion"))
                 }
             }
             // Inicio tiene TRES estados (Fase 7, ver CLAUDE.md), no dos:
@@ -1471,7 +1483,7 @@ ApplicationWindow {
             // aquí mismo, sin persistencia.
             BotonRelleno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Iniciar sesión"
+                text: Idioma.t("boton_iniciar_sesion")
                 radioBorde: 999
                 visible: conectadoAlServidor
                 onClicked: {
@@ -1481,7 +1493,7 @@ ApplicationWindow {
             }
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Crear cuenta"
+                text: Idioma.t("boton_crear_cuenta")
                 radioBorde: 999
                 visible: conectadoAlServidor
                 onClicked: {
@@ -1491,7 +1503,7 @@ ApplicationWindow {
             }
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Entrar como invitado"
+                text: Idioma.t("boton_entrar_invitado")
                 radioBorde: 999
                 visible: conectadoAlServidor
                 onClicked: {
@@ -1511,7 +1523,7 @@ ApplicationWindow {
             // solo existe con servidor de por medio.
             BotonRelleno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Jugar sin conexión"
+                text: Idioma.t("boton_jugar_sin_conexion")
                 radioBorde: 999
                 visible: !conectadoAlServidor && !comprobandoConexion
                          && modoJuego.hayIdentidadCacheada
@@ -1523,7 +1535,7 @@ ApplicationWindow {
             // hacía imposible distinguirlas de un vistazo.
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Jugar como invitado"
+                text: Idioma.t("boton_jugar_como_invitado")
                 radioBorde: 999
                 visible: !conectadoAlServidor && !comprobandoConexion
                 onClicked: ventana.entrarSinConexion(false)
@@ -1534,7 +1546,7 @@ ApplicationWindow {
                          && modoJuego.hayIdentidadCacheada
                 color: Tema.colorTextoTenue
                 font.pixelSize: 11 * Tema.escala
-                text: "Como " + modoJuego.usernameCacheado + " · sin Tréboles ni Elo"
+                text: Idioma.tf("offline_como_usuario", [modoJuego.usernameCacheado])
             }
             // Sin cuenta cacheada solo cabe entrar de invitado -- decirlo,
             // en vez de dejar que parezca que falta una opción.
@@ -1547,11 +1559,11 @@ ApplicationWindow {
                          && !modoJuego.hayIdentidadCacheada
                 color: Tema.colorTextoTenue
                 font.pixelSize: 11 * Tema.escala
-                text: "Inicia sesión al menos una vez con el servidor disponible para poder jugar sin conexión con tu cuenta."
+                text: Idioma.t("offline_sin_cuenta_cacheada")
             }
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Salir"
+                text: Idioma.t("boton_salir")
                 colorBorde: Tema.colorPeligro
                 radioBorde: 999
                 onClicked: Qt.quit()
@@ -1561,7 +1573,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 color: Tema.colorPeligro
                 font.pixelSize: 11 * Tema.escala
-                text: mensajeErrorConexion
+                text: Idioma.t(mensajeErrorConexion)
             }
         }
 
@@ -1652,7 +1664,7 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 color: Tema.colorPeligro
                 font.pixelSize: 11 * Tema.escala
-                text: mensajeErrorLogin
+                text: Idioma.t(mensajeErrorLogin)
                 visible: mensajeErrorLogin !== ""
             }
             BotonContorno {
@@ -1769,7 +1781,7 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 color: Tema.colorPeligro
                 font.pixelSize: 11 * Tema.escala
-                text: mensajeErrorLogin
+                text: Idioma.t(mensajeErrorLogin)
                 visible: mensajeErrorLogin !== ""
             }
             BotonContorno {
@@ -2921,10 +2933,19 @@ ApplicationWindow {
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
+                // Hijo directo del ScrollView: "parent.width" aquí SÍ es el
+                // ancho real del visor (mismo patrón que scrollAjustes) --
+                // sin este envoltorio, el Column de las tarjetas de abajo
+                // (ancho fijo) quedaba centrado dentro de SÍ MISMO, pegado a
+                // la izquierda del visor de verdad (bug real reportado
+                // 2026-09-13).
                 Column {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: parent.width
                     topPadding: 20 * Tema.escala
                     bottomPadding: 20 * Tema.escala
+
+                Column {
+                    anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 20 * Tema.escala
                     width: 340 * Tema.escala
 
@@ -2951,7 +2972,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         color: Tema.colorAccent
                         font.pixelSize: 12 * Tema.escala
-                        text: mensajeTorneos
+                        text: Idioma.t(mensajeTorneos)
                     }
 
                     Repeater {
@@ -3065,6 +3086,7 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -5376,7 +5398,7 @@ ApplicationWindow {
             // ── Torneos > Solitario ──────────────────────────────────────
             function onRetoReclamado(codigoReto, treboles) {
                 quitarRetoGanadoPendiente(codigoReto);
-                mensajeTorneos = "+" + treboles + " Tréboles.";
+                mensajeTorneos = Idioma.tf("reto_reclamado_treboles", [treboles]);
                 // El logro ya está desbloqueado server-side -- refrescar
                 // para que la tarjeta pase a "Completado" y, si toca, la
                 // siguiente deje de estar bloqueada. Estadísticas también,
@@ -5386,6 +5408,10 @@ ApplicationWindow {
                 redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
             }
             function onRetoReclamarError(mensaje) {
+                // "mensaje" ya es una CLAVE (ver reclamarRecompensaReto en
+                // AccountManager.cpp) -- se guarda tal cual, la traduce
+                // Idioma.t() en el sitio donde se muestra (mismo criterio
+                // que mensajeErrorLogin/mensajeErrorConexion).
                 mensajeTorneos = mensaje;
             }
             // ── Social ────────────────────────────────────────────────────
@@ -6375,7 +6401,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: nombreMarco(Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)) +
-                                  (statsPartidasJugadas > 0 ? " · " + statsPartidasGanadas + " partidas ganadas" : "")
+                                  (statsPartidasJugadas > 0 ? " · " + statsPartidasGanadas + " partidas oficiales ganadas" : "")
                             color: Tema.colorTextoTenue
                             font.pixelSize: 13 * Tema.escala
                         }
@@ -6414,7 +6440,7 @@ ApplicationWindow {
                         Repeater {
                             model: [
                                 { etiqueta: "Partidas jugadas", valor: statsPartidasJugadas + "" },
-                                { etiqueta: "Partidas ganadas", valor: statsPartidasGanadas + "" },
+                                { etiqueta: "Partidas oficiales ganadas", valor: statsPartidasGanadas + "" },
                                 { etiqueta: "Ratio de victorias", valor: Math.round(100 * statsPartidasGanadas / statsPartidasJugadas) + "%" },
                                 { etiqueta: "Racha actual", valor: statsRachaActual + "" },
                                 { etiqueta: "Mejor racha", valor: statsRachaMaxima + "" },
@@ -6624,7 +6650,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                     color: Tema.colorPeligro
                     font.pixelSize: 11 * Tema.escala
-                    text: mensajeErrorLogin
+                    text: Idioma.t(mensajeErrorLogin)
                     visible: mensajeErrorLogin !== ""
                 }
 
@@ -8620,7 +8646,28 @@ ApplicationWindow {
                     font.letterSpacing: 1
                 }
 
+                // Idioma (ver docs/plan-idiomas.md) -- ocupa el hueco que
+                // dejó libre el interruptor de sonido, oculto justo debajo.
+                // Persiste solo (ver Idioma.actual + la Connections que lo
+                // sincroniza a Settings) -- SelectorSegmentado nunca escribe
+                // su propio "seleccionado", ver el porqué en ese componente.
+                Text {
+                    text: "Idioma"
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 13 * Tema.escala
+                }
+                SelectorSegmentado {
+                    width: parent.width
+                    opciones: [Idioma.nombreIdioma.es, Idioma.nombreIdioma.en, Idioma.nombreIdioma.de]
+                    seleccionado: Idioma.idiomasDisponibles.indexOf(Idioma.actual)
+                    onElegido: (indice) => Idioma.actual = Idioma.idiomasDisponibles[indice]
+                }
+
+                // Oculto (pedido explícito, 2026-09-13) -- el ajuste
+                // (sonidoActivado) y el propio sonido de "tu turno" se
+                // quedan intactos, solo desaparece el control de Ajustes.
                 Row {
+                    visible: false
                     width: parent.width
                     Text {
                         width: parent.width - 46
