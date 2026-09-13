@@ -96,7 +96,7 @@ Rectangle {
                 spacing: 2 * Tema.escala
 
                 Text {
-                    text: esPropio ? "Tú" : autor
+                    text: esPropio ? Idioma.t("yo_chat") : autor
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 10 * Tema.escala
                 }
@@ -140,7 +140,7 @@ Rectangle {
             // — con nuestro borde dibujado a mano se solapa en vez de
             // apartarse. Más simple que perseguir esa animación:
             // ocultar el placeholder en cuanto hay foco o texto.
-            placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
+            placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_mensaje_chat")
             placeholderTextColor: Tema.colorTextoTenue
             background: MarcoHueco {
                 radius: 8 * Tema.escala
@@ -153,7 +153,7 @@ Rectangle {
         BotonRelleno {
             id: botonEnviar
             height: 44 * Tema.escala
-            text: "Enviar"
+            text: Idioma.t("boton_enviar")
             onClicked: {
                 // Con Enter ahora enviando directamente (ver arriba), un
                 // Enter en el campo vacío ya no debe mandar un mensaje en

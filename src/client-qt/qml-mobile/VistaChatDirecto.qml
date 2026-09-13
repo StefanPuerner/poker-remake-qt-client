@@ -99,9 +99,9 @@ Popup {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: popup.estado === "CONECTADO" ? "Conectado"
-                          : popup.estado === "EN_PARTIDA" ? "En partida"
-                          : "Desconectado"
+                    text: popup.estado === "CONECTADO" ? Idioma.t("estado_conectado")
+                          : popup.estado === "EN_PARTIDA" ? Idioma.t("estado_en_partida")
+                          : Idioma.t("estado_desconectado")
                     color: Tema.colorTextoTenue
                     font.pixelSize: 10 * Tema.escala
                 }

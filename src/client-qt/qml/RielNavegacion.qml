@@ -22,22 +22,26 @@ Rectangle {
     // delegate se eligen por "index" (0=Salas, 1=Ranking...), así que
     // quitar entradas los desalinearía todos. Marcar y ocultar mantiene
     // los índices estables.
+    // "etiqueta" es una FUNCIÓN, no el texto ya resuelto -- así el Text de
+    // abajo se retraduce solo al cambiar Idioma.actual (una propiedad
+    // guardada en el momento de crear el array se quedaría congelada en el
+    // idioma de entonces).
     readonly property var secciones: [
         // Offline la pantalla no lista salas ajenas: solo deja montar y
         // jugar una partida local (ver el bloque "Salas, versión sin
         // conexión" en Main.qml).
-        { nombre: "Salas", etiqueta: "SALAS", disponibleOffline: true },
-        { nombre: "Ranking", etiqueta: "RANKING", disponibleOffline: false },
-        { nombre: "Torneos", etiqueta: "TORNEOS", disponibleOffline: true },
-        { nombre: "Social", etiqueta: "SOCIAL", disponibleOffline: false },
+        { nombre: "Salas", etiqueta: function() { return Idioma.t("riel_salas"); }, disponibleOffline: true },
+        { nombre: "Ranking", etiqueta: function() { return Idioma.t("riel_ranking"); }, disponibleOffline: false },
+        { nombre: "Torneos", etiqueta: function() { return Idioma.t("riel_torneos"); }, disponibleOffline: true },
+        { nombre: "Social", etiqueta: function() { return Idioma.t("riel_social"); }, disponibleOffline: false },
         // Tienda (2026-09-01): tenía que estar aquí desde el diseño
         // original, no escondida dentro de Cuenta -- ver junto a Cuenta,
         // las dos giran alrededor de la misma cuenta/identidad. Offline no:
         // comprar exige servidor, y los Tréboles nunca son offline.
-        { nombre: "Tienda", etiqueta: "TIENDA", disponibleOffline: false },
+        { nombre: "Tienda", etiqueta: function() { return Idioma.t("riel_tienda"); }, disponibleOffline: false },
         // Perfil/Progreso con los datos cacheados de la última sesión con
         // servidor -- solo lectura, ver LocalGameClient::estadisticasCuenta.
-        { nombre: "Cuenta", etiqueta: "CUENTA", disponibleOffline: true }
+        { nombre: "Cuenta", etiqueta: function() { return Idioma.t("riel_cuenta"); }, disponibleOffline: true }
     ]
 
     width: 76 * Tema.escala
@@ -246,7 +250,7 @@ Rectangle {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: itemRiel.modelData.etiqueta
+                    text: itemRiel.modelData.etiqueta()
                     color: itemRiel.activo ? Tema.colorAccent : Tema.colorTextoMuyTenue
                     font.bold: itemRiel.activo
                     font.pixelSize: 9 * Tema.escala

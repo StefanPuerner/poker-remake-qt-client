@@ -50,8 +50,8 @@ Popup {
 
     readonly property var suits: ["treboles", "diamantes", "corazones", "picas"]
     readonly property var suitsNombre: ({
-        "treboles": "Tréboles", "diamantes": "Diamantes",
-        "corazones": "Corazones", "picas": "Picas"
+        "treboles": Idioma.t("palo_treboles"), "diamantes": Idioma.t("palo_diamantes"),
+        "corazones": Idioma.t("palo_corazones"), "picas": Idioma.t("palo_picas")
     })
     readonly property var rangos: ["2", "3", "4", "5", "6", "7", "8", "9", "10",
                                     "jack", "queen", "king", "ace"]
@@ -91,7 +91,7 @@ Popup {
         spacing: 12 * Tema.escala
 
         Text {
-            text: "Elige una carta"
+            text: Idioma.t("popup_carta_titulo")
             color: Tema.colorTexto
             font.family: Tema.fuenteElegante
             font.pixelSize: 16 * Tema.escala
@@ -99,7 +99,7 @@ Popup {
         Text {
             width: popup.width - 32 * Tema.escala
             wrapMode: Text.WordWrap
-            text: "Toca una carta para elegirla -- se verá en la previsualización. Comprar o equipar la que elijas se hace desde la propia tarjeta de la Tienda."
+            text: Idioma.t("popup_carta_descripcion")
             color: Tema.colorTextoTenue
             font.pixelSize: 11 * Tema.escala
         }

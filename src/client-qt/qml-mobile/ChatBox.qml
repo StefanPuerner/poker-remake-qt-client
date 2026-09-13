@@ -93,7 +93,7 @@ Rectangle {
                 spacing: 2 * Tema.escala
 
                 Text {
-                    text: esPropio ? "Tú" : autor
+                    text: esPropio ? Idioma.t("yo_chat") : autor
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 10 * Tema.escala
                 }
@@ -135,7 +135,7 @@ Rectangle {
             // Ver CampoEmergente.qml: sin esto, borrar una letra solo
             // retrocedía el cursor sin borrarla de verdad.
             inputMethodHints: Qt.ImhNoPredictiveText
-            placeholderText: (activeFocus || text.length > 0) ? "" : "Escribe un mensaje..."
+            placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_mensaje_chat")
             placeholderTextColor: Tema.colorTextoTenue
             background: MarcoHueco {
                 radius: 8 * Tema.escala
@@ -146,7 +146,7 @@ Rectangle {
         BotonRelleno {
             id: botonEnviar
             height: Tema.tactil
-            text: "Enviar"
+            text: Idioma.t("boton_enviar")
             onClicked: {
                 if (textoChat.text.length === 0) return;
                 cajaChat.enviar(textoChat.text);

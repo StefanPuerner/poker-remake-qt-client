@@ -54,7 +54,7 @@ Popup {
         spacing: 14 * Tema.escala
 
         Text {
-            text: "Elige el acabado"
+            text: Idioma.t("popup_acabado_titulo")
             color: Tema.colorTexto
             font.family: Tema.fuenteElegante
             font.pixelSize: 17 * Tema.escala
@@ -62,7 +62,7 @@ Popup {
         Text {
             width: filaMetales.width
             wrapMode: Text.WordWrap
-            text: "Los metales de los marcos que ya has conseguido. Con el de tu marco, la decoración sube con él cuando tu marco suba."
+            text: Idioma.t("popup_acabado_descripcion")
             color: Tema.colorTextoTenue
             font.pixelSize: 11 * Tema.escala
         }
@@ -112,7 +112,7 @@ Popup {
                         // lo mismo y los iconos quedan a la misma altura.
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "tu marco"
+                            text: Idioma.t("etiqueta_tu_marco")
                             opacity: celda.modelData === popup.marco ? 1 : 0
                             color: Tema.colorTextoTenue
                             font.pixelSize: 10 * Tema.escala
@@ -134,12 +134,12 @@ Popup {
             spacing: 8 * Tema.escala
 
             BotonContorno {
-                text: "Cancelar"
+                text: Idioma.t("boton_cancelar")
                 colorBorde: Tema.colorBorde
                 onClicked: popup.close()
             }
             BotonRelleno {
-                text: "Equipar"
+                text: Idioma.t("boton_equipar")
                 onClicked: {
                     popup.acabadoElegido(popup.slot, popup.codigo,
                                          popup.elegido === popup.marco ? "" : popup.elegido);

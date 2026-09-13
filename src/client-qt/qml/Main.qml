@@ -264,24 +264,24 @@ ApplicationWindow {
     // servidor. codigoPredecesor "" en el primero -- sin requisito.
     readonly property var retosSolitario: [
         { codigo: "reto_solitario_1", codigoPredecesor: "",
-          nombre: "Reto 1 · Primeros pasos",
-          descripcion: "2 bots, dificultad fácil, hasta que alguien se quede con todas las fichas.",
+          nombre: Idioma.t("reto_solitario_1_nombre"),
+          descripcion: Idioma.t("reto_solitario_1_descripcion"),
           numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 20 },
         { codigo: "reto_solitario_2", codigoPredecesor: "reto_solitario_1",
-          nombre: "Reto 2 · Mesa concurrida",
-          descripcion: "5 bots, dificultad fácil, hasta que alguien se quede con todas las fichas.",
+          nombre: Idioma.t("reto_solitario_2_nombre"),
+          descripcion: Idioma.t("reto_solitario_2_descripcion"),
           numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 35 },
         { codigo: "reto_solitario_3", codigoPredecesor: "reto_solitario_2",
-          nombre: "Reto 3 · Cara a cara",
-          descripcion: "1 solo bot, dificultad experta -- mano a mano, sin nadie más en la mesa.",
+          nombre: Idioma.t("reto_solitario_3_nombre"),
+          descripcion: Idioma.t("reto_solitario_3_descripcion"),
           numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 40 },
         { codigo: "reto_solitario_4", codigoPredecesor: "reto_solitario_3",
-          nombre: "Reto 4 · Contrarreloj",
-          descripcion: "3 bots, dificultad normal, solo 12 manos -- gana quien más fichas tenga al final.",
+          nombre: Idioma.t("reto_solitario_4_nombre"),
+          descripcion: Idioma.t("reto_solitario_4_descripcion"),
           numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12, treboles: 50 },
         { codigo: "reto_solitario_5", codigoPredecesor: "reto_solitario_4",
-          nombre: "Reto 5 · La gran mesa",
-          descripcion: "5 bots, dificultad experta -- el peldaño final de la escalera.",
+          nombre: Idioma.t("reto_solitario_5_nombre"),
+          descripcion: Idioma.t("reto_solitario_5_descripcion"),
           numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200, treboles: 60 },
     ]
     // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
@@ -721,8 +721,9 @@ ApplicationWindow {
     // en vez de reescribir esa función para que devuelva más que un
     // nombre de marco.
     function nombreMarco(m) {
-        return m === "platino" ? "Platino" : m === "oro" ? "Oro" : m === "plata" ? "Plata"
-               : m === "bronce" ? "Bronce" : m === "hierro" ? "Hierro" : "Sin marco";
+        return m === "platino" ? Idioma.t("marco_platino") : m === "oro" ? Idioma.t("marco_oro")
+               : m === "plata" ? Idioma.t("marco_plata") : m === "bronce" ? Idioma.t("marco_bronce")
+               : m === "hierro" ? Idioma.t("marco_hierro") : Idioma.t("marco_ninguno");
     }
     // tieneMarcoBasico: si ya tienes Hierro por haber ganado CUALQUIER
     // partida (también con bots, ver statsTieneMarcoBasico), el siguiente
@@ -730,11 +731,11 @@ ApplicationWindow {
     // antifarm de siempre) siga en 0 -- si no, la barra de progreso
     // pediría "1/1" para un marco que ya tienes.
     function nombreProximoMarco(n, tieneMarcoBasico) {
-        if (n < 1 && !tieneMarcoBasico) return "Hierro";
-        if (n < 5) return "Bronce";
-        if (n < 15) return "Plata";
-        if (n < 25) return "Oro";
-        if (n < 50) return "Platino";
+        if (n < 1 && !tieneMarcoBasico) return Idioma.t("marco_hierro");
+        if (n < 5) return Idioma.t("marco_bronce");
+        if (n < 15) return Idioma.t("marco_plata");
+        if (n < 25) return Idioma.t("marco_oro");
+        if (n < 50) return Idioma.t("marco_platino");
         return "";  // ya en platino, no hay siguiente
     }
     function proximoUmbralMarco(n, tieneMarcoBasico) {
@@ -854,7 +855,8 @@ ApplicationWindow {
         return r === "oro" ? "#e3bb82" : r === "plata" ? "#9aa4ab" : r === "bronce" ? "#c98f5f" : "#7d848f";
     }
     function etiquetaRareza(r) {
-        return r === "oro" ? "Oro" : r === "plata" ? "Plata" : r === "bronce" ? "Bronce" : "";
+        return r === "oro" ? Idioma.t("marco_oro") : r === "plata" ? Idioma.t("marco_plata")
+               : r === "bronce" ? Idioma.t("marco_bronce") : "";
     }
     function logrosDesbloqueados() {
         var n = 0;
@@ -915,7 +917,7 @@ ApplicationWindow {
         // descuido, no como una decisión (pedido explícito 2026-08-31:
         // "por qué poner contador en unas y en otras no"). Ahora lo dice
         // la propia etiqueta, en vez de dejar el hueco vacío.
-        return "Puntual";
+        return Idioma.t("texto_logro_puntual");
     }
     function reordenarRanking() {
         var filas = rankingCrudo.slice();
@@ -1815,7 +1817,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
-            textoCentro: ventana.sesionOffline ? "Partida local" : "Salas disponibles"
+            textoCentro: ventana.sesionOffline ? Idioma.t("titulo_partida_local") : Idioma.t("titulo_salas_disponibles")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -1870,7 +1872,7 @@ ApplicationWindow {
                     id: textoTituloSalas
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: viendoGuardadas ? "Partidas guardadas" : "Salas disponibles"
+                    text: viendoGuardadas ? Idioma.t("titulo_partidas_guardadas") : Idioma.t("titulo_salas_disponibles")
                     // (offline viendoGuardadas va siempre a true, ver el riel)
                     color: Tema.colorTexto
                     font.family: Tema.fuenteElegante
@@ -1886,7 +1888,7 @@ ApplicationWindow {
                         id: campoCodigoUnion
                         anchors.verticalCenter: parent.verticalCenter
                         width: 170 * Tema.escala
-                        placeholderText: (activeFocus || text.length > 0) ? "" : "Código de sala privada"
+                        placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_codigo_sala")
                         font.pixelSize: 13 * Tema.escala
                         // Mismo campo "subrayado" sin caja que Login/Registro
                         // -- ver el comentario original en el punto donde
@@ -1896,7 +1898,7 @@ ApplicationWindow {
                     BotonContorno {
                         id: botonUnirsePorCodigo
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Unirse por código"
+                        text: Idioma.t("boton_unirse_codigo")
                         onClicked: {
                             redcliente.unirseASala(servidorHost, servidorPuerto, nombreUsuario.text, "", campoCodigoUnion.text);
                         }
@@ -1918,7 +1920,7 @@ ApplicationWindow {
                     // entrar en Salas sin conexión).
                     visible: !ventana.sesionOffline
                     width: parent.width - botonCrearSalaTab.width - parent.spacing
-                    opciones: ["Salas", "Partidas guardadas"]
+                    opciones: [Idioma.t("tab_salas"), Idioma.t("titulo_partidas_guardadas")]
                     seleccionado: viendoGuardadas ? 1 : 0
                     onElegido: (indice) => {
                         viendoGuardadas = indice === 1;
@@ -1928,7 +1930,7 @@ ApplicationWindow {
                 BotonRelleno {
                     id: botonCrearSalaTab
                     anchors.verticalCenter: parent.verticalCenter
-                    text: ventana.sesionOffline ? "Nueva partida local" : "Crear sala nueva"
+                    text: ventana.sesionOffline ? Idioma.t("boton_partida_local") : Idioma.t("boton_crear_sala")
                     onClicked: pantalla = "CrearSala"
                 }
             }
@@ -1955,7 +1957,7 @@ ApplicationWindow {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 60 * Tema.escala
-                    text: "No hay salas públicas disponibles ahora mismo."
+                    text: Idioma.t("vacio_sin_salas")
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -1983,7 +1985,7 @@ ApplicationWindow {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 60 * Tema.escala
-                    text: "No hay partidas guardadas en el servidor."
+                    text: Idioma.t("vacio_sin_guardadas")
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -2131,7 +2133,7 @@ ApplicationWindow {
                             }
 
                             BotonRelleno {
-                                text: "Unirse"
+                                text: Idioma.t("boton_unirse")
                                 enabled: celdaSala.conectados < celdaSala.esperados
                                 opacity: enabled ? 1.0 : 0.55
                                 onClicked: {
@@ -2198,8 +2200,8 @@ ApplicationWindow {
                         Text {
                             width: parent.width
                             elide: Text.ElideRight
-                            text: filaGuardada.fecha + " · " + filaGuardada.humanos +
-                                  " humano(s), " + filaGuardada.bots + " bot(s)"
+                            text: Idioma.tf("guardada_detalle",
+                                            [filaGuardada.fecha, filaGuardada.humanos, filaGuardada.bots])
                             color: Tema.colorTextoTenue
                             font.pixelSize: 12 * Tema.escala
                         }
@@ -2260,7 +2262,7 @@ ApplicationWindow {
                         BotonRelleno {
                             anchors.verticalCenter: parent.verticalCenter
                             height: filaAcciones.altoBoton
-                            text: "Reanudar"
+                            text: Idioma.t("boton_reanudar")
                             onClicked: {
                                 redcliente.cargarPartidaGuardada(
                                     servidorHost, servidorPuerto, nombreUsuario.text,
@@ -2276,7 +2278,7 @@ ApplicationWindow {
                         BotonContorno {
                             anchors.verticalCenter: parent.verticalCenter
                             height: filaAcciones.altoBoton
-                            text: filaGuardada.confirmandoBorrado ? "¿Seguro?" : "🗑"
+                            text: filaGuardada.confirmandoBorrado ? Idioma.t("boton_confirmar_borrado") : "🗑"
                             colorBorde: Tema.colorPeligro
                             onClicked: {
                                 if (filaGuardada.confirmandoBorrado) {
@@ -2301,7 +2303,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 color: Tema.colorPeligro
                 font.pixelSize: 11 * Tema.escala
-                text: mensajeErrorConexion
+                text: Idioma.t(mensajeErrorConexion)
             }
         }
 
@@ -2316,7 +2318,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
-            textoCentro: "Ranking global"
+            textoCentro: Idioma.t("titulo_ranking_global")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -2345,7 +2347,7 @@ ApplicationWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Ranking global"
+                text: Idioma.t("titulo_ranking_global")
                 color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
@@ -2355,8 +2357,9 @@ ApplicationWindow {
                 spacing: 6 * Tema.escala
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Cuentas con al menos 5 partidas jugadas · ordenado por " +
-                          (ordenRankingActual === 0 ? "victorias" : ordenRankingActual === 1 ? "ratio" : "Elo")
+                    text: Idioma.tf("ranking_subtitulo",
+                              [ordenRankingActual === 0 ? Idioma.t("orden_victorias")
+                                  : ordenRankingActual === 1 ? Idioma.t("orden_ratio") : Idioma.t("orden_elo")])
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
                 }
@@ -2409,7 +2412,7 @@ ApplicationWindow {
                     spacing: 12 * Tema.escala
                     Text {
                         width: parent.width
-                        text: "¿Cuándo cuenta una partida?"
+                        text: Idioma.t("popup_ranking_titulo")
                         color: Tema.colorTexto
                         font.family: Tema.fuenteElegante
                         font.bold: true
@@ -2418,28 +2421,28 @@ ApplicationWindow {
                     }
                     Text {
                         width: parent.width
-                        text: "Para las estadísticas personales (manos y partidas jugadas/ganadas, racha, mayor bote) hacen falta al menos 2 cuentas reales en la mesa y al menos 5 manos jugadas. Jugar en solitario contra bots no cuenta nunca, sea cual sea la duración."
+                        text: Idioma.t("popup_ranking_texto1")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
                     Text {
                         width: parent.width
-                        text: "Las combinaciones mostradas en un showdown (mejor mano, contador por tipo) sí cuentan siempre, sin ese requisito."
+                        text: Idioma.t("popup_ranking_texto2")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
                     Text {
                         width: parent.width
-                        text: "Para aparecer en este ranking hace falta además al menos 5 partidas jugadas de las que sí cuentan."
+                        text: Idioma.t("popup_ranking_texto3")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
                     Text {
                         width: parent.width
-                        text: "Elo (pestaña por defecto) mide habilidad, no dedicación: +10 al ganar una partida oficial, −3 al perderla, sin ajustar por el nivel del rival. \"Más victorias\" y \"ratio\" son históricos y nunca se resetean; Elo sí -- se reinicia con cada temporada nueva."
+                        text: Idioma.t("popup_ranking_texto4")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
@@ -2449,7 +2452,7 @@ ApplicationWindow {
             SelectorSegmentado {
                 id: tabsRanking
                 width: parent.width
-                opciones: ["Más victorias", "Mejor ratio", "Elo"]
+                opciones: [Idioma.t("tab_mas_victorias"), Idioma.t("tab_mejor_ratio"), Idioma.t("orden_elo")]
                 seleccionado: ordenRankingActual
                 onElegido: (indice) => {
                     ordenRankingActual = indice;
@@ -2494,7 +2497,7 @@ ApplicationWindow {
                 anchors.centerIn: parent
                 width: parent.width - 40
                 visible: rankingModel.count === 0 && rankingPodio.length === 0
-                text: "Todavía no hay cuentas con partidas suficientes para aparecer en el ranking."
+                text: Idioma.t("vacio_ranking")
                 color: Tema.colorTextoTenue
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
@@ -2698,10 +2701,11 @@ ApplicationWindow {
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: !columnaPodio.fila ? ""
-                                          : ordenRankingActual === 2 ? (columnaPodio.fila.elo + " Elo")
+                                          : ordenRankingActual === 2 ? Idioma.tf("podio_stat_elo", [columnaPodio.fila.elo])
                                           : ordenRankingActual === 1
-                                            ? (Math.round(100 * columnaPodio.fila.partidasGanadas / columnaPodio.fila.partidasJugadas) + "% de ratio")
-                                            : (columnaPodio.fila.partidasGanadas + " victorias")
+                                            ? Idioma.tf("podio_stat_ratio",
+                                                  [Math.round(100 * columnaPodio.fila.partidasGanadas / columnaPodio.fila.partidasJugadas)])
+                                            : Idioma.tf("podio_stat_victorias", [columnaPodio.fila.partidasGanadas])
                                     color: Tema.colorTextoTenue
                                     font.pixelSize: 11 * Tema.escala
                                 }
@@ -2725,7 +2729,7 @@ ApplicationWindow {
                         }
                         Text {
                             width: parent.width - 34 * Tema.escala - 220 * Tema.escala
-                            text: "JUGADOR"
+                            text: Idioma.t("header_jugador")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 10 * Tema.escala
                         }
@@ -2736,14 +2740,14 @@ ApplicationWindow {
                             // (contexto de cuántas partidas respaldan ese
                             // número) en vez de GANADAS/RATIO -- ganadas ya
                             // no es lo que ordena esta pestaña.
-                            text: ordenRankingActual === 2 ? "ELO" : "GANADAS"
+                            text: ordenRankingActual === 2 ? Idioma.t("header_elo") : Idioma.t("header_ganadas")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 10 * Tema.escala
                         }
                         Text {
                             width: 110 * Tema.escala
                             horizontalAlignment: Text.AlignRight
-                            text: ordenRankingActual === 2 ? "PARTIDAS" : "RATIO"
+                            text: ordenRankingActual === 2 ? Idioma.t("header_partidas") : Idioma.t("header_ratio")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 10 * Tema.escala
                         }
@@ -2843,7 +2847,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: filaRanking.username + (filaRanking.esUsuarioPropio ? " (tú)" : "")
+                                    text: filaRanking.username + (filaRanking.esUsuarioPropio ? Idioma.t("sufijo_tu") : "")
                                     font.bold: filaRanking.esUsuarioPropio
                                     color: Tema.colorTexto
                                     elide: Text.ElideRight
@@ -2888,7 +2892,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
-            textoCentro: "Torneos"
+            textoCentro: Idioma.t("titulo_torneos")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -2906,8 +2910,8 @@ ApplicationWindow {
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            titulo: "Torneos"
-            descripcion: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo."
+            titulo: Idioma.t("titulo_torneos")
+            descripcion: Idioma.t("torneos_proximamente_descripcion")
         }
         // Torneos Solitario (Fase 6, ver docs/plan-torneos-solitario.md) --
         // escalera de 5 retos fijos contra bots (dificultad/saldo/manos
@@ -2950,7 +2954,7 @@ ApplicationWindow {
                     width: 340 * Tema.escala
 
                     Text {
-                        text: "Torneos Solitario"
+                        text: Idioma.t("titulo_torneos_solitario")
                         color: Tema.colorTexto
                         font.bold: true
                         font.pixelSize: 20 * Tema.escala
@@ -2963,7 +2967,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
-                        text: "Una escalera de 5 retos contra bots, cada uno más difícil que el anterior. Jugar no necesita conexión -- reclamar la recompensa, sí."
+                        text: Idioma.t("torneos_solitario_subtitulo")
                     }
                     Text {
                         visible: mensajeTorneos !== ""
@@ -3024,7 +3028,7 @@ ApplicationWindow {
                                     Text {
                                         id: marcaCompletado
                                         visible: tarjetaReto.completado
-                                        text: "✓ Completado"
+                                        text: Idioma.t("marca_completado")
                                         color: Tema.colorAccent
                                         font.pixelSize: 11 * Tema.escala
                                     }
@@ -3040,7 +3044,7 @@ ApplicationWindow {
                                     visible: !tarjetaReto.disponible
                                     width: parent.width
                                     wrapMode: Text.WordWrap
-                                    text: "Completa antes el reto anterior de la escalera."
+                                    text: Idioma.t("error_reto_orden")
                                     color: Tema.colorTextoTenue
                                     font.pixelSize: 11 * Tema.escala
                                 }
@@ -3048,7 +3052,7 @@ ApplicationWindow {
                                     visible: tarjetaReto.disponible && !tarjetaReto.completado
                                     width: parent.width
                                     wrapMode: Text.WordWrap
-                                    text: "Recompensa: " + tarjetaReto.modelData.treboles + " Tréboles + título."
+                                    text: Idioma.tf("reto_recompensa", [tarjetaReto.modelData.treboles])
                                     color: Tema.colorTextoTenue
                                     font.pixelSize: 11 * Tema.escala
                                 }
@@ -3061,20 +3065,20 @@ ApplicationWindow {
                                     visible: tarjetaReto.disponible && tarjetaReto.ganadoPendiente && !tarjetaReto.completado
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     enabled: tarjetaReto.puedeReclamar
-                                    text: tarjetaReto.puedeReclamar ? "Reclamar recompensa" : "Necesitas conexión para reclamar"
+                                    text: tarjetaReto.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
                                     onClicked: redcliente.reclamarRecompensaReto(
                                         servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
                                 }
                                 BotonRelleno {
                                     visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "Jugar"
+                                    text: Idioma.t("boton_jugar")
                                     onClicked: iniciarReto(tarjetaReto.modelData)
                                 }
                                 Text {
                                     visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado)
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "Jugar de nuevo"
+                                    text: Idioma.t("enlace_jugar_de_nuevo")
                                     color: Tema.colorAccent
                                     font.pixelSize: 12 * Tema.escala
                                     MouseArea {
@@ -3097,7 +3101,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
-            textoCentro: "Social"
+            textoCentro: Idioma.t("titulo_social")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -3119,7 +3123,7 @@ ApplicationWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Social"
+                text: Idioma.t("titulo_social")
                 color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
@@ -3128,18 +3132,18 @@ ApplicationWindow {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Estás jugando como invitado. Inicia sesión o crea una cuenta para añadir amigos y ver quién está conectado."
+                text: Idioma.t("social_invitado_aviso")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 13 * Tema.escala
             }
             BotonRelleno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Iniciar sesión"
+                text: Idioma.t("boton_iniciar_sesion")
                 onClicked: { mensajeErrorLogin = ""; pantalla = "Login"; }
             }
             BotonContorno {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Crear cuenta"
+                text: Idioma.t("boton_crear_cuenta")
                 onClicked: { mensajeErrorLogin = ""; pantalla = "Registro"; }
             }
         }
@@ -3168,7 +3172,7 @@ ApplicationWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Social"
+                text: Idioma.t("titulo_social")
                 color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
@@ -3177,7 +3181,8 @@ ApplicationWindow {
             SelectorSegmentado {
                 id: tabsSocial
                 width: parent.width
-                opciones: ["Amigos", "Buscar jugadores", "Jugadores Recientes", "Solicitudes"]
+                opciones: [Idioma.t("tab_amigos"), Idioma.t("tab_buscar_jugadores"),
+                           Idioma.t("tab_jugadores_recientes"), Idioma.t("tab_solicitudes")]
                 seleccionado: pestanaSocialActual
                 onElegido: (indice) => {
                     pestanaSocialActual = indice;
@@ -3206,7 +3211,7 @@ ApplicationWindow {
                 visible: mensajeErrorSocial !== ""
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: mensajeErrorSocial
+                text: Idioma.t(mensajeErrorSocial)
                 color: Tema.colorPeligro
                 font.pixelSize: 12 * Tema.escala
             }
@@ -3268,7 +3273,7 @@ ApplicationWindow {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 60 * Tema.escala
-                    text: "Todavía no tienes amigos añadidos. Búscalos en \"Buscar jugadores\" o mira \"Jugadores Recientes\"."
+                    text: Idioma.tf("vacio_amigos", [Idioma.t("tab_buscar_jugadores"), Idioma.t("tab_jugadores_recientes")])
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -3393,8 +3398,8 @@ ApplicationWindow {
                                 width: parent.width
                                 elide: Text.ElideRight
                                 text: filaAmigoChat.ultimoTexto !== ""
-                                          ? (filaAmigoChat.ultimoEsMio ? "Tú: " : "") + filaAmigoChat.ultimoTexto
-                                          : "Toca para chatear"
+                                          ? (filaAmigoChat.ultimoEsMio ? Idioma.t("prefijo_tu_dos_puntos") : "") + filaAmigoChat.ultimoTexto
+                                          : Idioma.t("placeholder_toca_chatear")
                                 color: Tema.colorTextoTenue
                                 font.pixelSize: 11.5 * Tema.escala
                             }
@@ -3423,9 +3428,9 @@ ApplicationWindow {
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: filaAmigoChat.estado === "CONECTADO" ? "Conectado"
-                                          : filaAmigoChat.estado === "EN_PARTIDA" ? "En partida"
-                                          : "Desconectado"
+                                    text: filaAmigoChat.estado === "CONECTADO" ? Idioma.t("estado_conectado")
+                                          : filaAmigoChat.estado === "EN_PARTIDA" ? Idioma.t("estado_en_partida")
+                                          : Idioma.t("estado_desconectado")
                                     color: Tema.colorTextoTenue
                                     font.pixelSize: 11 * Tema.escala
                                 }
@@ -3504,7 +3509,7 @@ ApplicationWindow {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Elige una conversación de la lista"
+                            text: Idioma.t("chat_elige_conversacion")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 13 * Tema.escala
                         }
@@ -3554,9 +3559,9 @@ ApplicationWindow {
                                     }
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: chatAmigoSeleccionadoEstado === "CONECTADO" ? "Conectado"
-                                              : chatAmigoSeleccionadoEstado === "EN_PARTIDA" ? "En partida"
-                                              : "Desconectado"
+                                        text: chatAmigoSeleccionadoEstado === "CONECTADO" ? Idioma.t("estado_conectado")
+                                              : chatAmigoSeleccionadoEstado === "EN_PARTIDA" ? Idioma.t("estado_en_partida")
+                                              : Idioma.t("estado_desconectado")
                                         color: Tema.colorTextoTenue
                                         font.pixelSize: 11 * Tema.escala
                                     }
@@ -3595,14 +3600,14 @@ ApplicationWindow {
                         id: campoBusquedaSocial
                         anchors.verticalCenter: parent.verticalCenter
                         width: 260 * Tema.escala
-                        placeholderText: (activeFocus || text.length > 0) ? "" : "Nombre de usuario"
+                        placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_nombre_usuario")
                         font.pixelSize: 13 * Tema.escala
                         onAccepted: botonBuscarSocial.clicked()
                     }
                     BotonContorno {
                         id: botonBuscarSocial
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Buscar"
+                        text: Idioma.t("boton_buscar")
                         onClicked: {
                             mensajeErrorSocial = "";
                             if (campoBusquedaSocial.text.length > 0)
@@ -3635,7 +3640,7 @@ ApplicationWindow {
                     Text {
                         anchors.centerIn: parent
                         width: parent.width - 60 * Tema.escala
-                        text: "Busca por nombre de usuario para mandar una solicitud de amistad."
+                        text: Idioma.t("vacio_buscar_jugadores")
                         color: Tema.colorTextoTenue
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
@@ -3711,7 +3716,7 @@ ApplicationWindow {
                             anchors.rightMargin: 14 * Tema.escala
                             enabled: !filaBusqueda.solicitudEnviada
                             opacity: filaBusqueda.solicitudEnviada ? 0.6 : 1.0
-                            text: filaBusqueda.solicitudEnviada ? "Enviada" : "Enviar solicitud"
+                            text: filaBusqueda.solicitudEnviada ? Idioma.t("estado_solicitud_enviada") : Idioma.t("boton_enviar_solicitud")
                             onClicked: {
                                 pendienteSolicitudUsername = filaBusqueda.username;
                                 redcliente.enviarSolicitudAmistad(servidorHost, servidorPuerto, filaBusqueda.username);
@@ -3746,7 +3751,7 @@ ApplicationWindow {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 60 * Tema.escala
-                    text: "Todavía no has compartido mesa con nadie en las últimas 24h."
+                    text: Idioma.t("vacio_jugadores_recientes")
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -3814,7 +3819,7 @@ ApplicationWindow {
                         anchors.rightMargin: 14 * Tema.escala
                         enabled: !filaReciente.solicitudEnviada
                         opacity: filaReciente.solicitudEnviada ? 0.6 : 1.0
-                        text: filaReciente.solicitudEnviada ? "Enviada" : "Enviar solicitud"
+                        text: filaReciente.solicitudEnviada ? Idioma.t("estado_solicitud_enviada") : Idioma.t("boton_enviar_solicitud")
                         onClicked: {
                             pendienteSolicitudUsername = filaReciente.username;
                             redcliente.enviarSolicitudAmistad(servidorHost, servidorPuerto, filaReciente.username);
@@ -3846,7 +3851,7 @@ ApplicationWindow {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 60 * Tema.escala
-                    text: "No tienes solicitudes de amistad pendientes."
+                    text: Idioma.t("vacio_solicitudes")
                     color: Tema.colorTextoTenue
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -3908,13 +3913,13 @@ ApplicationWindow {
                         spacing: 8 * Tema.escala
                         BotonContorno {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Rechazar"
+                            text: Idioma.t("boton_rechazar")
                             onClicked: redcliente.responderSolicitud(
                                 servidorHost, servidorPuerto, filaSolicitud.solicitudId, false)
                         }
                         BotonRelleno {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Aceptar"
+                            text: Idioma.t("boton_aceptar")
                             onClicked: redcliente.responderSolicitud(
                                 servidorHost, servidorPuerto, filaSolicitud.solicitudId, true)
                         }
@@ -4411,7 +4416,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 color: Tema.colorPeligro
                 font.pixelSize: 11 * Tema.escala
-                text: mensajeErrorConexion
+                text: Idioma.t(mensajeErrorConexion)
             }
 
             Row {
@@ -6213,7 +6218,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
-            textoCentro: "Cuenta"
+            textoCentro: Idioma.t("titulo_cuenta")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -6245,7 +6250,7 @@ ApplicationWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Cuenta"
+                text: Idioma.t("titulo_cuenta")
                 color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
@@ -6253,7 +6258,7 @@ ApplicationWindow {
 
             SelectorSegmentado {
                 width: parent.width
-                opciones: ["Perfil", "Progreso", "Logros", "Personalizar"]
+                opciones: [Idioma.t("tab_perfil"), Idioma.t("tab_progreso"), Idioma.t("tab_logros"), Idioma.t("tab_personalizar")]
                 seleccionado: ventana.pestanaCuentaActual
                 onElegido: (indice) => ventana.pestanaCuentaActual = indice
             }
@@ -6300,7 +6305,7 @@ ApplicationWindow {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: "Estás jugando como invitado. Inicia sesión o crea una cuenta para ver tu perfil, tus estadísticas y gestionarla."
+                    text: Idioma.t("cuenta_invitado_aviso")
                     color: Tema.colorTextoTenue
                     font.pixelSize: 13 * Tema.escala
                 }
@@ -6308,11 +6313,11 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 10 * Tema.escala
                     BotonRelleno {
-                        text: "Iniciar sesión"
+                        text: Idioma.t("boton_iniciar_sesion")
                         onClicked: { mensajeErrorLogin = ""; pantalla = "Login"; }
                     }
                     BotonContorno {
-                        text: "Crear cuenta"
+                        text: Idioma.t("boton_crear_cuenta")
                         onClicked: { mensajeErrorLogin = ""; pantalla = "Registro"; }
                     }
                 }
@@ -6334,7 +6339,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                     color: Tema.colorTextoTenue
                     font.pixelSize: 11 * Tema.escala
-                    text: "Sin conexión · datos de tu última sesión con el servidor, solo lectura."
+                    text: Idioma.t("cuenta_offline_aviso")
                 }
 
                 // Cabecera horizontal (avatar a la izquierda, identidad a la
@@ -6401,7 +6406,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: nombreMarco(Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)) +
-                                  (statsPartidasJugadas > 0 ? " · " + statsPartidasGanadas + " partidas oficiales ganadas" : "")
+                                  (statsPartidasJugadas > 0 ? " · " + Idioma.tf("sufijo_stat_partidas_ganadas", [statsPartidasGanadas]) : "")
                             color: Tema.colorTextoTenue
                             font.pixelSize: 13 * Tema.escala
                         }
@@ -6432,22 +6437,22 @@ ApplicationWindow {
                         width: (parent.width - 40 * Tema.escala) / 2
                         spacing: 6 * Tema.escala
                         Text {
-                            text: "ESTADÍSTICAS"
+                            text: Idioma.t("titulo_estadisticas")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 11 * Tema.escala
                             font.letterSpacing: 1
                         }
                         Repeater {
                             model: [
-                                { etiqueta: "Partidas jugadas", valor: statsPartidasJugadas + "" },
-                                { etiqueta: "Partidas oficiales ganadas", valor: statsPartidasGanadas + "" },
-                                { etiqueta: "Ratio de victorias", valor: Math.round(100 * statsPartidasGanadas / statsPartidasJugadas) + "%" },
-                                { etiqueta: "Racha actual", valor: statsRachaActual + "" },
-                                { etiqueta: "Mejor racha", valor: statsRachaMaxima + "" },
-                                { etiqueta: "Manos jugadas", valor: statsManosJugadas + "" },
-                                { etiqueta: "Manos ganadas", valor: statsManosGanadas + "" },
-                                { etiqueta: "Mayor bote ganado", valor: statsMayorBote + "", esDinero: true },
-                                { etiqueta: "Mejor mano", valor: statsMejorManoFecha > 0
+                                { etiqueta: Idioma.t("stat_partidas_jugadas"), valor: statsPartidasJugadas + "" },
+                                { etiqueta: Idioma.t("stat_partidas_oficiales_ganadas"), valor: statsPartidasGanadas + "" },
+                                { etiqueta: Idioma.t("stat_ratio_victorias"), valor: Math.round(100 * statsPartidasGanadas / statsPartidasJugadas) + "%" },
+                                { etiqueta: Idioma.t("stat_racha_actual"), valor: statsRachaActual + "" },
+                                { etiqueta: Idioma.t("stat_mejor_racha"), valor: statsRachaMaxima + "" },
+                                { etiqueta: Idioma.t("stat_manos_jugadas"), valor: statsManosJugadas + "" },
+                                { etiqueta: Idioma.t("stat_manos_ganadas"), valor: statsManosGanadas + "" },
+                                { etiqueta: Idioma.t("stat_mayor_bote_ganado"), valor: statsMayorBote + "", esDinero: true },
+                                { etiqueta: Idioma.t("stat_mejor_mano"), valor: statsMejorManoFecha > 0
                                       ? statsMejorManoNombre + " (" + new Date(statsMejorManoFecha * 1000).toLocaleDateString() + ")"
                                       : "—" }
                             ]
@@ -6492,23 +6497,23 @@ ApplicationWindow {
                         width: (parent.width - 40 * Tema.escala) / 2
                         spacing: 6 * Tema.escala
                         Text {
-                            text: "COMBINACIONES MOSTRADAS"
+                            text: Idioma.t("titulo_combinaciones_mostradas")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 11 * Tema.escala
                             font.letterSpacing: 1
                         }
                         Repeater {
                             model: [
-                                { etiqueta: "Carta alta", valor: statsVecesCartaAlta },
-                                { etiqueta: "Pareja", valor: statsVecesPareja },
-                                { etiqueta: "Doble pareja", valor: statsVecesDoblePareja },
-                                { etiqueta: "Trío", valor: statsVecesTrio },
-                                { etiqueta: "Escalera", valor: statsVecesEscalera },
-                                { etiqueta: "Color", valor: statsVecesColor },
-                                { etiqueta: "Full House", valor: statsVecesFullHouse },
-                                { etiqueta: "Póker", valor: statsVecesPoker },
-                                { etiqueta: "Escalera de color", valor: statsVecesEscaleraColor },
-                                { etiqueta: "Escalera real", valor: statsVecesEscaleraReal }
+                                { etiqueta: Idioma.t("combo_carta_alta"), valor: statsVecesCartaAlta },
+                                { etiqueta: Idioma.t("combo_pareja"), valor: statsVecesPareja },
+                                { etiqueta: Idioma.t("combo_doble_pareja"), valor: statsVecesDoblePareja },
+                                { etiqueta: Idioma.t("combo_trio"), valor: statsVecesTrio },
+                                { etiqueta: Idioma.t("combo_escalera"), valor: statsVecesEscalera },
+                                { etiqueta: Idioma.t("combo_color"), valor: statsVecesColor },
+                                { etiqueta: Idioma.t("combo_full_house"), valor: statsVecesFullHouse },
+                                { etiqueta: Idioma.t("combo_poker"), valor: statsVecesPoker },
+                                { etiqueta: Idioma.t("combo_escalera_color"), valor: statsVecesEscaleraColor },
+                                { etiqueta: Idioma.t("combo_escalera_real"), valor: statsVecesEscaleraReal }
                             ]
                             delegate: Row {
                                 required property var modelData
@@ -6536,7 +6541,7 @@ ApplicationWindow {
                     width: parent.width
                     visible: statsPartidasJugadas === 0
                     wrapMode: Text.WordWrap
-                    text: "Todavía no tienes partidas oficiales registradas."
+                    text: Idioma.t("vacio_partidas_oficiales")
                     color: Tema.colorTextoTenue
                     font.pixelSize: 12 * Tema.escala
                 }
@@ -6558,7 +6563,7 @@ ApplicationWindow {
                         width: (parent.width - 40 * Tema.escala) / 2
                         spacing: 8 * Tema.escala
                         BotonContorno {
-                            text: formularioUsernameAbierto ? "Cancelar" : "Cambiar nombre de usuario"
+                            text: formularioUsernameAbierto ? Idioma.t("boton_cancelar") : Idioma.t("boton_cambiar_username")
                             onClicked: {
                                 formularioUsernameAbierto = !formularioUsernameAbierto;
                                 campoNuevoUsername.text = "";
@@ -6573,15 +6578,15 @@ ApplicationWindow {
                                 id: campoNuevoUsername
                                 width: parent.width
                                 font.pixelSize: 13 * Tema.escala
-                                placeholderText: (activeFocus || text.length > 0) ? "" : "Nuevo nombre de usuario"
+                                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_nuevo_username")
                                 onAccepted: botonCambiarUsername.clicked()
                             }
                             BotonRelleno {
                                 id: botonCambiarUsername
-                                text: "Confirmar"
+                                text: Idioma.t("boton_confirmar")
                                 onClicked: {
                                     if (campoNuevoUsername.text.length < 3) {
-                                        mensajeErrorLogin = "El nombre de usuario debe tener al menos 3 caracteres.";
+                                        mensajeErrorLogin = "error_usuario_corto";
                                         return;
                                     }
                                     mensajeErrorLogin = "";
@@ -6596,7 +6601,7 @@ ApplicationWindow {
                         width: (parent.width - 40 * Tema.escala) / 2
                         spacing: 8 * Tema.escala
                         BotonContorno {
-                            text: formularioPasswordAbierto ? "Cancelar" : "Cambiar contraseña"
+                            text: formularioPasswordAbierto ? Idioma.t("boton_cancelar") : Idioma.t("boton_cambiar_password")
                             onClicked: {
                                 formularioPasswordAbierto = !formularioPasswordAbierto;
                                 campoPasswordActualCuenta.text = "";
@@ -6613,7 +6618,7 @@ ApplicationWindow {
                                 width: parent.width
                                 font.pixelSize: 13 * Tema.escala
                                 echoMode: TextInput.Password
-                                placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña actual"
+                                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_password_actual")
                                 onAccepted: campoPasswordNuevaCuenta.forceActiveFocus()
                             }
                             CampoTexto {
@@ -6621,19 +6626,19 @@ ApplicationWindow {
                                 width: parent.width
                                 font.pixelSize: 13 * Tema.escala
                                 echoMode: TextInput.Password
-                                placeholderText: (activeFocus || text.length > 0) ? "" : "Contraseña nueva (8+ caracteres)"
+                                placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_password_nueva")
                                 onAccepted: botonCambiarPassword.clicked()
                             }
                             BotonRelleno {
                                 id: botonCambiarPassword
-                                text: "Confirmar"
+                                text: Idioma.t("boton_confirmar")
                                 onClicked: {
                                     if (campoPasswordActualCuenta.text.length === 0) {
-                                        mensajeErrorLogin = "Escribe tu contraseña actual.";
+                                        mensajeErrorLogin = "error_falta_password_actual";
                                         return;
                                     }
                                     if (campoPasswordNuevaCuenta.text.length < 8) {
-                                        mensajeErrorLogin = "La contraseña nueva debe tener al menos 8 caracteres.";
+                                        mensajeErrorLogin = "error_password_nueva_corta";
                                         return;
                                     }
                                     mensajeErrorLogin = "";
@@ -6655,7 +6660,7 @@ ApplicationWindow {
                 }
 
                 BotonContorno {
-                    text: "Cerrar sesión"
+                    text: Idioma.t("boton_cerrar_sesion")
                     colorBorde: Tema.colorPeligro
                     visible: !ventana.sesionOffline
                     onClicked: redcliente.cerrarSesion(servidorHost, servidorPuerto, tokenSesion)
@@ -6667,9 +6672,9 @@ ApplicationWindow {
                 // flujo en la app todavía para concederlo).
                 BotonContorno {
                     visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
-                    text: "Exportar estadísticas (admin)"
+                    text: Idioma.t("boton_exportar_estadisticas")
                     onClicked: {
-                        mensajeExportacion = "Exportando...";
+                        mensajeExportacion = "texto_exportando";
                         redcliente.exportarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
                     }
                 }
@@ -6679,7 +6684,7 @@ ApplicationWindow {
                     visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true && mensajeExportacion !== ""
                     color: Tema.colorTextoTenue
                     font.pixelSize: 11 * Tema.escala
-                    text: mensajeExportacion
+                    text: Idioma.t(mensajeExportacion)
                 }
 
                 // Herramienta de pruebas/admin, punto 2 de la prioridad
@@ -6695,7 +6700,7 @@ ApplicationWindow {
                     visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
                     spacing: 6 * Tema.escala
                     Text {
-                        text: "Conceder logro/objeto (admin)"
+                        text: Idioma.t("admin_titulo_conceder")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
                         font.letterSpacing: 0.5
@@ -6704,23 +6709,23 @@ ApplicationWindow {
                         id: campoAdminUsername
                         width: parent.width
                         font.pixelSize: 13 * Tema.escala
-                        placeholderText: (activeFocus || text.length > 0) ? "" : "Username destino"
+                        placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_username_destino")
                         onAccepted: campoAdminCodigo.forceActiveFocus()
                     }
                     CampoTexto {
                         id: campoAdminCodigo
                         width: parent.width
                         font.pixelSize: 13 * Tema.escala
-                        placeholderText: (activeFocus || text.length > 0) ? "" : "Código (logro u objeto de tienda)"
+                        placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_codigo_logro_objeto")
                     }
                     BotonContorno {
-                        text: "Conceder"
+                        text: Idioma.t("boton_conceder")
                         onClicked: {
                             if (campoAdminUsername.text.length === 0 || campoAdminCodigo.text.length === 0) {
-                                mensajeAdminConceder = "Rellena username y código.";
+                                mensajeAdminConceder = "error_admin_rellena_campos";
                                 return;
                             }
-                            mensajeAdminConceder = "Concediendo...";
+                            mensajeAdminConceder = "texto_concediendo";
                             redcliente.adminConcederItem(servidorHost, servidorPuerto, tokenSesion,
                                                           campoAdminUsername.text, campoAdminCodigo.text);
                         }
@@ -6731,7 +6736,7 @@ ApplicationWindow {
                         visible: mensajeAdminConceder !== ""
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
-                        text: mensajeAdminConceder
+                        text: Idioma.t(mensajeAdminConceder)
                     }
                 }
 
@@ -6744,9 +6749,9 @@ ApplicationWindow {
                     visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
                     spacing: 6 * Tema.escala
                     BotonContorno {
-                        text: "Fabricar 15 cuentas de prueba (admin)"
+                        text: Idioma.t("boton_fabricar_cuentas_prueba")
                         onClicked: {
-                            mensajeAdminFabricar = "Fabricando...";
+                            mensajeAdminFabricar = "texto_fabricando";
                             redcliente.adminFabricarCuentasPrueba(servidorHost, servidorPuerto, tokenSesion, 15);
                         }
                     }
@@ -6756,7 +6761,7 @@ ApplicationWindow {
                         visible: mensajeAdminFabricar !== ""
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
-                        text: mensajeAdminFabricar
+                        text: Idioma.t(mensajeAdminFabricar)
                     }
                 }
             }
@@ -6767,7 +6772,7 @@ ApplicationWindow {
                 visible: ventana.pestanaCuentaActual === 1 && !hayCuenta
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Inicia sesión para ver tu progreso hacia el siguiente marco de avatar."
+                text: Idioma.t("progreso_invitado_aviso")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 13 * Tema.escala
             }
@@ -6796,7 +6801,8 @@ ApplicationWindow {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: progresoNivelActual.xpEnNivel + " / " + progresoNivelActual.xpParaSiguiente + " XP para el siguiente nivel"
+                        text: Idioma.tf("etiqueta_xp_siguiente_nivel",
+                                        [progresoNivelActual.xpEnNivel, progresoNivelActual.xpParaSiguiente])
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                     }
@@ -6853,7 +6859,8 @@ ApplicationWindow {
                         spacing: 10 * Tema.escala
 
                         Text {
-                            text: "Marco actual: " + nombreMarco(Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico))
+                            text: Idioma.tf("etiqueta_marco_actual",
+                                      [nombreMarco(Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico))])
                             color: Tema.colorTexto
                             font.bold: true
                             font.pixelSize: 15 * Tema.escala
@@ -6867,14 +6874,16 @@ ApplicationWindow {
                                 width: parent.width
                                 Text {
                                     width: parent.width - 170 * Tema.escala
-                                    text: "Siguiente marco: " + nombreProximoMarco(statsPartidasGanadas, statsTieneMarcoBasico)
+                                    text: Idioma.tf("etiqueta_siguiente_marco",
+                                              [nombreProximoMarco(statsPartidasGanadas, statsTieneMarcoBasico)])
                                     color: Tema.colorTextoTenue
                                     font.pixelSize: 12 * Tema.escala
                                 }
                                 Text {
                                     width: 170 * Tema.escala
                                     horizontalAlignment: Text.AlignRight
-                                    text: statsPartidasGanadas + " / " + proximoUmbralMarco(statsPartidasGanadas, statsTieneMarcoBasico) + " victorias"
+                                    text: Idioma.tf("etiqueta_victorias_progreso",
+                                              [statsPartidasGanadas, proximoUmbralMarco(statsPartidasGanadas, statsTieneMarcoBasico)])
                                     color: Tema.colorTexto
                                     font.bold: true
                                     font.pixelSize: 12 * Tema.escala
@@ -6911,7 +6920,7 @@ ApplicationWindow {
                             width: parent.width
                             visible: statsPartidasGanadas >= 50
                             wrapMode: Text.WordWrap
-                            text: "Has desbloqueado el marco más alto: Platino."
+                            text: Idioma.tf("texto_marco_maximo", [Idioma.t("marco_platino")])
                             color: Tema.colorAccent
                             font.bold: true
                             font.pixelSize: 13 * Tema.escala
@@ -6920,7 +6929,7 @@ ApplicationWindow {
                             width: parent.width
                             visible: statsPartidasJugadas === 0
                             wrapMode: Text.WordWrap
-                            text: "Gana partidas oficiales (con otras personas reales) para avanzar de marco."
+                            text: Idioma.t("texto_ganar_partidas_para_avanzar")
                             color: Tema.colorTextoTenue
                             font.pixelSize: 12 * Tema.escala
                         }
@@ -6949,7 +6958,7 @@ ApplicationWindow {
                     spacing: 16 * Tema.escala
 
                     Text {
-                        text: "Todos los marcos"
+                        text: Idioma.t("titulo_todos_los_marcos")
                         color: Tema.colorTexto
                         font.bold: true
                         font.pixelSize: 15 * Tema.escala
@@ -6961,11 +6970,11 @@ ApplicationWindow {
 
                         Repeater {
                             model: [
-                                { tier: "hierro",  etiqueta: "Hierro",  umbral: 1 },
-                                { tier: "bronce",  etiqueta: "Bronce",  umbral: 5 },
-                                { tier: "plata",   etiqueta: "Plata",   umbral: 15 },
-                                { tier: "oro",     etiqueta: "Oro",     umbral: 25 },
-                                { tier: "platino", etiqueta: "Platino", umbral: 50 }
+                                { tier: "hierro",  etiqueta: Idioma.t("marco_hierro"),  umbral: 1 },
+                                { tier: "bronce",  etiqueta: Idioma.t("marco_bronce"),  umbral: 5 },
+                                { tier: "plata",   etiqueta: Idioma.t("marco_plata"),   umbral: 15 },
+                                { tier: "oro",     etiqueta: Idioma.t("marco_oro"),     umbral: 25 },
+                                { tier: "platino", etiqueta: Idioma.t("marco_platino"), umbral: 50 }
                             ]
                             delegate: Item {
                                 id: filaMarcoRoadmap
@@ -7034,7 +7043,7 @@ ApplicationWindow {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 90 * Tema.escala
                                         horizontalAlignment: Text.AlignRight
-                                        text: filaMarcoRoadmap.conseguido ? "Conseguido" : (statsPartidasGanadas + " / " + filaMarcoRoadmap.modelData.umbral)
+                                        text: filaMarcoRoadmap.conseguido ? Idioma.t("texto_conseguido") : (statsPartidasGanadas + " / " + filaMarcoRoadmap.modelData.umbral)
                                         color: filaMarcoRoadmap.conseguido ? Tema.colorAccent : Tema.colorTextoTenue
                                         font.pixelSize: 11 * Tema.escala
                                         font.bold: filaMarcoRoadmap.conseguido
@@ -7052,7 +7061,7 @@ ApplicationWindow {
                 visible: ventana.pestanaCuentaActual === 2 && !hayCuenta
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Inicia sesión para ver tus logros."
+                text: Idioma.t("logros_invitado_aviso")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 13 * Tema.escala
             }
@@ -7066,7 +7075,7 @@ ApplicationWindow {
                 spacing: 14 * Tema.escala
 
                 Text {
-                    text: logrosDesbloqueados() + " / " + logrosModel.count + " desbloqueados"
+                    text: Idioma.tf("etiqueta_logros_desbloqueados", [logrosDesbloqueados(), logrosModel.count])
                     color: Tema.colorTextoTenue
                     font.pixelSize: 12 * Tema.escala
                 }
@@ -7187,9 +7196,9 @@ ApplicationWindow {
                                 }
                                 Text {
                                     visible: tarjetaLogro.desbloqueado === 1
-                                    text: "Desbloqueado el " +
-                                          Qt.formatDate(new Date(tarjetaLogro.desbloqueadoEn * 1000), "d MMM yyyy") +
-                                          " · +" + tarjetaLogro.xpRecompensa + " XP"
+                                    text: Idioma.tf("etiqueta_logro_desbloqueado_fecha",
+                                              [Qt.formatDate(new Date(tarjetaLogro.desbloqueadoEn * 1000), "d MMM yyyy"),
+                                               tarjetaLogro.xpRecompensa])
                                     color: colorRareza(tarjetaLogro.rareza)
                                     font.pixelSize: 10 * Tema.escala
                                 }
@@ -7221,7 +7230,7 @@ ApplicationWindow {
                 visible: ventana.pestanaCuentaActual === 3 && !hayCuenta
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Inicia sesión para personalizar tu avatar."
+                text: Idioma.t("personalizar_invitado_aviso")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 13 * Tema.escala
             }
@@ -7252,7 +7261,7 @@ ApplicationWindow {
 
                 SelectorSegmentado {
                     width: parent.width
-                    opciones: ["Texturas", "Efectos", "Decoraciones", "Títulos"]
+                    opciones: [Idioma.t("tab_texturas"), Idioma.t("tab_efectos"), Idioma.t("tab_decoraciones"), Idioma.t("tab_titulos")]
                     seleccionado: ventana.pestanaPersonalizarActual
                     onElegido: (indice) => ventana.pestanaPersonalizarActual = indice
                 }
@@ -7289,7 +7298,7 @@ ApplicationWindow {
                             width: parent.width
                             visible: itemsPersonalizar.length === 0
                             wrapMode: Text.WordWrap
-                            text: "Todavía no tienes nada de esto -- consíguelo en la Tienda."
+                            text: Idioma.t("vacio_personalizar")
                             color: Tema.colorTextoTenue
                             font.pixelSize: 13 * Tema.escala
                         }
@@ -7423,7 +7432,7 @@ ApplicationWindow {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: parent.width - miniaturaPersonalizar.width - (miniaturaPersonalizar.visible ? parent.spacing : 0)
                                                 elide: Text.ElideRight
-                                                text: celdaPersonalizar.nombre + (celdaPersonalizar.equipado === 1 ? " · Equipado" : "")
+                                                text: celdaPersonalizar.nombre + (celdaPersonalizar.equipado === 1 ? Idioma.t("sufijo_equipado") : "")
                                                 color: Tema.colorTexto
                                                 font.bold: true
                                                 font.pixelSize: 13 * Tema.escala
@@ -7436,7 +7445,7 @@ ApplicationWindow {
                                         BotonContorno {
                                             visible: celdaPersonalizar.categoria !== "decoracion_lateral"
                                             width: parent.width
-                                            text: celdaPersonalizar.equipado === 1 ? "Quitar" : "Equipar"
+                                            text: celdaPersonalizar.equipado === 1 ? Idioma.t("boton_quitar") : Idioma.t("boton_equipar")
                                             colorBorde: celdaPersonalizar.equipado === 1 ? Tema.colorPeligro : Tema.colorBorde
                                             onClicked: equiparConAcabado(celdaPersonalizar.categoria,
                                                 celdaPersonalizar.equipado === 1 ? "" : celdaPersonalizar.codigo)
@@ -7450,14 +7459,14 @@ ApplicationWindow {
                                             BotonContorno {
                                                 readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral1 === celdaPersonalizar.codigo
                                                 width: (parent.width - parent.spacing) / 2
-                                                text: aqui ? "Quitar izq." : "A la izq."
+                                                text: aqui ? Idioma.t("boton_quitar_izq") : Idioma.t("boton_a_la_izq")
                                                 colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
                                                 onClicked: equiparConAcabado("decoracion_lateral_1", aqui ? "" : celdaPersonalizar.codigo)
                                             }
                                             BotonContorno {
                                                 readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral2 === celdaPersonalizar.codigo
                                                 width: (parent.width - parent.spacing) / 2
-                                                text: aqui ? "Quitar der." : "A la der."
+                                                text: aqui ? Idioma.t("boton_quitar_der") : Idioma.t("boton_a_la_der")
                                                 colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
                                                 onClicked: equiparConAcabado("decoracion_lateral_2", aqui ? "" : celdaPersonalizar.codigo)
                                             }
@@ -7478,7 +7487,7 @@ ApplicationWindow {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "VISTA PREVIA"
+                            text: Idioma.t("titulo_vista_previa")
                             color: Tema.colorTextoMuyTenue
                             font.pixelSize: 10 * Tema.escala
                             font.letterSpacing: 1
@@ -7511,7 +7520,7 @@ ApplicationWindow {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
-                            text: "Así se verá con tu primer marco, Hierro. Gana una partida para desbloquear los accesorios."
+                            text: Idioma.t("vista_previa_sin_marco")
                             color: Tema.colorTextoTenue
                             font.pixelSize: 11 * Tema.escala
                         }
@@ -7546,7 +7555,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
-            textoCentro: "Tienda"
+            textoCentro: Idioma.t("titulo_tienda")
             pantalla: ventana.pantalla
             miSaldoActual: ventana.miSaldoActual
             reconectandoAhora: ventana.reconectandoAhora
@@ -7575,7 +7584,7 @@ ApplicationWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Tienda"
+                text: Idioma.t("titulo_tienda")
                 color: Tema.colorTexto
                 font.family: Tema.fuenteElegante
                 font.pixelSize: 22 * Tema.escala
@@ -7584,7 +7593,7 @@ ApplicationWindow {
             SelectorSegmentado {
                 width: parent.width
                 visible: tokenSesion !== ""
-                opciones: ["Marco", "Perfil"]
+                opciones: [Idioma.t("tab_marco"), Idioma.t("tab_perfil")]
                 seleccionado: ventana.pestanaTiendaActual
                 onElegido: (indice) => {
                     ventana.pestanaTiendaActual = indice;
@@ -7623,7 +7632,7 @@ ApplicationWindow {
                 visible: tokenSesion === ""
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Inicia sesión para entrar en la tienda."
+                text: Idioma.t("tienda_invitado_aviso")
                 color: Tema.colorTextoTenue
                 font.pixelSize: 13 * Tema.escala
             }
@@ -7668,7 +7677,7 @@ ApplicationWindow {
                         CampoTexto {
                             id: campoBusquedaTienda
                             width: parent.width
-                            placeholderText: (activeFocus || text.length > 0) ? "" : "Buscar en la tienda..."
+                            placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_buscar_tienda")
                             font.pixelSize: 13 * Tema.escala
                             onTextChanged: {
                                 busquedaTienda = text;
@@ -7681,7 +7690,7 @@ ApplicationWindow {
                             visible: mensajeTienda !== ""
                             wrapMode: Text.WordWrap
                             color: Tema.colorPeligro
-                            text: mensajeTienda
+                            text: Idioma.t(mensajeTienda)
                             font.pixelSize: 11 * Tema.escala
                         }
                     }
@@ -7873,7 +7882,7 @@ ApplicationWindow {
                                             width: parent.width - miniaturaTienda.width - (miniaturaTienda.visible ? parent.spacing : 0)
                                                    - (sufijoPrecioTienda.visible ? sufijoPrecioTienda.width + parent.spacing : 0)
                                             elide: Text.ElideRight
-                                            text: celdaTienda.nombre + (celdaTienda.equipado === 1 ? " · Equipado" : "")
+                                            text: celdaTienda.nombre + (celdaTienda.equipado === 1 ? Idioma.t("sufijo_equipado") : "")
                                             color: Tema.colorTexto
                                             font.bold: true
                                             font.pixelSize: 13 * Tema.escala
@@ -7897,7 +7906,7 @@ ApplicationWindow {
                                             }
                                             Text {
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                text: "· nivel " + celdaTienda.nivelMinimo
+                                                text: Idioma.tf("etiqueta_nivel", [celdaTienda.nivelMinimo])
                                                 color: Tema.colorTextoTenue
                                                 font.pixelSize: 11 * Tema.escala
                                             }
@@ -7911,8 +7920,8 @@ ApplicationWindow {
                                         width: parent.width
                                         elide: Text.ElideRight
                                         text: celdaTienda.logroNombre !== ""
-                                              ? "Logro: " + celdaTienda.logroNombre
-                                              : "Se consigue con un logro"
+                                              ? Idioma.tf("etiqueta_logro", [celdaTienda.logroNombre])
+                                              : Idioma.t("texto_se_consigue_con_logro")
                                         color: Tema.colorTextoMuyTenue
                                         font.pixelSize: 11 * Tema.escala
                                     }
@@ -7957,7 +7966,7 @@ ApplicationWindow {
                                         BotonContorno {
                                             readonly property var info: ventana.infoCartaSeleccionada()
                                             visible: ventana.cartaSeleccionada !== "" && info !== null && info.poseido === 0
-                                            text: "Comprar"
+                                            text: Idioma.t("boton_comprar")
                                             onClicked: redcliente.comprarObjeto(servidorHost, servidorPuerto,
                                                                                 tokenSesion, ventana.cartaSeleccionada)
                                         }
@@ -7967,14 +7976,14 @@ ApplicationWindow {
                                             spacing: 4 * Tema.escala
                                             BotonContorno {
                                                 readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral1 === ventana.cartaSeleccionada
-                                                text: aqui ? "Quitar izq." : "A la izq."
+                                                text: aqui ? Idioma.t("boton_quitar_izq") : Idioma.t("boton_a_la_izq")
                                                 colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
                                                 onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
                                                     "decoracion_lateral_1", aqui ? "" : ventana.cartaSeleccionada)
                                             }
                                             BotonContorno {
                                                 readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral2 === ventana.cartaSeleccionada
-                                                text: aqui ? "Quitar der." : "A la der."
+                                                text: aqui ? Idioma.t("boton_quitar_der") : Idioma.t("boton_a_la_der")
                                                 colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
                                                 onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
                                                     "decoracion_lateral_2", aqui ? "" : ventana.cartaSeleccionada)
@@ -7990,7 +7999,7 @@ ApplicationWindow {
                                         visible: celdaTienda.codigo !== "_baraja" &&
                                                  celdaTienda.poseido === 0 && celdaTienda.esDeLogro === 0
                                         width: parent.width
-                                        text: "Comprar"
+                                        text: Idioma.t("boton_comprar")
                                         onClicked: redcliente.comprarObjeto(servidorHost, servidorPuerto,
                                                                             tokenSesion, celdaTienda.codigo)
                                     }
@@ -8015,7 +8024,7 @@ ApplicationWindow {
                                         width: parent.width
                                         enabled: false
                                         opacity: 0.6
-                                        text: "Comprado"
+                                        text: Idioma.t("boton_comprado")
                                     }
                                 }
                             }
@@ -8030,7 +8039,7 @@ ApplicationWindow {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "VISTA PREVIA"
+                        text: Idioma.t("titulo_vista_previa")
                         color: Tema.colorTextoMuyTenue
                         font.pixelSize: 10 * Tema.escala
                         font.letterSpacing: 1
@@ -8075,7 +8084,7 @@ ApplicationWindow {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        text: "Así se verá con tu primer marco, Hierro. Gana una partida para desbloquear los accesorios."
+                        text: Idioma.t("vista_previa_sin_marco")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
                     }
@@ -8525,7 +8534,7 @@ ApplicationWindow {
             // necesidad de un selector para elegir entre dos secciones
             // cuando ya solo queda una.
             Text {
-                text: "AJUSTES"
+                text: Idioma.t("titulo_ajustes")
                 color: Tema.colorTextoMuyTenue
                 font.pixelSize: 11 * Tema.escala
                 font.letterSpacing: 1
@@ -8536,7 +8545,7 @@ ApplicationWindow {
                 spacing: 10 * Tema.escala
 
                 Text {
-                    text: "TEMA DE COLOR"
+                    text: Idioma.t("titulo_tema_color")
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
@@ -8571,7 +8580,15 @@ ApplicationWindow {
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: filaTema.modelData.nombre
+                                // El nombre de cada tema vive en Tema.qml, no en la
+                                // tabla de Idioma -- ese singleton también lo usa
+                                // AvatarTest (banco de pruebas SIN Idioma.qml
+                                // registrado, ver cmake/ClientesQt.cmake), así que
+                                // Tema.qml no puede llamar a Idioma.t() él mismo.
+                                // La traducción se hace aquí, por índice, en vez de
+                                // en el dato de origen.
+                                text: Idioma.t(["tema_verde_clasico", "tema_azul_medianoche", "tema_burdeos",
+                                                "tema_grafito", "tema_porcelana_dorada"][filaTema.index])
                                 color: Tema.temaActual === filaTema.index ? Tema.colorTexto : Tema.colorTextoTenue
                                 font.bold: Tema.temaActual === filaTema.index
                                 font.pixelSize: 13 * Tema.escala
@@ -8592,7 +8609,7 @@ ApplicationWindow {
                 spacing: 10 * Tema.escala
 
                 Text {
-                    text: "MESA ACTUAL"
+                    text: Idioma.t("titulo_mesa_actual")
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
@@ -8605,14 +8622,15 @@ ApplicationWindow {
                     // cuanto arrancaba la partida, así que si alguien se
                     // unía después no había forma de recuperarlo.
                     model: [
-                        { etiqueta: "Ciega actual", valor: Math.round(ciegaActual / 2) + " / " + ciegaActual },
-                        { etiqueta: "Mano", valor: manoActual + " / " + objetivoManos },
-                        { etiqueta: "Tipo de límite", valor: ["Sin límite", "Límite bote", "Límite fijo"][tipoLimiteActual] || "—" },
-                        { etiqueta: "Permite recompra", valor: permitirRecompraActual ? "Sí" : "No" },
-                        { etiqueta: "Rellena con bots", valor: rellenarConBotsActual ? "Sí" : "No" },
-                        { etiqueta: "Pregunta al extender", valor: preguntarExtensionActual ? "Sí" : "No" }
+                        { etiqueta: Idioma.t("ajustes_ciega_actual"), valor: Math.round(ciegaActual / 2) + " / " + ciegaActual },
+                        { etiqueta: Idioma.t("ajustes_mano"), valor: manoActual + " / " + objetivoManos },
+                        { etiqueta: Idioma.t("ajustes_tipo_limite"),
+                          valor: [Idioma.t("limite_sin_limite"), Idioma.t("limite_limite_bote"), Idioma.t("limite_limite_fijo")][tipoLimiteActual] || "—" },
+                        { etiqueta: Idioma.t("ajustes_permite_recompra"), valor: permitirRecompraActual ? Idioma.t("texto_si") : Idioma.t("texto_no") },
+                        { etiqueta: Idioma.t("ajustes_rellena_bots"), valor: rellenarConBotsActual ? Idioma.t("texto_si") : Idioma.t("texto_no") },
+                        { etiqueta: Idioma.t("ajustes_pregunta_extender"), valor: preguntarExtensionActual ? Idioma.t("texto_si") : Idioma.t("texto_no") }
                     ].concat(codigoSalaPropia !== ""
-                        ? [{ etiqueta: "Código de invitación", valor: codigoSalaPropia }]
+                        ? [{ etiqueta: Idioma.t("ajustes_codigo_invitacion"), valor: codigoSalaPropia }]
                         : [])
                     delegate: Row {
                         required property var modelData
@@ -8640,7 +8658,7 @@ ApplicationWindow {
                 spacing: 10 * Tema.escala
 
                 Text {
-                    text: "CLIENTE"
+                    text: Idioma.t("titulo_cliente")
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
@@ -8652,7 +8670,7 @@ ApplicationWindow {
                 // sincroniza a Settings) -- SelectorSegmentado nunca escribe
                 // su propio "seleccionado", ver el porqué en ese componente.
                 Text {
-                    text: "Idioma"
+                    text: Idioma.t("titulo_idioma")
                     color: Tema.colorTextoTenue
                     font.pixelSize: 13 * Tema.escala
                 }
@@ -8672,7 +8690,7 @@ ApplicationWindow {
                     Text {
                         width: parent.width - 46
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Sonido de notificaciones"
+                        text: Idioma.t("texto_sonido_notificaciones")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
@@ -8688,7 +8706,7 @@ ApplicationWindow {
                     Text {
                         width: parent.width - 46
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Confirmar antes de ALL-IN"
+                        text: Idioma.t("texto_confirmar_allin")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
@@ -8710,7 +8728,7 @@ ApplicationWindow {
                         // etiqueta en vez de los botones.
                         width: parent.width - 150 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Tamaño de la interfaz"
+                        text: Idioma.t("texto_tamano_interfaz")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
@@ -8751,7 +8769,7 @@ ApplicationWindow {
                 width: parent.width
                 spacing: 10 * Tema.escala
                 Text {
-                    text: "VERSIÓN"
+                    text: Idioma.t("titulo_version")
                     color: Tema.colorTextoMuyTenue
                     font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
@@ -8759,14 +8777,14 @@ ApplicationWindow {
                 Text {
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: "Instalada: v" + versionChecker.versionActual
-                          + (versionChecker.hayVersionNueva ? " · hay una nueva: v" + versionChecker.versionRemota : "")
+                    text: Idioma.tf("etiqueta_version_instalada", [versionChecker.versionActual])
+                          + (versionChecker.hayVersionNueva ? Idioma.tf("etiqueta_version_nueva_disponible", [versionChecker.versionRemota]) : "")
                     color: versionChecker.hayVersionNueva ? Tema.colorAccent : Tema.colorTextoTenue
                     font.pixelSize: 13 * Tema.escala
                 }
                 BotonContorno {
                     width: parent.width
-                    text: "Descargar la última versión"
+                    text: Idioma.t("boton_descargar_version")
                     onClicked: Qt.openUrlExternally(versionChecker.urlDescarga)
                 }
             }
