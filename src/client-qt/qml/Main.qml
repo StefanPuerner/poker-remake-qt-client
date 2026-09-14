@@ -526,6 +526,64 @@ ApplicationWindow {
         }
         return null;
     }
+    // ── Localización del catálogo de logros/tienda (dato del SERVIDOR,
+    // ver docs/plan-idiomas.md) -- el servidor sigue mandando prosa en
+    // español (nombre/descripcion), pero ya manda el "codigo" estable de
+    // cada fila desde siempre (kCatalogoLogros/semillaTienda en
+    // AccountManager.cpp). Estas tres funciones resuelven la traducción
+    // por código en la tabla de Idioma.qml, cayendo de vuelta al texto en
+    // español que mandó el servidor si ese código todavía no tiene fila
+    // ahí -- MISMO criterio "nunca roto" que el resto del mecanismo. Se
+    // llaman UNA VEZ, justo al llegar onLogrosActualizados/
+    // onTiendaActualizada (ver más abajo), no en cada sitio donde se
+    // muestran -- así ni logrosModel ni tiendaCrudo necesitan saber que
+    // esto existe, y toda la interfaz que ya lee ".nombre"/".descripcion"
+    // (Logros, Personalizar, Tienda, CajaTitulo en Perfil/Progreso/
+    // Ranking/perfil público) se traduce sola sin tocar ni un sitio más.
+    function nombreLogroLocalizado(codigo, nombreServidor) {
+        var clave = "logro_" + codigo + "_nombre";
+        var t = Idioma.t(clave);
+        return t === clave ? nombreServidor : t;
+    }
+    function descripcionLogroLocalizado(codigo, descripcionServidor) {
+        var clave = "logro_" + codigo + "_descripcion";
+        var t = Idioma.t(clave);
+        return t === clave ? descripcionServidor : t;
+    }
+    function nombreObjetoLocalizado(codigo, nombreServidor) {
+        var clave = "objeto_" + codigo + "_nombre";
+        var t = Idioma.t(clave);
+        return t === clave ? nombreServidor : t;
+    }
+    // "logroNombre" (fila de tienda: qué logro concede este objeto) llega
+    // YA RESUELTO a texto en español -- AccountManager.hpp no manda el
+    // código del logro en este campo, solo su nombre (ver
+    // ResultadoTienda::logroNombre). Mapa inverso chico, a mano, porque
+    // son solo 17: si el servidor renombra un logro sin actualizar esto,
+    // el peor caso es que ESTA etiqueta concreta ("Logro: X") se quede en
+    // español hasta corregir el mapa -- no rompe nada más.
+    function codigoLogroPorNombre(nombreEs) {
+        var mapa = {
+            "Primera sangre": "primera_sangre",
+            "Trasnochador": "trasnochador",
+            "Club de los Cien": "club_de_los_cien",
+            "Manos de Hierro": "manos_de_hierro",
+            "Círculo cerrado": "circulo_cerrado",
+            "El Farolero": "el_farolero",
+            "El Fénix": "el_fenix",
+            "La Corona": "la_corona",
+            "Escalera de Color": "escalera_color",
+            "Póker de Ases": "poker_ases",
+            "Rey de la Mesa": "barrida_total",
+            "Centurión": "centurion",
+            "Aprendiz de mesa": "reto_solitario_1",
+            "Cazador de mesa llena": "reto_solitario_2",
+            "Duelista": "reto_solitario_3",
+            "Rápido y certero": "reto_solitario_4",
+            "Rey del Solitario": "reto_solitario_5"
+        };
+        return mapa[nombreEs] || "";
+    }
     // Título propio equipado, ya resuelto (nombre+rareza) -- consumido
     // por CajaTitulo.qml en Perfil. Se re-evalúa sola tanto si cambia el
     // loadout como si termina de cargar el catálogo (las dos son
@@ -2938,18 +2996,22 @@ ApplicationWindow {
             anchors.bottom: parent.bottom
 
             ScrollView {
+                id: scrollTorneos
                 anchors.fill: parent
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                // Hijo directo del ScrollView: "parent.width" aquí SÍ es el
-                // ancho real del visor (mismo patrón que scrollAjustes) --
-                // sin este envoltorio, el Column de las tarjetas de abajo
-                // (ancho fijo) quedaba centrado dentro de SÍ MISMO, pegado a
-                // la izquierda del visor de verdad (bug real reportado
-                // 2026-09-13).
+                // "parent.width" en el hijo directo de un ScrollView NO es
+                // fiable -- a diferencia de scrollAjustes/scrollCrearSala,
+                // que usan "<id>.availableWidth" (la API pensada justo para
+                // esto), "parent.width" aquí podía quedarse en el ancho
+                // implícito del propio Column (el de las tarjetas, fijo)
+                // en vez del ancho real del visor -- de ahí que el
+                // envoltorio de abajo, pese a existir, siguiera saliendo
+                // pegado a la izquierda (bug real reportado de nuevo
+                // 2026-09-14, el intento de 2026-09-13 no bastaba).
                 Column {
-                    width: parent.width
+                    width: scrollTorneos.availableWidth
                     topPadding: 20 * Tema.escala
                     bottomPadding: 20 * Tema.escala
 
@@ -5386,13 +5448,32 @@ ApplicationWindow {
             // (parsearFilasChat() en C++, ver NetworkClient.hpp), un
             // QVariantMap por logro.
             function onLogrosActualizados(logros) {
-                var ordenados = ordenarLogros(logros);
+                // Traduce nombre/descripcion por código ANTES de ordenar --
+                // ver nombreLogroLocalizado()/docs/plan-idiomas.md. Cae de
+                // vuelta al texto del servidor si el código no tiene clave.
+                var traducidos = logros.map(function(l) {
+                    l.nombre = nombreLogroLocalizado(l.codigo, l.nombre);
+                    l.descripcion = descripcionLogroLocalizado(l.codigo, l.descripcion);
+                    return l;
+                });
+                var ordenados = ordenarLogros(traducidos);
                 logrosModel.clear();
                 for (var i = 0; i < ordenados.length; i++) logrosModel.append(ordenados[i]);
             }
             // ── Tienda (Fase 5 del sistema de progresión) ───────────────────
             function onTiendaActualizada(tienda) {
-                tiendaCrudo = tienda;
+                // Mismo criterio que onLogrosActualizados: traduce por
+                // código UNA VEZ aquí, no en cada sitio donde se muestra
+                // (Tienda, Personalizar, CajaTitulo...). "logroNombre" no
+                // trae su propio código (ver codigoLogroPorNombre()), así
+                // que se resuelve con el mapa inverso.
+                tiendaCrudo = tienda.map(function(o) {
+                    o.nombre = nombreObjetoLocalizado(o.codigo, o.nombre);
+                    if (o.logroNombre !== "") {
+                        o.logroNombre = nombreLogroLocalizado(codigoLogroPorNombre(o.logroNombre), o.logroNombre);
+                    }
+                    return o;
+                });
                 reordenarTienda();
             }
             function onObjetoComprado(codigo) {

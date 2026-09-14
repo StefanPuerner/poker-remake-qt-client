@@ -548,6 +548,53 @@ ApplicationWindow {
         }
         return null;
     }
+    // Localización del catálogo (logros/tienda) -- ver comentario gemelo
+    // en qml/Main.qml. El servidor solo manda texto en español; aquí se
+    // busca la traducción por código en Idioma.qml y, si no existe
+    // todavía, se cae de vuelta al texto tal cual lo mandó el servidor
+    // (nunca a la clave literal, que aquí sería una clave construida sin
+    // sentido para el jugador).
+    function nombreLogroLocalizado(codigo, nombreServidor) {
+        var clave = "logro_" + codigo + "_nombre";
+        var t = Idioma.t(clave);
+        return t === clave ? nombreServidor : t;
+    }
+    function descripcionLogroLocalizado(codigo, descripcionServidor) {
+        var clave = "logro_" + codigo + "_descripcion";
+        var t = Idioma.t(clave);
+        return t === clave ? descripcionServidor : t;
+    }
+    function nombreObjetoLocalizado(codigo, nombreServidor) {
+        var clave = "objeto_" + codigo + "_nombre";
+        var t = Idioma.t(clave);
+        return t === clave ? nombreServidor : t;
+    }
+    // tienda.logroNombre llega del servidor YA resuelto a español (no hay
+    // logroCodigo en el protocolo) -- mapa inverso fijo para poder
+    // localizarlo igual que el resto. Peor caso si un nombre no está en
+    // este mapa: ese campo concreto se queda en español.
+    function codigoLogroPorNombre(nombreEs) {
+        var mapa = {
+            "Primera sangre": "primera_sangre",
+            "Trasnochador": "trasnochador",
+            "Club de los Cien": "club_de_los_cien",
+            "Manos de Hierro": "manos_de_hierro",
+            "Círculo cerrado": "circulo_cerrado",
+            "El Farolero": "el_farolero",
+            "El Fénix": "el_fenix",
+            "La Corona": "la_corona",
+            "Escalera de Color": "escalera_color",
+            "Póker de Ases": "poker_ases",
+            "Rey de la Mesa": "barrida_total",
+            "Centurión": "centurion",
+            "Aprendiz de mesa": "reto_solitario_1",
+            "Cazador de mesa llena": "reto_solitario_2",
+            "Duelista": "reto_solitario_3",
+            "Rápido y certero": "reto_solitario_4",
+            "Rey del Solitario": "reto_solitario_5"
+        };
+        return mapa[nombreEs] || "";
+    }
     function colorRareza(r) {
         return r === "oro" ? "#e3bb82" : r === "plata" ? "#9aa4ab" : r === "bronce" ? "#c98f5f" : "#7d848f";
     }
@@ -1172,7 +1219,13 @@ ApplicationWindow {
         // Fase M2 del port de progresión a móvil -- ver el comentario
         // junto a "tiendaCrudo" más arriba.
         function onTiendaActualizada(tienda) {
-            tiendaCrudo = tienda;
+            tiendaCrudo = tienda.map(function(o) {
+                o.nombre = nombreObjetoLocalizado(o.codigo, o.nombre);
+                if (o.logroNombre !== "") {
+                    o.logroNombre = nombreLogroLocalizado(codigoLogroPorNombre(o.logroNombre), o.logroNombre);
+                }
+                return o;
+            });
             reordenarTienda();
         }
         // Fase M2 -- comprar (Tienda), mismo criterio que
@@ -1188,7 +1241,12 @@ ApplicationWindow {
         // (parsearFilasChat() en C++, ver NetworkClient.hpp), un
         // QVariantMap por logro.
         function onLogrosActualizados(logros) {
-            var ordenados = ordenarLogros(logros);
+            var traducidos = logros.map(function(l) {
+                l.nombre = nombreLogroLocalizado(l.codigo, l.nombre);
+                l.descripcion = descripcionLogroLocalizado(l.codigo, l.descripcion);
+                return l;
+            });
+            var ordenados = ordenarLogros(traducidos);
             logrosModel.clear();
             for (var i = 0; i < ordenados.length; i++) logrosModel.append(ordenados[i]);
         }
@@ -3402,17 +3460,19 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
 
         ScrollView {
+            id: scrollTorneosMovil
             anchors.fill: parent
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-            // Hijo directo del ScrollView: "parent.width" aquí SÍ es el
-            // ancho real del visor -- sin este envoltorio, el Column de las
-            // tarjetas de abajo (ancho fijo) quedaba centrado dentro de SÍ
-            // MISMO, pegado a la izquierda del visor de verdad (bug real
-            // reportado 2026-09-13, mismo motivo en qml/Main.qml).
+            // "parent.width" en el hijo directo de un ScrollView NO es
+            // fiable -- ver el comentario largo en qml/Main.qml (mismo
+            // fix ahí): "<id>.availableWidth" es la API correcta, la
+            // misma que ya usan scrollAjustesMovil y demás. El intento de
+            // 2026-09-13 con "parent.width" no bastaba (bug reportado de
+            // nuevo 2026-09-14).
             Column {
-                width: parent.width
+                width: scrollTorneosMovil.availableWidth
                 topPadding: 16 * Tema.escala
                 bottomPadding: 16 * Tema.escala
 

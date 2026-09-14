@@ -6,6 +6,8 @@
 //  compartida entre escritorio y móvil, ver decisión en la sesión de diseño
 //  móvil (árbol QML separado en qml-mobile/).
 
+#include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -147,6 +149,30 @@ int main(int argc, char* argv[]) {
   // cada cliente guarda los suyos.
   QGuiApplication::setOrganizationName("PokerRemake");
   QGuiApplication::setApplicationName("PokerClientMobile");
+
+  // Soporte de emoji -- ver el comentario en cmake/ClientesQt.cmake (RESOURCES)
+  // para el porqué de esta fuente en concreto. Se añade como familia EXTRA de
+  // la fuente por defecto de la app (no la reemplaza): con setFamilies(), Qt
+  // prueba cada familia en orden CARÁCTER A CARÁCTER, así que el resto del
+  // texto (que ya tiene glifo en la fuente normal del sistema) no cambia de
+  // aspecto -- solo entra en juego para los caracteres que faltan, como un
+  // emoji de verdad tecleado por otro jugador en el chat.
+  const int idFuenteEmoji = QFontDatabase::addApplicationFont(
+      QStringLiteral(":/qt/qml/PokerQuickMobile/assets/fonts/TwemojiMozilla.ttf"));
+  if (idFuenteEmoji != -1) {
+    const QStringList familiasEmoji = QFontDatabase::applicationFontFamilies(idFuenteEmoji);
+    if (!familiasEmoji.isEmpty()) {
+      QFont fuentePorDefecto = QGuiApplication::font();
+      QStringList familias = fuentePorDefecto.families();
+      if (familias.isEmpty()) familias << fuentePorDefecto.family();
+      familias << familiasEmoji.first();
+      fuentePorDefecto.setFamilies(familias);
+      QGuiApplication::setFont(fuentePorDefecto);
+    }
+  } else {
+    qWarning() << "No se pudo cargar la fuente de apoyo para emoji (Twemoji Mozilla) -- "
+                  "los emoji de verdad tecleados por otros jugadores pueden verse en blanco.";
+  }
   // Destruido a mano al salir -- ver el comentario gemelo en
   // src/client-qt/main.cpp.
   auto engine = std::make_unique<QQmlApplicationEngine>();

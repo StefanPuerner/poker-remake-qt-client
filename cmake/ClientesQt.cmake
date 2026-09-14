@@ -480,6 +480,26 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             # existe) y toda la app usa la fuente por defecto del sistema
             # en vez de EB Garamond.
             assets/fonts/EBGaramond.ttf
+            # Fuente de apoyo para emoji -- bug real reportado 2026-09-14
+            # ("en movil no se renderizan, queda vacio"): un jugador que
+            # teclea un emoji de verdad en el chat (no un símbolo elegido
+            # por esta app -- esos ya se evitan a propósito, ver los
+            # comentarios de "tofu" en Main.qml/CajonPartida.qml) lo ve en
+            # blanco en Android, ni siquiera como cuadrado de "glifo no
+            # encontrado". Registrada en C++ (src/client-qt/main-mobile.cpp)
+            # como familia EXTRA de la fuente por defecto de toda la app, no
+            # como reemplazo -- solo se usa carácter a carácter cuando la
+            # familia normal no tiene el glifo. Twemoji Mozilla (COLR/CPAL,
+            # vectorial a color): mismo dibujo que Noto Color Emoji pero
+            # ~1,4 MB en vez de ~10 MB (Noto usa CBDT/CBLC, mapas de bits),
+            # más barato para un APK y mejor soportado por FreeType/Qt en
+            # Android que el formato de mapa de bits. Copiada del paquete
+            # firefox de este sistema (mismo fichero que distribuye
+            # Mozilla); licencia completa (CC BY 4.0, requiere atribución)
+            # en assets/fonts/TWEMOJI-LICENSE.md. Solo en el móvil: en
+            # escritorio (Linux/Windows/macOS) el sistema ya trae una
+            # fuente de emoji de verdad y Qt la encuentra solo.
+            assets/fonts/TwemojiMozilla.ttf
             # Iconos de Textura/Efecto/Decoraciones y tarjetas de la
             # Tienda (Fase 5) -- mismo catálogo exacto que
             # PokerClientQt más arriba (ver ese comentario para

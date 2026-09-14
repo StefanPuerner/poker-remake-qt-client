@@ -969,5 +969,188 @@ QtObject {
         "reto_reclamado_treboles": {
             es: "+{0} Tréboles.", en: "+{0} Clovers.", de: "+{0} Kleeblätter."
         },
+
+        // ── Catálogo de logros y tienda (dato del SERVIDOR, ver
+        // AccountManager.cpp::kCatalogoLogros/semillaTienda) -- claves por
+        // "codigo", no envueltas por t()/tf() directamente: se resuelven
+        // con nombreLogroLocalizado()/descripcionLogroLocalizado()/
+        // nombreObjetoLocalizado() (Main.qml, los dos árboles), que caen
+        // de vuelta al texto en español que manda el servidor si el
+        // "codigo" no tiene fila aquí -- así un objeto/logro nuevo en el
+        // servidor se ve en español hasta traducirlo aquí, nunca roto. La
+        // localización se aplica UNA VEZ, al llegar onLogrosActualizados/
+        // onTiendaActualizada -- si cambias de idioma con el catálogo ya
+        // cargado, hace falta volver a pedirlo (entrar de nuevo en
+        // Cuenta/Tienda) para que se re-resuelva, ver docs/plan-idiomas.md.
+        "logro_primera_sangre_nombre": { es: "Primera sangre", en: "First Blood", de: "Erstes Blut" },
+        "logro_primera_sangre_descripcion": {
+            es: "Gana tu primera partida oficial.", en: "Win your first official game.",
+            de: "Gewinne deine erste offizielle Partie."
+        },
+        "logro_trasnochador_nombre": { es: "Trasnochador", en: "Night Owl", de: "Nachtschwärmer" },
+        "logro_trasnochador_descripcion": {
+            es: "Termina una partida después de medianoche.", en: "Finish a game after midnight.",
+            de: "Beende eine Partie nach Mitternacht."
+        },
+        "logro_club_de_los_cien_nombre": { es: "Club de los Cien", en: "Century Club", de: "Klub der Hundert" },
+        "logro_club_de_los_cien_descripcion": {
+            es: "Juega 100 manos en total.", en: "Play 100 hands in total.",
+            de: "Spiele insgesamt 100 Hände."
+        },
+        "logro_manos_de_hierro_nombre": { es: "Manos de Hierro", en: "Iron Hands", de: "Eiserne Hände" },
+        "logro_manos_de_hierro_descripcion": {
+            es: "Gana 5 manos oficiales seguidas sin retirarte.",
+            en: "Win 5 official hands in a row without folding.",
+            de: "Gewinne 5 offizielle Hände in Folge, ohne auszusteigen."
+        },
+        "logro_circulo_cerrado_nombre": { es: "Círculo cerrado", en: "Inner Circle", de: "Geschlossener Kreis" },
+        "logro_circulo_cerrado_descripcion": {
+            es: "Juega una partida oficial con 4 o más amigos a la vez en tu mesa.",
+            en: "Play an official game with 4 or more friends at your table at once.",
+            de: "Spiele eine offizielle Partie mit 4 oder mehr Freunden gleichzeitig an deinem Tisch."
+        },
+        "logro_el_farolero_nombre": { es: "El Farolero", en: "The Bluffer", de: "Der Bluffer" },
+        "logro_el_farolero_descripcion": {
+            es: "Gana un bote sin showdown 15 veces.", en: "Win a pot without a showdown 15 times.",
+            de: "Gewinne 15-mal einen Pot ohne Showdown."
+        },
+        "logro_el_fenix_nombre": { es: "El Fénix", en: "The Phoenix", de: "Der Phönix" },
+        "logro_el_fenix_descripcion": {
+            es: "Gana una mano tras entrar en ella con menos del 10% de tu stack inicial en juego.",
+            en: "Win a hand after entering it with less than 10% of your starting stack in play.",
+            de: "Gewinne eine Hand, nachdem du mit weniger als 10 % deines Startstacks eingestiegen bist."
+        },
+        "logro_la_corona_nombre": { es: "La Corona", en: "The Crown", de: "Die Krone" },
+        "logro_la_corona_descripcion": {
+            es: "Muestra una escalera real en un showdown.", en: "Show a royal flush at a showdown.",
+            de: "Zeige einen Royal Flush bei einem Showdown."
+        },
+        "logro_escalera_color_nombre": { es: "Escalera de Color", en: "Straight Flush", de: "Straight Flush" },
+        "logro_escalera_color_descripcion": {
+            es: "Muestra una escalera de color en un showdown.", en: "Show a straight flush at a showdown.",
+            de: "Zeige einen Straight Flush bei einem Showdown."
+        },
+        "logro_poker_ases_nombre": { es: "Póker de Ases", en: "Quad Aces", de: "Vierling Asse" },
+        "logro_poker_ases_descripcion": {
+            es: "Consigue un póker de ases en un showdown.", en: "Get four of a kind aces at a showdown.",
+            de: "Erziele einen Vierling Asse bei einem Showdown."
+        },
+        "logro_barrida_total_nombre": { es: "Rey de la Mesa", en: "King of the Table", de: "König des Tisches" },
+        "logro_barrida_total_descripcion": {
+            es: "Gana una partida quedándote con todas las fichas de la mesa.",
+            en: "Win a game by taking every chip at the table.",
+            de: "Gewinne eine Partie, indem du alle Chips am Tisch einsammelst."
+        },
+        "logro_centurion_nombre": { es: "Centurión", en: "Centurion", de: "Zenturio" },
+        "logro_centurion_descripcion": {
+            es: "Gana 100 manos en total.", en: "Win 100 hands in total.", de: "Gewinne insgesamt 100 Hände."
+        },
+        "logro_reto_solitario_1_nombre": { es: "Aprendiz de mesa", en: "Table Apprentice", de: "Tischlehrling" },
+        "logro_reto_solitario_1_descripcion": {
+            es: "Gana el primer reto de Torneos Solitario (2 bots, fácil).",
+            en: "Win the first Solo Challenge (2 bots, easy).",
+            de: "Gewinne die erste Solo-Herausforderung (2 Bots, leicht)."
+        },
+        "logro_reto_solitario_2_nombre": {
+            es: "Cazador de mesa llena", en: "Full Table Hunter", de: "Jäger des vollen Tisches"
+        },
+        "logro_reto_solitario_2_descripcion": {
+            es: "Gana el segundo reto de Torneos Solitario (5 bots, fácil).",
+            en: "Win the second Solo Challenge (5 bots, easy).",
+            de: "Gewinne die zweite Solo-Herausforderung (5 Bots, leicht)."
+        },
+        "logro_reto_solitario_3_nombre": { es: "Duelista", en: "Duelist", de: "Duellant" },
+        "logro_reto_solitario_3_descripcion": {
+            es: "Gana el tercer reto de Torneos Solitario (cara a cara contra un bot experto).",
+            en: "Win the third Solo Challenge (heads-up against an expert bot).",
+            de: "Gewinne die dritte Solo-Herausforderung (eins gegen eins gegen einen Experten-Bot)."
+        },
+        "logro_reto_solitario_4_nombre": {
+            es: "Rápido y certero", en: "Fast and Precise", de: "Schnell und Treffsicher"
+        },
+        "logro_reto_solitario_4_descripcion": {
+            es: "Gana el cuarto reto de Torneos Solitario (contrarreloj, manos limitadas).",
+            en: "Win the fourth Solo Challenge (against the clock, limited hands).",
+            de: "Gewinne die vierte Solo-Herausforderung (Zeitdruck, begrenzte Hände)."
+        },
+        "logro_reto_solitario_5_nombre": {
+            es: "Rey del Solitario", en: "King of Solo Play", de: "König des Solospiels"
+        },
+        "logro_reto_solitario_5_descripcion": {
+            es: "Gana el quinto y último reto de Torneos Solitario (5 bots expertos).",
+            en: "Win the fifth and final Solo Challenge (5 expert bots).",
+            de: "Gewinne die fünfte und letzte Solo-Herausforderung (5 Experten-Bots)."
+        },
+
+        // Objetos de tienda: tanto los COMPRABLES sueltos como los que
+        // concede un logro (títulos y decoraciones -- mismo "shop_items",
+        // ver AccountManager.cpp) comparten esta única tabla por código.
+        "objeto_titulo_primera_sangre_nombre": { es: "Primera sangre", en: "First Blood", de: "Erstes Blut" },
+        "objeto_titulo_trasnochador_nombre": { es: "Trasnochador", en: "Night Owl", de: "Nachtschwärmer" },
+        "objeto_titulo_club_cien_nombre": { es: "Club de los Cien", en: "Century Club", de: "Klub der Hundert" },
+        "objeto_titulo_manos_hierro_nombre": { es: "Manos de hierro", en: "Iron Hands", de: "Eiserne Hände" },
+        "objeto_titulo_circulo_cerrado_nombre": {
+            es: "Círculo cerrado", en: "Inner Circle", de: "Geschlossener Kreis"
+        },
+        "objeto_ojo_vigilante_nombre": { es: "Ojo vigilante", en: "Watchful Eye", de: "Wachsames Auge" },
+        "objeto_titulo_farolero_nombre": { es: "El Farolero", en: "The Bluffer", de: "Der Bluffer" },
+        "objeto_colmillo_nombre": { es: "Colmillo", en: "Fang", de: "Reißzahn" },
+        "objeto_titulo_fenix_nombre": { es: "El Fénix", en: "The Phoenix", de: "Der Phönix" },
+        "objeto_mano_real_nombre": { es: "Mano Real", en: "Royal Hand", de: "Königliche Hand" },
+        "objeto_titulo_mano_real_nombre": { es: "Mano Real", en: "Royal Hand", de: "Königliche Hand" },
+        "objeto_escalera_diamantes_nombre": {
+            es: "Escalera de diamantes", en: "Diamond Staircase", de: "Diamant-Treppe"
+        },
+        "objeto_titulo_escalon_encima_nombre": {
+            es: "Un escalón por encima", en: "A Cut Above", de: "Eine Stufe darüber"
+        },
+        "objeto_cuatro_ases_nombre": { es: "Cuatro ases", en: "Four Aces", de: "Vier Asse" },
+        "objeto_titulo_as_bajo_manga_nombre": {
+            es: "As bajo la manga", en: "Ace Up the Sleeve", de: "Ass im Ärmel"
+        },
+        "objeto_corona_real_nombre": { es: "Corona real", en: "Royal Crown", de: "Königskrone" },
+        "objeto_titulo_rey_mesa_nombre": { es: "Rey de la mesa", en: "King of the Table", de: "König des Tisches" },
+        "objeto_titulo_centurion_nombre": { es: "Centurión", en: "Centurion", de: "Zenturio" },
+        "objeto_titulo_aprendiz_mesa_nombre": {
+            es: "Aprendiz de mesa", en: "Table Apprentice", de: "Tischlehrling"
+        },
+        "objeto_titulo_cazador_mesa_nombre": {
+            es: "Cazador de mesa llena", en: "Full Table Hunter", de: "Jäger des vollen Tisches"
+        },
+        "objeto_titulo_duelista_nombre": { es: "Duelista", en: "Duelist", de: "Duellant" },
+        "objeto_titulo_rapido_certero_nombre": {
+            es: "Rápido y certero", en: "Fast and Precise", de: "Schnell und Treffsicher"
+        },
+        "objeto_titulo_rey_solitario_nombre": {
+            es: "Rey del Solitario", en: "King of Solo Play", de: "König des Solospiels"
+        },
+        // Comprables sueltos (sin logro detrás).
+        "objeto_trenzado_nombre": { es: "Trenzado", en: "Braided", de: "Geflochten" },
+        "objeto_grabado_nombre": { es: "Grabado", en: "Engraved", de: "Graviert" },
+        "objeto_facetado_nombre": { es: "Facetado", en: "Faceted", de: "Facettiert" },
+        "objeto_canto_ficha_nombre": { es: "Canto de ficha", en: "Chip Edge", de: "Chip-Kante" },
+        "objeto_pulso_nombre": { es: "Pulso", en: "Pulse", de: "Puls" },
+        "objeto_gema_roja_nombre": { es: "Gema engastada (roja)", en: "Set Gem (red)", de: "Gefasster Edelstein (rot)" },
+        "objeto_gema_azul_nombre": {
+            es: "Gema engastada (azul)", en: "Set Gem (blue)", de: "Gefasster Edelstein (blau)"
+        },
+        "objeto_punto_de_luz_nombre": { es: "Punto de luz", en: "Point of Light", de: "Lichtpunkt" },
+        "objeto_pila_fichas_nombre": { es: "Pila de fichas", en: "Chip Stack", de: "Chipstapel" },
+        "objeto_cinta_ondulada_nombre": { es: "Cinta ondulada", en: "Wavy Ribbon", de: "Gewelltes Band" },
+        "objeto_corona_laurel_nombre": { es: "Corona de laurel", en: "Laurel Crown", de: "Lorbeerkrone" },
+        "objeto_constelacion_nombre": { es: "Constelación", en: "Constellation", de: "Konstellation" },
+        "objeto_palos_en_fila_nombre": { es: "Palos en fila", en: "Suits in a Row", de: "Farben in einer Reihe" },
+        "objeto_corona_inicial_nombre": { es: "Corona inicial", en: "Starter Crown", de: "Anfangskrone" },
+        "objeto_titulo_buena_estrella_nombre": { es: "Buena estrella", en: "Lucky Star", de: "Glücksstern" },
+        "objeto_titulo_perro_viejo_nombre": { es: "Perro viejo", en: "Old Hand", de: "Alter Hase" },
+        "objeto_titulo_veterano_nombre": { es: "Veterano", en: "Veteran", de: "Veteran" },
+        "objeto_titulo_implacable_nombre": { es: "Implacable", en: "Relentless", de: "Unerbittlich" },
+        "objeto_titulo_sangre_fria_nombre": { es: "Sangre fría", en: "Cold Blood", de: "Kaltblütig" },
+        "objeto_titulo_tahur_nombre": { es: "Tahúr", en: "Card Shark", de: "Kartenhai" },
+        "objeto_titulo_cara_piedra_nombre": { es: "Cara de piedra", en: "Poker Face", de: "Pokerface" },
+        "objeto_titulo_nervios_acero_nombre": { es: "Nervios de acero", en: "Nerves of Steel", de: "Nerven aus Stahl" },
+        "objeto_titulo_ultima_ficha_nombre": { es: "Última ficha", en: "Last Chip", de: "Letzter Chip" },
+        "objeto_titulo_rompebancas_nombre": { es: "Rompebancas", en: "Bank Breaker", de: "Bankbrecher" },
+        "objeto_titulo_la_casa_nombre": { es: "La Casa", en: "The House", de: "Das Haus" },
     })
 }
