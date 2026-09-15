@@ -35,8 +35,16 @@ Popup {
     // tocar fuera, botón Cancelar) — esos SÍ cuentan como cancelar.
     property bool _confirmando: false
 
+    // Botón de ojo (mostrar/ocultar) -- pedido real de usuarios que lo
+    // echaban en falta, sobre todo en móvil (2026-09-14). Siempre arranca
+    // oculta cada vez que se abre el popup, aunque la última vez se
+    // hubiera dejado visible -- no hay motivo para recordar ese estado
+    // entre una contraseña y la siguiente.
+    property bool mostrarPassword: false
+
     function abrir(valorInicial) {
         campoTexto.text = valorInicial !== undefined ? valorInicial : "";
+        mostrarPassword = false;
         _confirmando = false;
         open();
     }
@@ -100,10 +108,13 @@ Popup {
                 id: campoTexto
                 anchors.fill: parent
                 anchors.margins: 4 * Tema.escala
+                anchors.rightMargin: campoEmergente.esPassword ? Tema.tactil : 4 * Tema.escala
                 readOnly: campoEmergente.soloNumerico
                 // esPassword: contraseñas (login/registro/cambiar contraseña)
-                // -- nunca en claro, ni siquiera en un popup modal propio.
-                echoMode: campoEmergente.esPassword ? TextInput.Password : TextInput.Normal
+                // -- nunca en claro por defecto, ni siquiera en un popup
+                // modal propio, salvo que el jugador pulse el ojo de abajo
+                // para revisar lo que tecleó.
+                echoMode: (campoEmergente.esPassword && !campoEmergente.mostrarPassword) ? TextInput.Password : TextInput.Normal
                 // ImhNoPredictiveText: sin esto, el IME de Android mantiene
                 // una "región de composición" (texto subrayado a medio
                 // escribir) que se desincroniza del cursor real de QML --
@@ -118,6 +129,14 @@ Popup {
                 color: Tema.colorTexto
                 background: null
                 onAccepted: campoEmergente.confirmar()
+            }
+
+            IconoOjo {
+                visible: campoEmergente.esPassword
+                oculto: !campoEmergente.mostrarPassword
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                onToggled: campoEmergente.mostrarPassword = !campoEmergente.mostrarPassword
             }
         }
 

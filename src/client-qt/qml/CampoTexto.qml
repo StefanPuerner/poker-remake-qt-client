@@ -15,14 +15,25 @@ import QtQuick.Controls
 
 TextField {
     id: campo
+    // Botón de ojo (mostrar/ocultar) -- pedido real de usuarios que lo
+    // echaban en falta, sobre todo en móvil (ver el gemelo de este
+    // fichero en qml-mobile/), 2026-09-14. Puesto aquí en el componente
+    // COMÚN, no en cada TextField de contraseña por separado, para que
+    // los 5 campos de Login/Registro/Cuenta lo hereden de una vez con
+    // solo poner "esPassword: true".
+    property bool esPassword: false
+    property bool mostrarPassword: false
+    echoMode: campo.esPassword && !campo.mostrarPassword ? TextInput.Password : TextInput.Normal
     color: Tema.colorTexto
     placeholderTextColor: Tema.colorTextoMuyTenue
     font.pixelSize: 15 * Tema.escala
     // Sitio suficiente para que el texto no roce el aro dorado. Con
     // padding lateral de verdad, además, un campo centrado y otro
-    // alineado a la izquierda se ven igual de holgados.
+    // alineado a la izquierda se ven igual de holgados. Con el ojo
+    // encima, el hueco de la derecha crece para que el texto no se
+    // meta debajo del icono.
     leftPadding: 12 * Tema.escala
-    rightPadding: 12 * Tema.escala
+    rightPadding: (campo.esPassword ? 38 : 12) * Tema.escala
     topPadding: 15 * Tema.escala
     bottomPadding: 15 * Tema.escala
     // El hueco necesita alto para leerse como tal: un campo que le queda
@@ -41,5 +52,14 @@ TextField {
                              contentHeight + topPadding + bottomPadding)
     background: MarcoHueco {
         activo: campo.activeFocus
+    }
+
+    IconoOjo {
+        visible: campo.esPassword
+        oculto: !campo.mostrarPassword
+        anchors.right: parent.right
+        anchors.rightMargin: 4 * Tema.escala
+        anchors.verticalCenter: parent.verticalCenter
+        onToggled: campo.mostrarPassword = !campo.mostrarPassword
     }
 }

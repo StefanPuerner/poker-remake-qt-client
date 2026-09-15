@@ -150,6 +150,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PaloIcono.qml
             src/client-qt/qml/IconoFicha.qml
             src/client-qt/qml/IconoTrebol.qml
+            src/client-qt/qml/IconoOjo.qml
             src/client-qt/qml/Asiento.qml
             src/client-qt/qml/AsientoMini.qml
             src/client-qt/qml/Mesa.qml
@@ -436,6 +437,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/BotonRelleno.qml
             # Ver el comentario gemelo de PokerClientQt más arriba.
             src/client-qt/qml-mobile/IconoLupa.qml
+            src/client-qt/qml-mobile/IconoOjo.qml
             src/client-qt/qml-mobile/MarcoHueco.qml
             src/client-qt/qml-mobile/MarcoRelieve.qml
             src/client-qt/qml-mobile/CampoTexto.qml
