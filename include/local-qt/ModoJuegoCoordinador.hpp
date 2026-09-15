@@ -47,6 +47,15 @@ class ModoJuegoCoordinador : public QObject {
   // NetworkClient (al iniciar sesión), mientras que el dato vive en el
   // cliente local. Ver LocalGameClient::xpOfflinePendiente().
   Q_PROPERTY(int xpOfflinePendiente READ xpOfflinePendiente NOTIFY xpOfflinePendienteCambio)
+  // Victoria básica/logros/contador ganados sin conexión -- mismo motivo
+  // que xpOfflinePendiente de arriba. Ver AccountManager::
+  // sincronizarProgresoOffline().
+  Q_PROPERTY(bool ganoPartidaPendienteOffline READ ganoPartidaPendienteOffline
+                 NOTIFY ganoPartidaPendienteOfflineCambio)
+  Q_PROPERTY(QStringList logrosPendientesOffline READ logrosPendientesOffline
+                 NOTIFY logrosPendientesOfflineCambio)
+  Q_PROPERTY(int boteSinShowdownPendienteOffline READ boteSinShowdownPendienteOffline
+                 NOTIFY boteSinShowdownPendienteOfflineCambio)
 
  public:
   ModoJuegoCoordinador(QQmlContext* contexto, NetworkClient* clienteRed,
@@ -84,6 +93,12 @@ class ModoJuegoCoordinador : public QObject {
     // a través de este objeto (ver la Q_PROPERTY de arriba).
     connect(clienteLocal_, &LocalGameClient::xpOfflinePendienteCambio, this,
             &ModoJuegoCoordinador::xpOfflinePendienteCambio);
+    connect(clienteLocal_, &LocalGameClient::ganoPartidaPendienteOfflineCambio, this,
+            &ModoJuegoCoordinador::ganoPartidaPendienteOfflineCambio);
+    connect(clienteLocal_, &LocalGameClient::logrosPendientesOfflineCambio, this,
+            &ModoJuegoCoordinador::logrosPendientesOfflineCambio);
+    connect(clienteLocal_, &LocalGameClient::boteSinShowdownPendienteOfflineCambio, this,
+            &ModoJuegoCoordinador::boteSinShowdownPendienteOfflineCambio);
   }
 
   Q_INVOKABLE void activarModoLocal() {
@@ -105,15 +120,29 @@ class ModoJuegoCoordinador : public QObject {
   bool hayIdentidadCacheada() const { return clienteLocal_->hayIdentidadCacheada(); }
   QString usernameCacheado() const { return clienteLocal_->usernameCacheado(); }
   int xpOfflinePendiente() const { return clienteLocal_->xpOfflinePendiente(); }
+  bool ganoPartidaPendienteOffline() const { return clienteLocal_->ganoPartidaPendienteOffline(); }
+  QStringList logrosPendientesOffline() const { return clienteLocal_->logrosPendientesOffline(); }
+  int boteSinShowdownPendienteOffline() const {
+    return clienteLocal_->boteSinShowdownPendienteOffline();
+  }
 
   /// Lo llama QML cuando el servidor confirma cuánto XP offline acreditó.
   Q_INVOKABLE void confirmarXpOfflineSincronizado(int acreditado) {
     clienteLocal_->confirmarXpOfflineSincronizado(acreditado);
   }
 
+  /// Lo llama QML cuando el servidor confirma qué progreso offline acreditó.
+  Q_INVOKABLE void confirmarProgresoOfflineSincronizado(const QStringList& logrosDesbloqueados,
+                                                        int boteSinShowdownAcreditado) {
+    clienteLocal_->confirmarProgresoOfflineSincronizado(logrosDesbloqueados, boteSinShowdownAcreditado);
+  }
+
  signals:
   void identidadCacheadaCambio();
   void xpOfflinePendienteCambio();
+  void ganoPartidaPendienteOfflineCambio();
+  void logrosPendientesOfflineCambio();
+  void boteSinShowdownPendienteOfflineCambio();
 
  private:
   void recordarUsername(const QString& username) {

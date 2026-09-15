@@ -215,6 +215,16 @@ ApplicationWindow {
             redcliente.sincronizarXpOffline(servidorHost, servidorPuerto, tokenSesion,
                                             modoJuego.xpOfflinePendiente);
         }
+        // Victoria básica (marco de Hierro)/logros/contador ganados sin
+        // conexión desde la última vez que hubo servidor -- mismo criterio
+        // que el XP de arriba, mensaje aparte (ver AccountManager::
+        // sincronizarProgresoOffline()).
+        if (modoJuego.ganoPartidaPendienteOffline || modoJuego.logrosPendientesOffline.length > 0
+                || modoJuego.boteSinShowdownPendienteOffline > 0) {
+            redcliente.sincronizarProgresoOffline(servidorHost, servidorPuerto, tokenSesion,
+                    modoJuego.ganoPartidaPendienteOffline, modoJuego.logrosPendientesOffline,
+                    modoJuego.boteSinShowdownPendienteOffline);
+        }
     }
 
     // Entra en una sesión sin conexión completa -- ver el comentario
@@ -594,6 +604,33 @@ ApplicationWindow {
             "Rey del Solitario": "reto_solitario_5"
         };
         return mapa[nombreEs] || "";
+    }
+    // Mensajes del servidor con un dato variable dentro -- ver el
+    // comentario gemelo en qml/Main.qml.
+    function resolverMensajeServidor(mensaje) {
+        var i = mensaje.indexOf(":");
+        if (i < 0) return Idioma.t(mensaje);
+        return Idioma.tf(mensaje.substring(0, i), [mensaje.substring(i + 1)]);
+    }
+    // Nombre de combinación de póker -- ver el comentario gemelo en
+    // qml/Main.qml.
+    function comboLocalizado(comboEs) {
+        var mapa = {
+            "Carta Alta": "combo_carta_alta",
+            "Pareja": "combo_pareja",
+            "Doble Pareja": "combo_doble_pareja",
+            "Trio": "combo_trio",
+            "Escalera": "combo_escalera",
+            "Color": "combo_color",
+            "Full House": "combo_full_house",
+            "Poker": "combo_poker",
+            "Escalera Color": "combo_escalera_color",
+            "Escalera Real": "combo_escalera_real"
+        };
+        var clave = mapa[comboEs];
+        if (!clave) return comboEs;
+        var t = Idioma.t(clave);
+        return t === clave ? comboEs : t;
     }
     function colorRareza(r) {
         return r === "oro" ? "#e3bb82" : r === "plata" ? "#9aa4ab" : r === "bronce" ? "#c98f5f" : "#7d848f";
@@ -1850,6 +1887,19 @@ ApplicationWindow {
             }
             mensajeErrorConexion = mensaje;
         }
+        // Respuesta a sincronizarProgresoOffline() -- victoria básica (marco
+        // de Hierro)/logros/contador ganados sin conexión. Se confirma con
+        // lo que el servidor dice que aplicó de verdad, y se refrescan
+        // estadísticas Y logros para que el marco/logro se vea de inmediato
+        // al reconectar, sin tener que reabrir sesión.
+        function onProgresoOfflineSincronizado(marcoBasicoOtorgado, logrosDesbloqueados, boteSinShowdownAcreditado, mensaje) {
+            modoJuego.confirmarProgresoOfflineSincronizado(logrosDesbloqueados, boteSinShowdownAcreditado);
+            if (marcoBasicoOtorgado || logrosDesbloqueados.length > 0) {
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+                redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+            }
+            if (mensaje !== "") mensajeErrorConexion = mensaje;
+        }
         function onEstadisticasCuentaCambiaron() {
             var m = redcliente.estadisticasCuenta;
             ventana.statsManosJugadas = m.manosJugadas;
@@ -1914,7 +1964,7 @@ ApplicationWindow {
             pantalla = "Inicio";
             // Con motivo, el servidor dijo por qué (p. ej. la partida terminó
             // mientras estabas fuera); sin él, se agotó el minuto de reintentos.
-            mensajeErrorConexion = motivo ? motivo : "Se perdió la conexión con el servidor.";
+            mensajeErrorConexion = motivo ? motivo : "error_conexion_perdida";
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
     }
@@ -2092,7 +2142,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: Idioma.t(ventana.mensajeErrorConexion)
+            text: ventana.resolverMensajeServidor(ventana.mensajeErrorConexion)
         }
     }
 
@@ -2234,7 +2284,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: Idioma.t(ventana.mensajeErrorLogin)
+            text: ventana.resolverMensajeServidor(ventana.mensajeErrorLogin)
             visible: ventana.mensajeErrorLogin !== ""
         }
         BotonContorno {
@@ -2410,7 +2460,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: Idioma.t(ventana.mensajeErrorLogin)
+            text: ventana.resolverMensajeServidor(ventana.mensajeErrorLogin)
             visible: ventana.mensajeErrorLogin !== ""
         }
         BotonContorno {
@@ -2615,7 +2665,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: Idioma.t(ventana.mensajeErrorConexion)
+            text: ventana.resolverMensajeServidor(ventana.mensajeErrorConexion)
         }
     }
 
@@ -3481,13 +3531,37 @@ ApplicationWindow {
                 spacing: 16 * Tema.escala
                 width: 300 * Tema.escala
 
-                Text {
-                    text: Idioma.t("titulo_torneos_solitario")
-                    color: Tema.colorTexto
-                    font.bold: true
-                    font.pixelSize: 18 * Tema.escala
-                    font.family: Tema.fuenteElegante
+                Row {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 6 * Tema.escala
+                    Text {
+                        text: Idioma.t("titulo_torneos_solitario")
+                        color: Tema.colorTexto
+                        font.bold: true
+                        font.pixelSize: 18 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    // Insignia "Experimental" -- ver el comentario largo
+                    // junto a las claves en Idioma.qml.
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        radius: height / 2
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Tema.colorAccent
+                        width: etiquetaExperimentalMovil.implicitWidth + 14 * Tema.escala
+                        height: etiquetaExperimentalMovil.implicitHeight + 6 * Tema.escala
+                        Text {
+                            id: etiquetaExperimentalMovil
+                            anchors.centerIn: parent
+                            text: Idioma.t("etiqueta_experimental")
+                            color: Tema.colorAccent
+                            font.bold: true
+                            font.pixelSize: 9 * Tema.escala
+                            font.capitalization: Font.AllUppercase
+                        }
+                    }
                 }
                 Text {
                     width: parent.width
@@ -3496,6 +3570,15 @@ ApplicationWindow {
                     color: Tema.colorTextoTenue
                     font.pixelSize: 12 * Tema.escala
                     text: Idioma.t("torneos_solitario_subtitulo")
+                }
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: Tema.colorAccent
+                    font.pixelSize: 11 * Tema.escala
+                    font.italic: true
+                    text: Idioma.t("torneos_solitario_aviso_experimental")
                 }
                 Text {
                     visible: ventana.mensajeTorneos !== ""
@@ -3709,7 +3792,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.topMargin: 6 * Tema.escala
             width: parent.width
-            text: Idioma.t(ventana.mensajeErrorSocial)
+            text: ventana.resolverMensajeServidor(ventana.mensajeErrorSocial)
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
             wrapMode: Text.WordWrap
@@ -4438,7 +4521,7 @@ ApplicationWindow {
                                 { etiqueta: Idioma.t("stat_manos_ganadas"), valor: ventana.statsManosGanadas + "" },
                                 { etiqueta: Idioma.t("stat_mayor_bote_ganado"), valor: ventana.statsMayorBote + "", esDinero: true },
                                 { etiqueta: Idioma.t("stat_mejor_mano"), valor: ventana.statsMejorManoFecha > 0
-                                      ? ventana.statsMejorManoNombre + " (" + ventana.formatearFechaCorta(ventana.statsMejorManoFecha) + ")"
+                                      ? ventana.comboLocalizado(ventana.statsMejorManoNombre) + " (" + ventana.formatearFechaCorta(ventana.statsMejorManoFecha) + ")"
                                       : "—" }
                             ]
                             delegate: Row {
@@ -4654,7 +4737,7 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         color: Tema.colorPeligro
                         font.pixelSize: 11 * Tema.escala
-                        text: Idioma.t(ventana.mensajeErrorLogin)
+                        text: ventana.resolverMensajeServidor(ventana.mensajeErrorLogin)
                         visible: ventana.mensajeErrorLogin !== ""
                     }
 
@@ -5708,7 +5791,7 @@ ApplicationWindow {
                             visible: ventana.mensajeTienda !== ""
                             wrapMode: Text.WordWrap
                             color: Tema.colorPeligro
-                            text: Idioma.t(ventana.mensajeTienda)
+                            text: ventana.resolverMensajeServidor(ventana.mensajeTienda)
                             font.pixelSize: 11 * Tema.escala
                         }
                     }
@@ -6475,7 +6558,7 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: Tema.colorPeligro
             font.pixelSize: 11 * Tema.escala
-            text: Idioma.t(ventana.mensajeErrorConexion)
+            text: ventana.resolverMensajeServidor(ventana.mensajeErrorConexion)
         }
 
         Row {
@@ -6664,7 +6747,7 @@ ApplicationWindow {
         }
         Text {
             visible: ventana.mensajeEnEspera !== ""
-            text: ventana.mensajeEnEspera
+            text: ventana.resolverMensajeServidor(ventana.mensajeEnEspera)
             color: Tema.colorAccent
             font.pixelSize: 12 * Tema.escala
             wrapMode: Text.WordWrap
@@ -6735,9 +6818,9 @@ ApplicationWindow {
             rondaActual: ventana.rondaActual
             manoActual: ventana.manoActual
             objetivoManos: ventana.objetivoManos
-            comboActual: ventana.comboActual
-            comboProbable: ventana.comboProbable
-            comboMaxima: ventana.comboMaxima
+            comboActual: ventana.comboLocalizado(ventana.comboActual)
+            comboProbable: ventana.comboLocalizado(ventana.comboProbable)
+            comboMaxima: ventana.comboLocalizado(ventana.comboMaxima)
             miCarta1: ventana.miCarta1
             miCarta2: ventana.miCarta2
             miSaldoActual: ventana.miSaldoActual
@@ -6980,7 +7063,7 @@ ApplicationWindow {
                 width: Math.min(280 * Tema.escala, ventana.width - 80 * Tema.escala)
                 Text {
                     width: parent.width
-                    text: ventana.votoExtensionMensaje
+                    text: ventana.resolverMensajeServidor(ventana.votoExtensionMensaje)
                     color: Tema.colorAccent
                     font.bold: true
                     font.pixelSize: 13 * Tema.escala
@@ -7028,7 +7111,7 @@ ApplicationWindow {
                 width: Math.min(280 * Tema.escala, ventana.width - 80 * Tema.escala)
                 Text {
                     width: parent.width
-                    text: ventana.manosExtraMensaje
+                    text: ventana.resolverMensajeServidor(ventana.manosExtraMensaje)
                     color: Tema.colorAccent
                     font.bold: true
                     font.pixelSize: 13 * Tema.escala
@@ -7169,7 +7252,7 @@ ApplicationWindow {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: ventana.mejorManoFinal + " — " + ventana.mejorManoJugadorFinal
+                        text: ventana.comboLocalizado(ventana.mejorManoFinal) + " — " + ventana.mejorManoJugadorFinal
                         color: Tema.colorAccent
                         font.bold: true
                         font.family: Tema.fuenteElegante

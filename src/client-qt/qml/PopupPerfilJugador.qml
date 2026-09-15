@@ -41,6 +41,27 @@ Popup {
     function colorRareza(r) {
         return r === "oro" ? "#e3bb82" : r === "plata" ? "#9aa4ab" : r === "bronce" ? "#c98f5f" : "#7d848f";
     }
+    // Nombre de combinación de póker (mejor mano) -- mismo mapa/motivo que
+    // el gemelo comboLocalizado() de Main.qml (fichero separado, sin acceso
+    // a sus funciones -- ver el comentario de cabecera de este fichero).
+    function comboLocalizado(comboEs) {
+        var mapa = {
+            "Carta Alta": "combo_carta_alta",
+            "Pareja": "combo_pareja",
+            "Doble Pareja": "combo_doble_pareja",
+            "Trio": "combo_trio",
+            "Escalera": "combo_escalera",
+            "Color": "combo_color",
+            "Full House": "combo_full_house",
+            "Poker": "combo_poker",
+            "Escalera Color": "combo_escalera_color",
+            "Escalera Real": "combo_escalera_real"
+        };
+        var clave = mapa[comboEs];
+        if (!clave) return comboEs;
+        var t = Idioma.t(clave);
+        return t === clave ? comboEs : t;
+    }
 
     readonly property var perfil: redcliente.perfilJugador
     // Evita mostrar el perfil de la última cuenta consultada durante el
@@ -164,7 +185,7 @@ Popup {
                         { etiqueta: Idioma.t("stat_manos_ganadas"), valor: (popup.perfil.manosGanadas || 0) + "" },
                         { etiqueta: Idioma.t("stat_mayor_bote_ganado"), valor: (popup.perfil.mayorBote || 0) + "", esDinero: true },
                         { etiqueta: Idioma.t("stat_mejor_mano"), valor: (popup.perfil.mejorManoFecha || 0) > 0
-                              ? popup.perfil.mejorManoNombre + " (" + new Date(popup.perfil.mejorManoFecha * 1000).toLocaleDateString() + ")"
+                              ? popup.comboLocalizado(popup.perfil.mejorManoNombre) + " (" + new Date(popup.perfil.mejorManoFecha * 1000).toLocaleDateString() + ")"
                               : "—" }
                     ]
                     delegate: Row {

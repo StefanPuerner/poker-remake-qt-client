@@ -87,6 +87,9 @@ class LocalGameClient : public QObject {
     logrosCacheados_ = ajustes.value("offline/logros").toList();
     tiendaCacheada_ = ajustes.value("offline/tienda").toList();
     xpOfflinePendiente_ = ajustes.value("offline/xpPendiente").toInt();
+    ganoPartidaPendienteOffline_ = ajustes.value("offline/ganoPartidaPendiente").toBool();
+    logrosPendientesOffline_ = ajustes.value("offline/logrosPendientes").toStringList();
+    boteSinShowdownPendienteOffline_ = ajustes.value("offline/boteSinShowdownPendiente").toInt();
   }
 
   ~LocalGameClient() override {
@@ -130,6 +133,39 @@ class LocalGameClient : public QObject {
     xpOfflinePendiente_ = 0;
     QSettings().setValue("offline/xpPendiente", 0);
     emit xpOfflinePendienteCambio();
+  }
+
+  // ── Victoria básica/logros/contador ganados sin conexión (Fase 7.1) ─────
+  //  Mismo patrón que el XP de arriba -- se acumula aquí, se persiste en
+  //  QSettings y se entrega al servidor en la próxima sesión con conexión.
+  //  Ver AccountManager::sincronizarProgresoOffline() para el modelo de
+  //  confianza completo.
+
+  /// ¿Hay una victoria offline pendiente de entregar al servidor?
+  Q_INVOKABLE bool ganoPartidaPendienteOffline() const { return ganoPartidaPendienteOffline_; }
+  /// Logros (sin contador) pendientes de entregar al servidor.
+  Q_INVOKABLE QStringList logrosPendientesOffline() const { return logrosPendientesOffline_; }
+  /// "veces_gano_sin_showdown" pendiente de entregar al servidor.
+  Q_INVOKABLE int boteSinShowdownPendienteOffline() const { return boteSinShowdownPendienteOffline_; }
+
+  /// Lo llama QML cuando el servidor confirma qué se acreditó de verdad.
+  /// A diferencia del XP, la victoria básica y los logros son idempotentes
+  /// y sin tope -- si el mensaje llegó a enviarse, el servidor ya los
+  /// concedió (o ya los tenía), así que se limpian siempre. El contador de
+  /// bote sin showdown SÍ puede llegar recortado (igual que el XP): lo no
+  /// acreditado se descarta a propósito, no se acumula para siempre.
+  Q_INVOKABLE void confirmarProgresoOfflineSincronizado(const QStringList& /*logrosDesbloqueados*/,
+                                                        int /*boteSinShowdownAcreditado*/) {
+    ganoPartidaPendienteOffline_ = false;
+    logrosPendientesOffline_.clear();
+    boteSinShowdownPendienteOffline_ = 0;
+    QSettings ajustes;
+    ajustes.setValue("offline/ganoPartidaPendiente", false);
+    ajustes.setValue("offline/logrosPendientes", QStringList());
+    ajustes.setValue("offline/boteSinShowdownPendiente", 0);
+    emit ganoPartidaPendienteOfflineCambio();
+    emit logrosPendientesOfflineCambio();
+    emit boteSinShowdownPendienteOfflineCambio();
   }
 
   /// ¿Debe esta sesión acumular XP? Solo con cuenta cacheada -- de invitado
@@ -334,6 +370,7 @@ class LocalGameClient : public QObject {
   Q_INVOKABLE void consultarTienda(const QString&, quint16, QString) {}
   Q_INVOKABLE void exportarEstadisticas(const QString&, quint16, QString) {}
   Q_INVOKABLE void sincronizarXpOffline(const QString&, quint16, QString, int) {}
+  Q_INVOKABLE void sincronizarProgresoOffline(const QString&, quint16, QString, bool, QStringList, int) {}
   Q_INVOKABLE void comprarObjeto(const QString&, quint16, QString, QString) {}
   Q_INVOKABLE void equiparObjeto(const QString&, quint16, QString, QString, QString, QString = QString()) {}
   // Reclamar recompensa de reto exige conexión real -- ver el comentario
@@ -496,6 +533,11 @@ class LocalGameClient : public QObject {
   /// se entregó al servidor). QML lo usa para saber si tiene algo que
   /// mandar al reconectar.
   void xpOfflinePendienteCambio();
+  /// Mismos motivos que xpOfflinePendienteCambio(), una señal por campo
+  /// pendiente (ver AccountManager::sincronizarProgresoOffline()).
+  void ganoPartidaPendienteOfflineCambio();
+  void logrosPendientesOfflineCambio();
+  void boteSinShowdownPendienteOfflineCambio();
 
   // ── Resto de señales de NetworkClient ─────────────────────────────────
   //
@@ -776,6 +818,26 @@ class LocalGameClient : public QObject {
       QSettings().setValue("offline/xpPendiente", xpOfflinePendiente_);
       emit xpOfflinePendienteCambio();
     });
+    // Mismo criterio que el XP de arriba -- no son relays 1:1, se acumulan
+    // en la bolsa pendiente y se persisten (ver AccountManager::
+    // sincronizarProgresoOffline()).
+    connect(observador_, &LocalGameObserver::partidaGanadaOffline, this, [this]() {
+      if (ganoPartidaPendienteOffline_) return;  // ya estaba puesto, evita un set()+emit de más
+      ganoPartidaPendienteOffline_ = true;
+      QSettings().setValue("offline/ganoPartidaPendiente", true);
+      emit ganoPartidaPendienteOfflineCambio();
+    });
+    connect(observador_, &LocalGameObserver::logroOfflineGanado, this, [this](QString codigo) {
+      if (logrosPendientesOffline_.contains(codigo)) return;
+      logrosPendientesOffline_.append(codigo);
+      QSettings().setValue("offline/logrosPendientes", logrosPendientesOffline_);
+      emit logrosPendientesOfflineCambio();
+    });
+    connect(observador_, &LocalGameObserver::boteSinShowdownOffline, this, [this]() {
+      ++boteSinShowdownPendienteOffline_;
+      QSettings().setValue("offline/boteSinShowdownPendiente", boteSinShowdownPendienteOffline_);
+      emit boteSinShowdownPendienteOfflineCambio();
+    });
     connect(observador_, &LocalGameObserver::finDePartida, this, &LocalGameClient::finDePartida);
     // estadisticasFinListas lleva los datos crudos -- se guardan en las
     // Q_PROPERTY propias y SOLO entonces se emite estadisticasFinCambiaron()
@@ -817,4 +879,7 @@ class LocalGameClient : public QObject {
   QString usernameCacheado_;
   int xpOfflinePendiente_ = 0;
   bool acumularXpOffline_ = false;
+  bool ganoPartidaPendienteOffline_ = false;
+  QStringList logrosPendientesOffline_;
+  int boteSinShowdownPendienteOffline_ = 0;
 };

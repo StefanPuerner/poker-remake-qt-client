@@ -47,6 +47,9 @@ enum class MsgType {
     /// Respuesta a SINCRONIZAR_XP_OFFLINE: "acreditado","reclamado","mensaje".
     /// "acreditado" puede ser menor que "reclamado" si los topes recortaron.
     XP_OFFLINE_SINCRONIZADO,
+    /// Respuesta a SINCRONIZAR_PROGRESO_OFFLINE: "marco_basico_otorgado",
+    /// "logros_desbloqueados" (csv), "bote_sin_showdown_acreditado","mensaje".
+    PROGRESO_OFFLINE_SINCRONIZADO,
 
     // Cliente → servidor
     JOIN_LOBBY,    ///< Solicitud de unión al lobby con nombre elegido.
@@ -75,6 +78,11 @@ enum class MsgType {
     /// único mensaje cuyo número lo calcula el cliente, así que el servidor
     /// lo acota en vez de creérselo: ver AccountManager::sincronizarXpOffline().
     SINCRONIZAR_XP_OFFLINE,
+    /// "token","gano_partida" (0/1),"logros" (csv),"bote_sin_showdown" --
+    /// entrega victoria básica/logros/contador ganados SIN CONEXIÓN. Mismo
+    /// modelo de confianza que SINCRONIZAR_XP_OFFLINE: ver
+    /// AccountManager::sincronizarProgresoOffline().
+    SINCRONIZAR_PROGRESO_OFFLINE,
 
     // Cliente → servidor -- Social. Mismo patrón efímero que
     // CONSULTAR_RANKING salvo PRESENCIA_CONECTAR (única conexión que se

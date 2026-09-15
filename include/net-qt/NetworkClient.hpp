@@ -427,6 +427,36 @@ class NetworkClient : public QObject {
         });
   }
 
+  /**
+   * @brief Entrega al servidor victoria básica/logros/contador ganados SIN
+   * CONEXIÓN -- análogo a sincronizarXpOffline() pero para lo que un humano
+   * ya consigue HOY jugando solo contra bots ONLINE sin ningún umbral
+   * antifarm (ver AccountManager::sincronizarProgresoOffline()): el marco
+   * de Hierro y los logros "trasnochador"/"la_corona"/"escalera_color"/
+   * "poker_ases". No se envía nada si no hay nada pendiente.
+   */
+  Q_INVOKABLE void sincronizarProgresoOffline(const QString& host, quint16 puerto, QString token,
+                                              bool ganoPartida, QStringList logros,
+                                              int boteSinShowdown) {
+    if (token.isEmpty()) return;
+    if (!ganoPartida && logros.isEmpty() && boteSinShowdown <= 0) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::SINCRONIZAR_PROGRESO_OFFLINE,
+                      {{"token", token.toStdString()},
+                       {"gano_partida", ganoPartida ? "1" : "0"},
+                       {"logros", logros.join(',').toStdString()},
+                       {"bote_sin_showdown", std::to_string(boteSinShowdown)}}),
+        [this](const std::string& payload) {
+          QStringList logrosDesbloqueados =
+              QString::fromStdString(net::jsonGetStr(payload, "logros_desbloqueados"))
+                  .split(',', Qt::SkipEmptyParts);
+          emit progresoOfflineSincronizado(
+              net::jsonGetInt(payload, "marco_basico_otorgado") != 0, logrosDesbloqueados,
+              net::jsonGetInt(payload, "bote_sin_showdown_acreditado"),
+              QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+        });
+  }
+
   Q_INVOKABLE void consultarEstadisticas(const QString& host, quint16 puerto, QString token) {
     if (token.isEmpty()) return;
     enviarPeticionEfimera(host, puerto,
@@ -1217,6 +1247,12 @@ class NetworkClient : public QObject {
   /// "reclamado" (topes del servidor); "mensaje" explica el recorte si lo
   /// hubo, y va vacío si se acreditó todo.
   void xpOfflineSincronizado(int acreditado, int reclamado, QString mensaje);
+  /// Respuesta a sincronizarProgresoOffline(). "logrosDesbloqueados" solo
+  /// trae los códigos que de verdad se desbloquearon AHORA (un código ya
+  /// desbloqueado antes, o inválido, no aparece). "boteSinShowdownAcreditado"
+  /// puede ser MENOR que lo reclamado, mismo motivo que el XP.
+  void progresoOfflineSincronizado(bool marcoBasicoOtorgado, QStringList logrosDesbloqueados,
+                                   int boteSinShowdownAcreditado, QString mensaje);
 
  private:
   /**

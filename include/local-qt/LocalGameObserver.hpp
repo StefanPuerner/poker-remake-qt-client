@@ -32,10 +32,19 @@
  * docs/plan-modo-offline.md).
  *
  * Deliberadamente MÁS PEQUEÑO que NetworkObserver: nada de multi-cliente
- * (un único humano posible), nada de reconexión (no hay red que perder),
- * nada de cuentas/progresión/logros (Tréboles/Elo/XP NUNCA offline, ver
- * CLAUDE.md Fase 7) -- todo eso vive "fuera del motor" y se resuelve en
- * capas posteriores, no aquí.
+ * (un único humano posible), nada de reconexión (no hay red que perder), y
+ * sin AccountManager -- no hay base de datos aquí, así que nada se escribe
+ * DE VERDAD hasta que hay servidor otra vez. Lo que este observador sí
+ * calcula localmente y deja pendiente para sincronizar al reconectar
+ * (ver LocalGameClient): XP, victoria básica (marco de Hierro) y los
+ * logros "trasnochador"/"la_corona"/"escalera_color"/"poker_ases" -- el
+ * mismo subconjunto que un humano solo contra bots consigue hoy ONLINE sin
+ * ningún umbral antifarm (ver AccountManager::sincronizarProgresoOffline()
+ * para el porqué exacto de ese subconjunto). Tréboles, Elo, y cualquier
+ * logro que exija ≥2 cuentas reales en la mesa (circulo_cerrado,
+ * manos_de_hierro, el_fenix, barrida_total, primera_sangre, club_de_los_cien,
+ * centurion) siguen fuera de alcance: ninguno tiene sentido con un único
+ * humano posible offline.
  *
  * Construida SIEMPRE en el hilo de la GUI (LocalGameClient::iniciarPartidaLocal(),
  * invocado desde QML) -- sus métodos onXxx() los llama luego el hilo de
@@ -266,9 +275,26 @@ class LocalGameObserver : public QObject, public IGameObserver {
 
   void onMuestraCartas(const std::string& nombre, const std::string& combo,
                        const std::vector<Carta>& cartas,
-                       const std::vector<Carta>& /*combinacion*/) override {
-    // Sin cuentas_ offline: nada de registrarManoMostrada()/logros aquí
-    // (Tréboles/logros nunca offline, ver CLAUDE.md Fase 7).
+                       const std::vector<Carta>& combinacion) override {
+    // Sin cuentas_ offline: nada de registrarManoMostrada() (contador de
+    // combinaciones mostradas) -- ese es un dato puramente informativo de
+    // Cuenta > Perfil, no vale la pena la complejidad de sincronizarlo.
+    // Los 3 logros de showdown SÍ se comprueban aquí, mismo criterio EXACTO
+    // que NetworkObserver::onMuestraCartas() (mismo PokerEngine evaluando),
+    // pero solo para el humano -- ver AccountManager::sincronizarProgresoOffline().
+    if (xpActivo_ && nombre == jugadorHumano_) {
+      if (combo == "Escalera Real") {
+        emit logroOfflineGanado("la_corona");
+      } else if (combo == "Escalera Color") {
+        emit logroOfflineGanado("escalera_color");
+      } else if (combo == "Poker") {
+        int ases = 0;
+        for (const Carta& c : combinacion) {
+          if (c.getValor() == Valor::AS) ++ases;
+        }
+        if (ases >= 4) emit logroOfflineGanado("poker_ases");
+      }
+    }
     QString cartasStr = QString::fromStdString(net::ser::cartasToStr(cartas));
     QString comboQ = QString::fromStdString(combo);
     emit eventoJuego(": " + cartasStr + "  " + comboQ, "showdown", QString::fromStdString(nombre));
@@ -303,8 +329,10 @@ class LocalGameObserver : public QObject, public IGameObserver {
 
   void onGanadorSinShowdown(const std::string& nombre, int bote,
                             const std::string& /*handName*/) override {
-    // Sin cuentas_ offline: nada de registrarManoMostrada()/logros aquí,
-    // igual que onMuestraCartas().
+    // "El Farolero" -- mismo criterio que registrarBoteSinShowdownYComprobarLogro()
+    // online (AccountManager.cpp), pero acotado por tiempo transcurrido al
+    // sincronizar (ver LocalGameClient) en vez de contado sin límite aquí.
+    if (xpActivo_ && nombre == jugadorHumano_) emit boteSinShowdownOffline();
     emit eventoJuego(QString(": +%1").arg(bote), "showdown", QString::fromStdString(nombre));
     if (nombre == jugadorHumano_) humanoGanoEstaMano_ = true;
     emit ganadorSinShowdown(QString::fromStdString(nombre), bote);
@@ -351,7 +379,7 @@ class LocalGameObserver : public QObject, public IGameObserver {
     // disparó todos sus eventos (showdown/ganadores) pero el motor todavía
     // no ha limpiado nada de cara a la siguiente.
     cerrarXpDeLaMano();
-    emit esperandoVoto("Pulsa Enter para continuar a la siguiente mano");
+    emit esperandoVoto("aviso_esperar_voto");
     std::unique_lock<std::mutex> lock(mutexMenu_);
     cvMenu_.wait(lock, [this] { return decisionMenuPendiente_.has_value(); });
     int opcion = *decisionMenuPendiente_;
@@ -367,14 +395,14 @@ class LocalGameObserver : public QObject, public IGameObserver {
       // XP de las manos jugadas se conserva (el umbral antifarm ya filtra a
       // quien solo se retira), sin bono de ganador.
       volcarXpDePartida(/*ganadorEsHumano=*/false);
-      emit abandonaste("Abandonaste la partida.");
+      emit abandonaste("aviso_abandonaste_offline");
     }
     return opcion;
   }
 
   int onPreguntarExtension() override {
     if (!preguntarExtension_) return 0;
-    emit esperandoVotoExtension("¿Quieres seguir jugando más allá del límite de manos?");
+    emit esperandoVotoExtension("aviso_esperar_voto_extension_offline");
     {
       std::unique_lock<std::mutex> lock(mutexExtension_);
       cvExtension_.wait(lock, [this] { return quiereExtenderPendiente_.has_value(); });
@@ -382,7 +410,7 @@ class LocalGameObserver : public QObject, public IGameObserver {
       quiereExtenderPendiente_.reset();
       if (!siExtender) return 0;
     }
-    emit elegirManosExtraPedido("¿Cuántas manos más quieres añadir?");
+    emit elegirManosExtraPedido("aviso_elegir_manos_extra_offline");
     std::unique_lock<std::mutex> lock(mutexExtension_);
     cvExtension_.wait(lock, [this] { return manosExtraPendiente_.has_value(); });
     int manos = *manosExtraPendiente_;
@@ -505,6 +533,17 @@ class LocalGameObserver : public QObject, public IGameObserver {
   /// ganador y el umbral antifarm aplicados). Lo recoge LocalGameClient
   /// para guardarlo hasta que haya servidor al que entregárselo.
   void xpOfflineGanado(int xp);
+  /// Victoria básica (marco de Hierro) conseguida en la partida que acaba
+  /// de terminar -- ver emitirFinPartida(). LocalGameClient la deja
+  /// pendiente hasta que haya servidor al que entregársela.
+  void partidaGanadaOffline();
+  /// Un logro sin contador (ver AccountManager::sincronizarProgresoOffline()
+  /// para la lista exacta) se acaba de conseguir offline. LocalGameClient
+  /// lo añade a su bolsa pendiente, sin duplicar.
+  void logroOfflineGanado(QString codigo);
+  /// El humano acaba de ganar un bote SIN showdown -- un "veces_gano_sin_showdown"
+  /// más para "El Farolero". LocalGameClient lo suma a su bolsa pendiente.
+  void boteSinShowdownOffline();
   /// Datos crudos de fin de partida -- LocalGameClient los guarda en sus
   /// propias Q_PROPERTY (manosDisputadasFinal/etc) y ES QUIEN emite
   /// estadisticasFinCambiaron()/finDePartida() de verdad hacia QML (mismo
@@ -600,7 +639,27 @@ class LocalGameObserver : public QObject, public IGameObserver {
   }
 
   void emitirFinPartida(const PartidaStats& stats, bool porLimite) {
-    volcarXpDePartida(stats.ganadorNombre == jugadorHumano_);
+    bool ganadorEsHumano = stats.ganadorNombre == jugadorHumano_;
+    volcarXpDePartida(ganadorEsHumano);
+    // Victoria básica (marco de Hierro) -- mismo criterio EXACTO que
+    // NetworkObserver::registrarVictoriaBasica(): SIN umbral, cualquier
+    // partida terminada, con o sin bots (ver AccountManager::
+    // sincronizarProgresoOffline()). Solo con cuenta cacheada, igual que
+    // el XP -- de invitado no hay a quién acreditárselo.
+    if (xpActivo_ && ganadorEsHumano) emit partidaGanadaOffline();
+    // "Trasnochador" -- mismo criterio EXACTO que
+    // NetworkObserver::comprobarLogrosDePartida(): termina una partida
+    // entre medianoche y las 05:00, hora LOCAL del jugador (offline no hay
+    // "hora del servidor" -- es la hora de este mismo proceso). Sin umbral,
+    // cualquier cuenta cacheada que estuviera jugando al terminar.
+    if (xpActivo_) {
+      std::time_t ahoraTs = std::time(nullptr);
+      std::tm horaLocal{};
+      localtimePortable(&ahoraTs, &horaLocal);
+      if (horaLocal.tm_hour >= 0 && horaLocal.tm_hour < 5) {
+        emit logroOfflineGanado("trasnochador");
+      }
+    }
     emitirFinPartidaReal(stats, porLimite);
   }
 

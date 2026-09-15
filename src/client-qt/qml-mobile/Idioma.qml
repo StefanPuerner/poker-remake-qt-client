@@ -260,6 +260,16 @@ QtObject {
             en: "A ladder of 5 challenges against bots, each harder than the last. Playing needs no connection -- claiming the reward does.",
             de: "Eine Leiter aus 5 Herausforderungen gegen Bots, jede schwerer als die vorherige. Spielen braucht keine Verbindung -- die Belohnung einlösen schon."
         },
+        // Insignia + aviso de "todavía en obras" -- pedido explícito del
+        // usuario (2026-09-15): dejar claro que esta sección concreta puede
+        // cambiar bastante antes de llegar a la 1.0, para poder activarla
+        // en el repo público (POKER_TORNEOS) sin prometer más de lo que hay.
+        "etiqueta_experimental": { es: "Experimental", en: "Experimental", de: "Experimentell" },
+        "torneos_solitario_aviso_experimental": {
+            es: "Sección experimental: los retos, recompensas y reglas de esta escalera pueden cambiar bastante antes de la versión final.",
+            en: "Experimental section: this ladder's challenges, rewards and rules may change a lot before the final version.",
+            de: "Experimenteller Bereich: Herausforderungen, Belohnungen und Regeln dieser Leiter können sich vor der finalen Version noch stark ändern."
+        },
         "marca_completado": { es: "✓ Completado", en: "✓ Completed", de: "✓ Abgeschlossen" },
         "reto_recompensa": {
             es: "Recompensa: {0} Tréboles + título.", en: "Reward: {0} Clovers + title.",
@@ -968,6 +978,247 @@ QtObject {
         },
         "reto_reclamado_treboles": {
             es: "+{0} Tréboles.", en: "+{0} Clovers.", de: "+{0} Kleeblätter."
+        },
+
+        // ── Mensajes de error/aviso que el servidor mandaba en prosa fija
+        // (AccountManager.cpp/src/server/main.cpp), terminando docs/plan-idiomas.md
+        // "Lo que falta" punto 2 (2026-09-15). Mismo criterio que el reto de
+        // arriba: el servidor manda la CLAVE, el cliente la traduce -- ya
+        // envuelto en Idioma.t()/resolverMensajeServidor() en todos los
+        // sitios donde se muestran (mensajeErrorLogin, mensajeErrorSocial,
+        // mensajeTienda, mensajeErrorConexion), así que no hizo falta tocar
+        // QML aparte de esas envolturas. Las 3 con "{0}" llevan un dato que
+        // el servidor no puede convertir a clave (nivel mínimo, lista de
+        // nombres, texto de excepción) -- viajan como "clave:valor"
+        // (resolverMensajeServidor() las separa y llama a tf()).
+        "error_usuario_existente": {
+            es: "Ese nombre de usuario ya existe.", en: "That username already exists.",
+            de: "Dieser Benutzername existiert bereits."
+        },
+        "error_login_incorrecto": {
+            es: "Usuario o contraseña incorrectos.", en: "Incorrect username or password.",
+            de: "Falscher Benutzername oder falsches Passwort."
+        },
+        "error_sesion_caducada": {
+            es: "Sesión caducada, inicia sesión de nuevo.", en: "Session expired, please log in again.",
+            de: "Sitzung abgelaufen, bitte melde dich erneut an."
+        },
+        "error_password_actual_incorrecta": {
+            es: "La contraseña actual no es correcta.", en: "The current password is incorrect.",
+            de: "Das aktuelle Passwort ist falsch."
+        },
+        "error_usuario_no_existe": {
+            es: "Ese usuario no existe.", en: "That user doesn't exist.", de: "Diesen Benutzer gibt es nicht."
+        },
+        "error_solicitud_a_ti_mismo": {
+            es: "No puedes enviarte una solicitud a ti mismo.",
+            en: "You can't send a request to yourself.",
+            de: "Du kannst dir selbst keine Anfrage schicken."
+        },
+        "error_ya_sois_amigos": {
+            es: "Ya sois amigos.", en: "You're already friends.", de: "Ihr seid bereits befreundet."
+        },
+        "error_solicitud_pendiente": {
+            es: "Ya hay una solicitud pendiente con ese jugador.",
+            en: "There's already a pending request with that player.",
+            de: "Es gibt bereits eine ausstehende Anfrage mit diesem Spieler."
+        },
+        "error_solicitud_no_existe": {
+            es: "Esa solicitud ya no existe.", en: "That request no longer exists.",
+            de: "Diese Anfrage existiert nicht mehr."
+        },
+        "error_solicitud_ajena": {
+            es: "Esa solicitud no es tuya.", en: "That request isn't yours.",
+            de: "Diese Anfrage gehört dir nicht."
+        },
+        "error_mensaje_a_ti_mismo": {
+            es: "No puedes enviarte un mensaje a ti mismo.",
+            en: "You can't send a message to yourself.",
+            de: "Du kannst dir selbst keine Nachricht schicken."
+        },
+        "error_mensaje_vacio": {
+            es: "El mensaje no puede estar vacío.", en: "The message can't be empty.",
+            de: "Die Nachricht darf nicht leer sein."
+        },
+        "error_mensaje_muy_largo": {
+            es: "El mensaje es demasiado largo (máximo 1000 caracteres).",
+            en: "The message is too long (1000 characters max).",
+            de: "Die Nachricht ist zu lang (maximal 1000 Zeichen)."
+        },
+        "error_solo_amigos": {
+            es: "Solo puedes escribir a tus amigos.", en: "You can only write to your friends.",
+            de: "Du kannst nur deinen Freunden schreiben."
+        },
+        "error_sin_estadisticas": {
+            es: "La cuenta no tiene estadísticas todavía.", en: "The account has no statistics yet.",
+            de: "Das Konto hat noch keine Statistiken."
+        },
+        "aviso_xp_offline_recortado": {
+            es: "Parte del XP sin conexión no se ha acreditado (límite por tiempo de juego).",
+            en: "Some of your offline XP wasn't credited (limited by play time).",
+            de: "Ein Teil deiner Offline-XP wurde nicht gutgeschrieben (durch die Spielzeit begrenzt)."
+        },
+        "aviso_progreso_offline_recortado": {
+            es: "Parte del progreso sin conexión no se ha acreditado (límite por tiempo de juego).",
+            en: "Some of your offline progress wasn't credited (limited by play time).",
+            de: "Ein Teil deines Offline-Fortschritts wurde nicht gutgeschrieben (durch die Spielzeit begrenzt)."
+        },
+        "error_objeto_no_existe": {
+            es: "Ese objeto no existe.", en: "That item doesn't exist.", de: "Dieses Objekt gibt es nicht."
+        },
+        "error_objeto_de_logro": {
+            es: "Ese objeto no se compra -- se consigue con un logro.",
+            en: "That item can't be bought -- it's earned through an achievement.",
+            de: "Dieses Objekt kann nicht gekauft werden -- man erhält es durch eine Errungenschaft."
+        },
+        "error_ya_tienes_objeto": {
+            es: "Ya tienes ese objeto.", en: "You already have that item.", de: "Du hast dieses Objekt bereits."
+        },
+        "error_cuenta_sin_estadisticas": {
+            es: "Cuenta sin estadísticas -- inténtalo de nuevo.",
+            en: "Account has no statistics -- try again.",
+            de: "Konto ohne Statistiken -- versuche es erneut."
+        },
+        "error_marco_no_desbloqueado": {
+            es: "Gana tu primera partida para desbloquear accesorios de marco.",
+            en: "Win your first game to unlock frame accessories.",
+            de: "Gewinne deine erste Partie, um Rahmen-Zubehör freizuschalten."
+        },
+        "error_nivel_insuficiente": {
+            es: "Necesitas nivel {0} para este objeto.", en: "You need level {0} for this item.",
+            de: "Du brauchst Level {0} für dieses Objekt."
+        },
+        "error_treboles_insuficientes": {
+            es: "No tienes suficientes Tréboles.", en: "You don't have enough Clovers.",
+            de: "Du hast nicht genug Kleeblätter."
+        },
+        "error_slot_invalido": {
+            es: "Slot no válido.", en: "Invalid slot.", de: "Ungültiger Slot."
+        },
+        "error_hueco_sin_acabado": {
+            es: "Ese hueco no lleva acabado.", en: "That slot doesn't take a finish.",
+            de: "Dieser Slot hat keine Oberfläche."
+        },
+        "error_acabado_invalido": {
+            es: "Acabado no válido.", en: "Invalid finish.", de: "Ungültige Oberfläche."
+        },
+        "error_objeto_no_encaja": {
+            es: "Ese objeto no encaja en ese hueco.", en: "That item doesn't fit in that slot.",
+            de: "Dieses Objekt passt nicht in diesen Slot."
+        },
+        "error_no_tienes_objeto": {
+            es: "No tienes ese objeto.", en: "You don't have that item.", de: "Du hast dieses Objekt nicht."
+        },
+        "error_acabado_marco_no_tienes": {
+            es: "Ese acabado es de un marco que todavía no tienes.",
+            en: "That finish belongs to a frame you don't have yet.",
+            de: "Diese Oberfläche gehört zu einem Rahmen, den du noch nicht hast."
+        },
+        "error_admin_sin_permiso": {
+            es: "No tienes permiso de administrador.", en: "You don't have administrator permission.",
+            de: "Du hast keine Administratorberechtigung."
+        },
+        "error_codigo_no_valido": {
+            es: "Ese código no es ni un logro ni un objeto de tienda.",
+            en: "That code is neither an achievement nor a shop item.",
+            de: "Dieser Code ist weder eine Errungenschaft noch ein Shop-Objekt."
+        },
+        "error_admin_fabricar_fallo": {
+            es: "No se pudo crear ninguna cuenta de prueba.",
+            en: "Couldn't create any test accounts.",
+            de: "Es konnten keine Testkonten erstellt werden."
+        },
+        "error_nombre_en_uso_sala": {
+            es: "Ese nombre ya está en uso en esta sala. Elige otro.",
+            en: "That name is already in use in this room. Choose another one.",
+            de: "Dieser Name wird in diesem Raum bereits verwendet. Wähle einen anderen."
+        },
+        "error_nombre_no_reconocido_guardada": {
+            es: "Nombre no reconocido en la partida guardada. Esperados: {0}",
+            en: "Name not recognized in the saved game. Expected: {0}",
+            de: "Name in der gespeicherten Partie nicht erkannt. Erwartet: {0}"
+        },
+        "aviso_en_espera_proxima_mano": {
+            es: "Te sentarás en cuanto empiece la próxima mano.",
+            en: "You'll take a seat as soon as the next hand starts.",
+            de: "Du setzt dich, sobald die nächste Hand beginnt."
+        },
+        "error_sala_no_disponible": {
+            es: "La sala no existe, está llena o no admite más jugadores.",
+            en: "The room doesn't exist, is full, or isn't accepting more players.",
+            de: "Der Raum existiert nicht, ist voll oder nimmt keine weiteren Spieler mehr auf."
+        },
+        "error_partida_ajena": {
+            es: "Esa partida guardada no te pertenece.", en: "That saved game doesn't belong to you.",
+            de: "Diese gespeicherte Partie gehört dir nicht."
+        },
+        "error_cargar_partida": {
+            es: "No se pudo cargar la partida: {0}", en: "Couldn't load the game: {0}",
+            de: "Die Partie konnte nicht geladen werden: {0}"
+        },
+        "error_exportar_sin_permiso": {
+            es: "No tienes permiso para exportar estadísticas.",
+            en: "You don't have permission to export statistics.",
+            de: "Du hast keine Berechtigung, Statistiken zu exportieren."
+        },
+        "error_exportar_escritura": {
+            es: "No se pudo escribir el fichero en el servidor.",
+            en: "Couldn't write the file on the server.",
+            de: "Die Datei konnte nicht auf dem Server geschrieben werden."
+        },
+        "error_partida_ya_no_existe": {
+            es: "La partida ya no existe: terminó mientras estabas desconectado.",
+            en: "The game no longer exists: it ended while you were disconnected.",
+            de: "Die Partie existiert nicht mehr: sie endete, während du getrennt warst."
+        },
+        "error_conexion_perdida": {
+            es: "Se perdió la conexión con el servidor.", en: "Connection to the server was lost.",
+            de: "Die Verbindung zum Server wurde unterbrochen."
+        },
+        // Avisos de votación de fin de mano/extensión de partida -- mismo
+        // barrido, encontrados al comprobar cada sitio que muestra un
+        // "mensaje" de servidor sin envolver. "_offline" son la variante
+        // (más corta, sin servidor real detrás) de LocalGameObserver.hpp --
+        // divergen a propósito del texto online, no se unificó la
+        // redacción al convertir a clave, solo se tradujo tal cual estaba.
+        "error_nombre_invalido": {
+            es: "Nombre inválido.", en: "Invalid name.", de: "Ungültiger Name."
+        },
+        "error_sala_llena": {
+            es: "La sala ya no admite más jugadores.", en: "The room isn't accepting more players.",
+            de: "Der Raum nimmt keine weiteren Spieler mehr auf."
+        },
+        "aviso_esperar_voto_extension": {
+            es: "Se ha alcanzado el límite de manos establecido para esta partida. ¿Quieres continuar jugando? Hace falta que todos los jugadores acepten para extenderla.",
+            en: "This game's hand limit has been reached. Do you want to keep playing? Every player needs to agree to extend it.",
+            de: "Das Handlimit dieser Partie wurde erreicht. Möchtest du weiterspielen? Alle Spieler müssen zustimmen, um zu verlängern."
+        },
+        "aviso_esperando_eleccion_manos": {
+            es: "Todos los jugadores han aceptado continuar. Esperando a que {0} elija cuántas manos más se jugarán.",
+            en: "Everyone agreed to continue. Waiting for {0} to choose how many more hands to play.",
+            de: "Alle haben zugestimmt weiterzuspielen. Warte, bis {0} auswählt, wie viele Hände noch gespielt werden."
+        },
+        "aviso_elegir_manos_extra": {
+            es: "Todos los jugadores han aceptado continuar. ¿Cuántas manos más quieres añadir?",
+            en: "Everyone agreed to continue. How many more hands do you want to add?",
+            de: "Alle haben zugestimmt weiterzuspielen. Wie viele Hände möchtest du noch hinzufügen?"
+        },
+        "aviso_abandonaste": {
+            es: "Abandonaste la partida. Tus fichas se reparten.",
+            en: "You left the game. Your chips are being distributed.",
+            de: "Du hast die Partie verlassen. Deine Chips werden verteilt."
+        },
+        "aviso_esperar_voto_extension_offline": {
+            es: "¿Quieres seguir jugando más allá del límite de manos?",
+            en: "Do you want to keep playing past the hand limit?",
+            de: "Möchtest du über das Handlimit hinaus weiterspielen?"
+        },
+        "aviso_elegir_manos_extra_offline": {
+            es: "¿Cuántas manos más quieres añadir?", en: "How many more hands do you want to add?",
+            de: "Wie viele Hände möchtest du noch hinzufügen?"
+        },
+        "aviso_abandonaste_offline": {
+            es: "Abandonaste la partida.", en: "You left the game.", de: "Du hast die Partie verlassen."
         },
 
         // ── Catálogo de logros y tienda (dato del SERVIDOR, ver
