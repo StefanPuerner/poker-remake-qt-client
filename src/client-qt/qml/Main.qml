@@ -360,6 +360,9 @@ ApplicationWindow {
     property string mensajeAdminConceder: ""
     // Segunda mitad del punto 2 (mismo día) -- mismo criterio.
     property string mensajeAdminFabricar: ""
+    // Pedido explícito 2026-09-16 -- mismo criterio, para
+    // adminConcederMarcoBasico().
+    property string mensajeAdminMarco: ""
     // Fase 2 del sistema de progresión: nivel/progreso calculado a partir
     // de estadisticasCuenta.xpTotal -- binding vivo, se recalcula solo
     // cada vez que estadisticasCuenta cambia (ver progresoNivel() más
@@ -3316,13 +3319,15 @@ ApplicationWindow {
                                             color: Tema.colorTextoTenue
                                             font.pixelSize: 11 * Tema.escala
                                         }
-                                        IconoXP {
-                                            width: 11 * Tema.escala
-                                            height: width
-                                            colorXP: Tema.colorTextoTenue
-                                        }
                                         Text {
-                                            text: tarjetaReto.modelData.xp
+                                            // Pedido explícito 2026-09-16:
+                                            // nada de icono/rayo para XP
+                                            // (confunde con "energía") --
+                                            // directamente las letras,
+                                            // mismo criterio que se use en
+                                            // cualquier otro sitio con XP
+                                            // en el futuro.
+                                            text: Idioma.tf("etiqueta_xp_valor", [tarjetaReto.modelData.xp])
                                             color: Tema.colorTextoTenue
                                             font.pixelSize: 11 * Tema.escala
                                         }
@@ -5660,6 +5665,16 @@ ApplicationWindow {
             function onAdminFabricarError(mensaje) {
                 mensajeAdminFabricar = mensaje;
             }
+            function onAdminMarcoOk(mensaje) {
+                mensajeAdminMarco = "marca_hierro_concedido";
+                // Barato/inofensivo pedirlo también al conceder a otra
+                // cuenta -- mismo criterio que onAdminConcederOk() justo
+                // arriba: solo trae tus propias stats de nuevo.
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+            }
+            function onAdminMarcoError(mensaje) {
+                mensajeAdminMarco = mensaje;
+            }
             // Fase 4 del sistema de progresión -- ya llega parseado
             // (parsearFilasChat() en C++, ver NetworkClient.hpp), un
             // QVariantMap por logro.
@@ -7085,6 +7100,42 @@ ApplicationWindow {
                         color: Tema.colorTextoTenue
                         font.pixelSize: 11 * Tema.escala
                         text: Idioma.t(mensajeAdminFabricar)
+                    }
+                }
+
+                // Pedido explícito 2026-09-16: "necesito poder asignar
+                // marcos, por ejemplo el de hierro que no se le dio a mi
+                // amigo" -- una partida ganada de verdad puede no cruzar
+                // el umbral antifarm (MIN_CUENTAS_REALES_PARA_STATS/
+                // MIN_MANOS_PARA_STATS, ver NetworkObserver.cpp) y
+                // quedarse sin marco. Reutiliza campoAdminUsername de
+                // arriba -- mismo campo, no hace falta uno nuevo. Solo
+                // Hierro por ahora -- ver el comentario largo en
+                // AccountManager::adminConcederMarcoBasico() sobre por
+                // qué Bronce/Plata/Oro/Platino no están aquí todavía.
+                Column {
+                    width: parent.width
+                    visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
+                    spacing: 6 * Tema.escala
+                    BotonContorno {
+                        text: Idioma.t("boton_conceder_marco_hierro")
+                        onClicked: {
+                            if (campoAdminUsername.text.length === 0) {
+                                mensajeAdminMarco = "error_admin_rellena_username";
+                                return;
+                            }
+                            mensajeAdminMarco = "texto_concediendo";
+                            redcliente.adminConcederMarcoBasico(servidorHost, servidorPuerto, tokenSesion,
+                                                                 campoAdminUsername.text);
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: mensajeAdminMarco !== ""
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 11 * Tema.escala
+                        text: Idioma.t(mensajeAdminMarco)
                     }
                 }
             }

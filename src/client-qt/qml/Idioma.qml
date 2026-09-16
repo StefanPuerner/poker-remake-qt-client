@@ -279,6 +279,11 @@ QtObject {
         // usuario -- los demás son icono, no texto).
         "etiqueta_recompensas_reto": { es: "Recompensas:", en: "Rewards:", de: "Belohnungen:" },
         "sufijo_mas_titulo": { es: "+ título", en: "+ title", de: "+ Titel" },
+        // Pedido explícito 2026-09-16: nada de icono para XP (un rayo
+        // recuerda a "energía", no a experiencia) -- las letras tal
+        // cual, en Torneos y en cualquier sitio que use XP a partir de
+        // ahora.
+        "etiqueta_xp_valor": { es: "{0} XP", en: "{0} XP", de: "{0} XP" },
         "etiqueta_mas_decoracion": { es: "+ {0}", en: "+ {0}", de: "+ {0}" },
         "boton_reclamar_recompensa": {
             es: "Reclamar recompensa", en: "Claim reward", de: "Belohnung einlösen"
@@ -563,6 +568,20 @@ QtObject {
             de: "15 Testkonten erstellen (Admin)"
         },
         "texto_fabricando": { es: "Fabricando...", en: "Creating...", de: "Erstelle..." },
+        // Pedido explícito 2026-09-16 -- "necesito poder asignar marcos,
+        // por ejemplo el de hierro que no se le dio a mi amigo". Reutiliza
+        // el mismo campo de username que "Conceder logro/objeto" de
+        // arriba.
+        "boton_conceder_marco_hierro": {
+            es: "Conceder marco Hierro (admin)", en: "Grant Iron frame (admin)",
+            de: "Rahmen Eisen gewähren (Admin)"
+        },
+        "error_admin_rellena_username": {
+            es: "Rellena el username.", en: "Fill in the username.", de: "Fülle den Benutzernamen aus."
+        },
+        "marca_hierro_concedido": {
+            es: "Marco Hierro concedido.", en: "Iron frame granted.", de: "Rahmen Eisen gewährt."
+        },
         "progreso_invitado_aviso": {
             es: "Inicia sesión para ver tu progreso hacia el siguiente marco de avatar.",
             en: "Log in to see your progress toward the next avatar frame.",

@@ -3750,13 +3750,12 @@ ApplicationWindow {
                                         color: Tema.colorTextoTenue
                                         font.pixelSize: 10 * Tema.escala
                                     }
-                                    IconoXP {
-                                        width: 10 * Tema.escala
-                                        height: width
-                                        colorXP: Tema.colorTextoTenue
-                                    }
                                     Text {
-                                        text: tarjetaRetoMovil.modelData.xp
+                                        // Pedido explícito 2026-09-16:
+                                        // nada de icono/rayo para XP
+                                        // (confunde con "energía") --
+                                        // directamente las letras.
+                                        text: Idioma.tf("etiqueta_xp_valor", [tarjetaRetoMovil.modelData.xp])
                                         color: Tema.colorTextoTenue
                                         font.pixelSize: 10 * Tema.escala
                                     }
