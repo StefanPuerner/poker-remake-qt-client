@@ -144,6 +144,8 @@ const char* msgTypeStr(MsgType t) {
       return "ADMIN_CONCEDER_ITEM";
     case MsgType::ADMIN_FABRICAR_CUENTAS:
       return "ADMIN_FABRICAR_CUENTAS";
+    case MsgType::ADMIN_BORRAR_CUENTAS_PRUEBA:
+      return "ADMIN_BORRAR_CUENTAS_PRUEBA";
     default:
       return "UNKNOWN";
   }
@@ -213,6 +215,7 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "LOADOUT_ACTUAL") return MsgType::LOADOUT_ACTUAL;
   if (s == "ADMIN_CONCEDER_ITEM") return MsgType::ADMIN_CONCEDER_ITEM;
   if (s == "ADMIN_FABRICAR_CUENTAS") return MsgType::ADMIN_FABRICAR_CUENTAS;
+  if (s == "ADMIN_BORRAR_CUENTAS_PRUEBA") return MsgType::ADMIN_BORRAR_CUENTAS_PRUEBA;
   return MsgType::UNKNOWN;
 }
 

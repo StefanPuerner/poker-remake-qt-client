@@ -168,11 +168,16 @@ enum class MsgType {
     // cierra el hueco real de "todo QA de logros/tienda ha sido SQL a
     // mano contra cuentas.db". "token" debe resolver a una cuenta con
     // es_admin=1 (igual que EXPORTAR_ESTADISTICAS) o se rechaza sin
-    // más. "codigo" prueba primero como código de LOGRO (concede
+    // más. "codigo" prueba, en orden: MARCO ("marco_hierro"/
+    // "marco_bronce"/"marco_plata"/"marco_oro"/"marco_platino", pedido
+    // explícito 2026-09-16 -- sustituye al antiguo
+    // ADMIN_CONCEDER_MARCO_BASICO, dedicado solo a Hierro), LOGRO (concede
     // también los objetos que ese logro trae, igual que si se hubiera
-    // desbloqueado jugando) y si no, como objeto de tienda suelto (sin
+    // desbloqueado jugando) y, si no, objeto de tienda suelto (sin
     // Tréboles/nivel/gate de marco -- es un regalo admin, no una
-    // compra). Ack vía GAME_EVENT (ADMIN_CONCEDER_OK/_ERROR, "mensaje").
+    // compra). Ver AccountManager::adminConcederItem() para el detalle
+    // completo de cómo se fuerza cada marco. Ack vía GAME_EVENT
+    // (ADMIN_CONCEDER_OK/_ERROR, "mensaje").
     ADMIN_CONCEDER_ITEM,         ///< "token","username_destino","codigo".
 
     // Segunda mitad del punto 2 (mismo día, ver memoria de arriba):
@@ -181,6 +186,13 @@ enum class MsgType {
     // reales. Mismo criterio de permiso que ADMIN_CONCEDER_ITEM. Ack vía
     // GAME_EVENT (ADMIN_FABRICAR_OK/_ERROR, "mensaje").
     ADMIN_FABRICAR_CUENTAS,      ///< "token","cantidad" (recortado a [1,20] en el servidor).
+
+    // Pedido explícito 2026-09-16: borra TODAS las cuentas que creó
+    // ADMIN_FABRICAR_CUENTAS de un tirón, para limpiar el Ranking tras
+    // una tanda de pruebas. Mismo criterio de permiso que
+    // ADMIN_CONCEDER_ITEM. Ack vía GAME_EVENT
+    // (ADMIN_BORRAR_PRUEBA_OK/_ERROR, "mensaje").
+    ADMIN_BORRAR_CUENTAS_PRUEBA, ///< "token".
 
     UNKNOWN        ///< Tipo desconocido o mensaje malformado.
 };

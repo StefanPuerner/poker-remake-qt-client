@@ -187,6 +187,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PopupSeleccionCarta.qml
             src/client-qt/qml/PopupAcabado.qml
             src/client-qt/qml/CajaTitulo.qml
+            src/client-qt/qml/PopupFuncionalidadesAdmin.qml
         RESOURCES
             # EB Garamond (SIL Open Font License) empaquetada con el binario:
             # los nombres de fuente del sistema ("Georgia", "Palatino"...) no

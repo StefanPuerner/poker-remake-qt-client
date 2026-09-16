@@ -350,19 +350,6 @@ ApplicationWindow {
     // sitio aunque no se fueran a usar).
     property bool formularioUsernameAbierto: false
     property bool formularioPasswordAbierto: false
-    // Resultado de exportarEstadisticas() (Fase 1 del sistema de
-    // progresión, solo visible para cuentas admin) -- ver
-    // estadisticasCuenta.esAdmin y las Connections de redcliente más abajo.
-    property string mensajeExportacion: ""
-    // Herramienta de pruebas/admin, punto 2 de la prioridad confirmada
-    // (2026-09-01, ver memoria qt_progression_review_2026_09_01) -- mismo
-    // criterio que mensajeExportacion de arriba.
-    property string mensajeAdminConceder: ""
-    // Segunda mitad del punto 2 (mismo día) -- mismo criterio.
-    property string mensajeAdminFabricar: ""
-    // Pedido explícito 2026-09-16 -- mismo criterio, para
-    // adminConcederMarcoBasico().
-    property string mensajeAdminMarco: ""
     // Fase 2 del sistema de progresión: nivel/progreso calculado a partir
     // de estadisticasCuenta.xpTotal -- binding vivo, se recalcula solo
     // cada vez que estadisticasCuenta cambia (ver progresoNivel() más
@@ -1482,7 +1469,6 @@ ApplicationWindow {
                     formularioUsernameAbierto = false;
                     formularioPasswordAbierto = false;
                     mensajeErrorLogin = "";
-                    mensajeExportacion = "";
                     pestanaPersonalizarActual = 0;
                     previewCodigo = "";
                     previewCategoria = "";
@@ -5634,47 +5620,6 @@ ApplicationWindow {
             function onPasswordError(mensaje) {
                 tratarErrorCuenta(mensaje);
             }
-            // Fase 1 del sistema de progresión -- herramienta de
-            // estadísticas mínima (ver el botón admin en la pestaña Perfil).
-            function onEstadisticasExportadas(archivo) {
-                mensajeExportacion = "Exportado a data/" + archivo + " en el servidor.";
-            }
-            function onEstadisticasExportadasError(mensaje) {
-                mensajeExportacion = mensaje;
-            }
-            // Herramienta de pruebas/admin, punto 2 (ver el bloque admin en
-            // la pestaña Perfil) -- mismo criterio que las dos de arriba.
-            function onAdminConcederOk(mensaje) {
-                mensajeAdminConceder = mensaje;
-                // Mismo motivo que onObjetoEquipado() -- si te lo has
-                // concedido a ti mismo, sin esto el resultado no se ve
-                // hasta salir y volver a entrar en Cuenta (loadoutMarco/
-                // tiendaCrudo se quedan con el valor de antes de conceder).
-                // Barato/inofensivo pedirlo también cuando se concede a
-                // OTRA cuenta -- solo trae tu propio loadout de nuevo, sin
-                // cambios reales.
-                redcliente.consultarLoadout(servidorHost, servidorPuerto, tokenSesion);
-                redcliente.consultarTienda(servidorHost, servidorPuerto, tokenSesion);
-            }
-            function onAdminConcederError(mensaje) {
-                mensajeAdminConceder = mensaje;
-            }
-            function onAdminFabricarOk(mensaje) {
-                mensajeAdminFabricar = mensaje;
-            }
-            function onAdminFabricarError(mensaje) {
-                mensajeAdminFabricar = mensaje;
-            }
-            function onAdminMarcoOk(mensaje) {
-                mensajeAdminMarco = "marca_hierro_concedido";
-                // Barato/inofensivo pedirlo también al conceder a otra
-                // cuenta -- mismo criterio que onAdminConcederOk() justo
-                // arriba: solo trae tus propias stats de nuevo.
-                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
-            }
-            function onAdminMarcoError(mensaje) {
-                mensajeAdminMarco = mensaje;
-            }
             // Fase 4 del sistema de progresión -- ya llega parseado
             // (parsearFilasChat() en C++, ver NetworkClient.hpp), un
             // QVariantMap por logro.
@@ -7004,139 +6949,21 @@ ApplicationWindow {
                     onClicked: redcliente.cerrarSesion(servidorHost, servidorPuerto, tokenSesion)
                 }
 
-                // ── Fase 1 del sistema de progresión: herramienta de
-                // estadísticas mínima, solo visible para cuentas admin (ver
-                // AccountManager::esAdmin() -- se marca a mano en la base, sin
-                // flujo en la app todavía para concederlo).
+                // Herramientas de administración/QA -- pedido explícito
+                // 2026-09-16: antes eran varios bloques sueltos en línea
+                // aquí mismo (exportar estadísticas, conceder logro/
+                // objeto, fabricar cuentas de prueba, conceder marco
+                // Hierro); ahora viven todas juntas en un popup aparte
+                // (ver PopupFuncionalidadesAdmin.qml), con marcos por
+                // código en vez de un botón dedicado solo a Hierro, y un
+                // botón nuevo para eliminar las cuentas de prueba
+                // fabricadas. Solo visible para cuentas admin (ver
+                // AccountManager::esAdmin() -- se marca a mano en la base,
+                // sin flujo en la app todavía para concederlo).
                 BotonContorno {
                     visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
-                    text: Idioma.t("boton_exportar_estadisticas")
-                    onClicked: {
-                        mensajeExportacion = "texto_exportando";
-                        redcliente.exportarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
-                    }
-                }
-                Text {
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true && mensajeExportacion !== ""
-                    color: Tema.colorTextoTenue
-                    font.pixelSize: 11 * Tema.escala
-                    text: Idioma.t(mensajeExportacion)
-                }
-
-                // Herramienta de pruebas/admin, punto 2 de la prioridad
-                // confirmada (2026-09-01, ver memoria
-                // qt_progression_review_2026_09_01) -- cierra el hueco real
-                // de "todo QA de logros/tienda ha sido SQL a mano". MVP a
-                // propósito: dos campos de texto sueltos con el username y
-                // el código (de logro O de objeto de tienda -- el servidor
-                // decide cuál de los dos es), sin selector visual bonito
-                // todavía (ver memoria, quedó fuera del alcance de hoy).
-                Column {
-                    width: parent.width
-                    visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
-                    spacing: 6 * Tema.escala
-                    Text {
-                        text: Idioma.t("admin_titulo_conceder")
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 11 * Tema.escala
-                        font.letterSpacing: 0.5
-                    }
-                    CampoTexto {
-                        id: campoAdminUsername
-                        width: parent.width
-                        font.pixelSize: 13 * Tema.escala
-                        placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_username_destino")
-                        onAccepted: campoAdminCodigo.forceActiveFocus()
-                    }
-                    CampoTexto {
-                        id: campoAdminCodigo
-                        width: parent.width
-                        font.pixelSize: 13 * Tema.escala
-                        placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_codigo_logro_objeto")
-                    }
-                    BotonContorno {
-                        text: Idioma.t("boton_conceder")
-                        onClicked: {
-                            if (campoAdminUsername.text.length === 0 || campoAdminCodigo.text.length === 0) {
-                                mensajeAdminConceder = "error_admin_rellena_campos";
-                                return;
-                            }
-                            mensajeAdminConceder = "texto_concediendo";
-                            redcliente.adminConcederItem(servidorHost, servidorPuerto, tokenSesion,
-                                                          campoAdminUsername.text, campoAdminCodigo.text);
-                        }
-                    }
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        visible: mensajeAdminConceder !== ""
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 11 * Tema.escala
-                        text: Idioma.t(mensajeAdminConceder)
-                    }
-                }
-
-                // Segunda mitad del punto 2 (mismo día) -- MVP a propósito:
-                // sin campo de cantidad, un botón fijo (15 -- de sobra para
-                // ver variedad real en el Ranking) en vez de otro control
-                // más que rellenar.
-                Column {
-                    width: parent.width
-                    visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
-                    spacing: 6 * Tema.escala
-                    BotonContorno {
-                        text: Idioma.t("boton_fabricar_cuentas_prueba")
-                        onClicked: {
-                            mensajeAdminFabricar = "texto_fabricando";
-                            redcliente.adminFabricarCuentasPrueba(servidorHost, servidorPuerto, tokenSesion, 15);
-                        }
-                    }
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        visible: mensajeAdminFabricar !== ""
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 11 * Tema.escala
-                        text: Idioma.t(mensajeAdminFabricar)
-                    }
-                }
-
-                // Pedido explícito 2026-09-16: "necesito poder asignar
-                // marcos, por ejemplo el de hierro que no se le dio a mi
-                // amigo" -- una partida ganada de verdad puede no cruzar
-                // el umbral antifarm (MIN_CUENTAS_REALES_PARA_STATS/
-                // MIN_MANOS_PARA_STATS, ver NetworkObserver.cpp) y
-                // quedarse sin marco. Reutiliza campoAdminUsername de
-                // arriba -- mismo campo, no hace falta uno nuevo. Solo
-                // Hierro por ahora -- ver el comentario largo en
-                // AccountManager::adminConcederMarcoBasico() sobre por
-                // qué Bronce/Plata/Oro/Platino no están aquí todavía.
-                Column {
-                    width: parent.width
-                    visible: !ventana.sesionOffline && redcliente.estadisticasCuenta.esAdmin === true
-                    spacing: 6 * Tema.escala
-                    BotonContorno {
-                        text: Idioma.t("boton_conceder_marco_hierro")
-                        onClicked: {
-                            if (campoAdminUsername.text.length === 0) {
-                                mensajeAdminMarco = "error_admin_rellena_username";
-                                return;
-                            }
-                            mensajeAdminMarco = "texto_concediendo";
-                            redcliente.adminConcederMarcoBasico(servidorHost, servidorPuerto, tokenSesion,
-                                                                 campoAdminUsername.text);
-                        }
-                    }
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        visible: mensajeAdminMarco !== ""
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 11 * Tema.escala
-                        text: Idioma.t(mensajeAdminMarco)
-                    }
+                    text: Idioma.t("boton_funcionalidades_admin")
+                    onClicked: popupFuncionalidadesAdmin.abrir()
                 }
             }
 
@@ -8819,6 +8646,14 @@ ApplicationWindow {
         id: popupAcabado
         onAcabadoElegido: (slot, codigo, acabado) =>
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo, acabado)
+    }
+    // Herramientas de administración/QA -- ver el botón "Funcionalidades
+    // Admin" en Cuenta > Perfil (solo visible con es_admin=1).
+    PopupFuncionalidadesAdmin {
+        id: popupFuncionalidadesAdmin
+        servidorHost: ventana.servidorHost
+        servidorPuerto: ventana.servidorPuerto
+        tokenSesion: ventana.tokenSesion
     }
     PopupSeleccionCarta {
         id: popupSeleccionCarta

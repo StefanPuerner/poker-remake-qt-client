@@ -622,7 +622,8 @@ class NetworkClient : public QObject {
 
   /// Herramienta de pruebas/admin, punto 2 de la prioridad confirmada
   /// (2026-09-01, ver memoria qt_progression_review_2026_09_01) -- concede
-  /// @p codigo (logro u objeto de tienda) a @p usernameDestino de un
+  /// @p codigo (marco/logro/objeto de tienda, ver
+  /// AccountManager::adminConcederItem()) a @p usernameDestino de un
   /// tirón. El permiso real (es_admin) lo comprueba el servidor.
   Q_INVOKABLE void adminConcederItem(const QString& host, quint16 puerto, QString token,
                                       QString usernameDestino, QString codigo) {
@@ -654,6 +655,22 @@ class NetworkClient : public QObject {
         emit adminFabricarOk(mensaje);
       } else {
         emit adminFabricarError(mensaje);
+      }
+    });
+  }
+
+  /// Pedido explícito 2026-09-16 -- borra TODAS las cuentas que creó
+  /// adminFabricarCuentasPrueba() de un tirón. El permiso real (es_admin)
+  /// lo comprueba el servidor.
+  Q_INVOKABLE void adminBorrarCuentasPrueba(const QString& host, quint16 puerto, QString token) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::ADMIN_BORRAR_CUENTAS_PRUEBA, {
+        {"token", token.toStdString()},
+    }), [this](const std::string& payload) {
+      QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+      if (net::jsonGetStr(payload, "evento") == "ADMIN_BORRAR_PRUEBA_OK") {
+        emit adminBorrarPruebaOk(mensaje);
+      } else {
+        emit adminBorrarPruebaError(mensaje);
       }
     });
   }
@@ -1189,6 +1206,10 @@ class NetworkClient : public QObject {
   /// Respuesta a adminFabricarCuentasPrueba() -- misma herramienta.
   void adminFabricarOk(QString mensaje);
   void adminFabricarError(QString mensaje);
+  /// Respuesta a adminBorrarCuentasPrueba() -- misma herramienta,
+  /// 2026-09-16.
+  void adminBorrarPruebaOk(QString mensaje);
+  void adminBorrarPruebaError(QString mensaje);
   /// Respuesta a renombrarGuardada() — mensaje vacío si fue bien.
   void guardadaRenombrada(QString mensaje);
   /// Respuesta a borrarGuardada() — mensaje vacío si fue bien.

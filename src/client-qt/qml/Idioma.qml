@@ -541,21 +541,41 @@ QtObject {
             de: "Das neue Passwort muss mindestens 8 Zeichen lang sein."
         },
         "boton_cerrar_sesion": { es: "Cerrar sesión", en: "Log out", de: "Abmelden" },
+        // Pedido explícito 2026-09-16: todas las herramientas admin/QA
+        // (antes sueltas, en línea en Cuenta > Perfil) viven ahora en un
+        // popup aparte -- ver PopupFuncionalidadesAdmin.qml.
+        "boton_funcionalidades_admin": {
+            es: "Funcionalidades Admin", en: "Admin tools", de: "Admin-Funktionen"
+        },
+        "titulo_funcionalidades_admin": {
+            es: "Funcionalidades Admin", en: "Admin tools", de: "Admin-Funktionen"
+        },
         "boton_exportar_estadisticas": {
             es: "Exportar estadísticas (admin)", en: "Export statistics (admin)",
             de: "Statistiken exportieren (Admin)"
         },
         "texto_exportando": { es: "Exportando...", en: "Exporting...", de: "Exportiere..." },
         "admin_titulo_conceder": {
-            es: "Conceder logro/objeto (admin)", en: "Grant achievement/item (admin)",
-            de: "Erfolg/Objekt gewähren (Admin)"
+            es: "Conceder marco/logro/objeto (admin)", en: "Grant frame/achievement/item (admin)",
+            de: "Rahmen/Erfolg/Objekt gewähren (Admin)"
         },
         "placeholder_username_destino": {
             es: "Username destino", en: "Target username", de: "Ziel-Benutzername"
         },
         "placeholder_codigo_logro_objeto": {
-            es: "Código (logro u objeto de tienda)", en: "Code (achievement or shop item)",
-            de: "Code (Erfolg oder Shop-Objekt)"
+            es: "Código (marco, logro u objeto de tienda)",
+            en: "Code (frame, achievement or shop item)",
+            de: "Code (Rahmen, Erfolg oder Shop-Objekt)"
+        },
+        // Pedido explícito 2026-09-16: "mejor implementa codigos para los
+        // marcos y se asignan igual que los logros/objetos" -- sustituye
+        // al antiguo botón dedicado "Conceder marco Hierro", ahora
+        // Bronce/Plata/Oro/Platino también se pueden forzar (ver el
+        // comentario de AccountManager::adminConcederItem()).
+        "ayuda_codigos_marco": {
+            es: "Marcos: marco_hierro, marco_bronce, marco_plata, marco_oro, marco_platino.",
+            en: "Frames: marco_hierro, marco_bronce, marco_plata, marco_oro, marco_platino.",
+            de: "Rahmen: marco_hierro, marco_bronce, marco_plata, marco_oro, marco_platino."
         },
         "boton_conceder": { es: "Conceder", en: "Grant", de: "Gewähren" },
         "error_admin_rellena_campos": {
@@ -568,19 +588,15 @@ QtObject {
             de: "15 Testkonten erstellen (Admin)"
         },
         "texto_fabricando": { es: "Fabricando...", en: "Creating...", de: "Erstelle..." },
-        // Pedido explícito 2026-09-16 -- "necesito poder asignar marcos,
-        // por ejemplo el de hierro que no se le dio a mi amigo". Reutiliza
-        // el mismo campo de username que "Conceder logro/objeto" de
-        // arriba.
-        "boton_conceder_marco_hierro": {
-            es: "Conceder marco Hierro (admin)", en: "Grant Iron frame (admin)",
-            de: "Rahmen Eisen gewähren (Admin)"
+        // Pedido explícito 2026-09-16 -- irreversible, exige confirmar dos
+        // veces (ver boton_confirmar_borrado, ya usado para borrar una
+        // partida guardada).
+        "boton_eliminar_cuentas_prueba": {
+            es: "Eliminar cuentas de prueba (admin)", en: "Delete test accounts (admin)",
+            de: "Testkonten löschen (Admin)"
         },
-        "error_admin_rellena_username": {
-            es: "Rellena el username.", en: "Fill in the username.", de: "Fülle den Benutzernamen aus."
-        },
-        "marca_hierro_concedido": {
-            es: "Marco Hierro concedido.", en: "Iron frame granted.", de: "Rahmen Eisen gewährt."
+        "texto_eliminando_cuentas_prueba": {
+            es: "Eliminando...", en: "Deleting...", de: "Lösche..."
         },
         "progreso_invitado_aviso": {
             es: "Inicia sesión para ver tu progreso hacia el siguiente marco de avatar.",
@@ -1143,14 +1159,24 @@ QtObject {
             de: "Du hast keine Administratorberechtigung."
         },
         "error_codigo_no_valido": {
-            es: "Ese código no es ni un logro ni un objeto de tienda.",
-            en: "That code is neither an achievement nor a shop item.",
-            de: "Dieser Code ist weder eine Errungenschaft noch ein Shop-Objekt."
+            es: "Ese código no es ni un marco, ni un logro, ni un objeto de tienda.",
+            en: "That code is neither a frame, an achievement, nor a shop item.",
+            de: "Dieser Code ist weder ein Rahmen, eine Errungenschaft noch ein Shop-Objekt."
+        },
+        "error_marco_codigo_invalido": {
+            es: "Ese marco no existe (usa hierro, bronce, plata, oro o platino).",
+            en: "That frame doesn't exist (use hierro, bronce, plata, oro or platino).",
+            de: "Diesen Rahmen gibt es nicht (nutze hierro, bronce, plata, oro oder platino)."
         },
         "error_admin_fabricar_fallo": {
             es: "No se pudo crear ninguna cuenta de prueba.",
             en: "Couldn't create any test accounts.",
             de: "Es konnten keine Testkonten erstellt werden."
+        },
+        "error_admin_no_habia_cuentas_prueba": {
+            es: "No había ninguna cuenta de prueba que eliminar.",
+            en: "There were no test accounts to delete.",
+            de: "Es gab keine Testkonten zum Löschen."
         },
         "error_nombre_en_uso_sala": {
             es: "Ese nombre ya está en uso en esta sala. Elige otro.",
