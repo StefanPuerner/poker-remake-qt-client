@@ -74,6 +74,16 @@ class NetworkClient : public QObject {
       socket_.abort();
       presenciaSocket_.abort();
     });
+    // Pinning de verdad, backend-agnóstico -- ver el comentario grande de
+    // certificadoValido() para el porqué (bug real 2026-09-16: Windows/
+    // Schannel nunca conectaba pese a que el backend TLS ya se activaba
+    // bien, porque sslErrors()/ignoreSslErrors() no basta ahí). VerifyNone
+    // debe fijarse ANTES de la primera connectToHostEncrypted() de cada
+    // socket -- aquí, en el constructor, cubre las dos formas de arrancar
+    // (conectar()/cargarPartidaGuardada() para socket_, conectarPresencia()
+    // para presenciaSocket_) sin tener que repetirlo en cada una.
+    socket_.setPeerVerifyMode(QSslSocket::VerifyNone);
+    presenciaSocket_.setPeerVerifyMode(QSslSocket::VerifyNone);
   }
 
   int manosDisputadasFinal() const { return manosDisputadasFinal_; }
@@ -914,11 +924,8 @@ class NetworkClient : public QObject {
 
     if (!presenciaSenalesConectadas_) {
       presenciaSenalesConectadas_ = true;
-      connect(&presenciaSocket_, &QSslSocket::sslErrors, this,
-              [this](const QList<QSslError>& errores) {
-                gestionarErroresSsl(&presenciaSocket_, errores);
-              });
       connect(&presenciaSocket_, &QSslSocket::encrypted, this, [this]() {
+        if (!certificadoValido(&presenciaSocket_)) return;
         net::Message msg = net::buildMsg(net::MsgType::PRESENCIA_CONECTAR,
                                          {{"token", token_.toStdString()}});
         uint32_t len = qToBigEndian<uint32_t>(static_cast<uint32_t>(msg.payload.size()));
@@ -1381,36 +1388,45 @@ class NetworkClient : public QObject {
   }
 
   /**
-   * @brief *Pinning* de certificado -- se conecta a sslErrors() de
-   * cualquier QSslSocket (persistente o efímero) para decidir si vale la
-   * pena ignorar sus errores.
+   * @brief *Pinning* de certificado -- verificación MANUAL desde
+   * encrypted(), no vía sslErrors()/ignoreSslErrors().
    *
-   * El servidor usa un certificado autofirmado (no hay CA pública para
-   * un servidor propio, ver scripts/generar_cert_tls.sh) -- sin esto, Qt
-   * aborta SIEMPRE la conexión por "certificado autofirmado". PERO
-   * ignorarlo a ciegas (sslErrors conectado a ignoreSslErrors() sin
-   * condición) es exactamente el patrón "TrustManager inseguro" que el
-   * escáner de Google Play Console marca en el pre-launch report --
-   * aceptaría CUALQUIER certificado, no solo el nuestro.
+   * Versión anterior (hasta 2026-09-16): se conectaba sslErrors() de cada
+   * socket y solo se llamaba a ignoreSslErrors() si el ÚNICO error era
+   * "certificado autofirmado" y la clave pública coincidía con el pin.
+   * Funcionaba con el backend OpenSSL (Linux/Android) pero NUNCA con
+   * Schannel (Windows, backend TLS nativo desde main.cpp) -- bug real:
+   * el cliente de Windows dejó de poder conectarse al servidor desde que
+   * se introdujo TLS, incluso ya con el backend Schannel activo de
+   * verdad. Causa: Schannel valida la cadena de confianza a nivel del
+   * propio sistema operativo, y esa comprobación puede abortar el
+   * *handshake* ANTES de que sslErrors()/ignoreSslErrors() tengan ocasión
+   * de intervenir -- ese mecanismo depende de cómo cada backend reporte
+   * sus errores, y no es igual de fiable en los tres.
    *
-   * Por eso: solo se ignora si el ÚNICO error reportado es
-   * "certificado autofirmado" Y la clave pública del certificado
-   * recibido coincide EXACTAMENTE (SHA-256) con
-   * net::SERVER_CERT_PIN_SHA256 (ver ServerConfig.hpp, calculado por el
-   * script al generar el certificado). Cualquier otro caso -- hash
-   * distinto, o cualquier error que no sea ese -- se deja sin ignorar:
-   * Qt aborta la conexión sola, y errorOccurred()/el timeout de
-   * enviarPeticionEfimera() ya manejan ese fallo como cualquier otro.
+   * Solución backend-agnóstica: cada socket se configura con
+   * QSslSocket::VerifyNone (ver el constructor y enviarPeticionEfimera())
+   * -- así ningún backend aborta el *handshake* por el certificado, sea
+   * cual sea el motivo. La comprobación de verdad pasa DESPUÉS, aquí, una
+   * vez que encrypted() confirma que el *handshake* ya terminó: si la
+   * clave pública del certificado recibido no coincide EXACTAMENTE
+   * (SHA-256) con net::SERVER_CERT_PIN_SHA256 (ver ServerConfig.hpp),
+   * esta función aborta el socket ella misma -- ya no depende de que Qt
+   * decida abortar solo. Sigue siendo *pinning* real, no un "aceptar
+   * cualquier certificado": VerifyNone solo apaga la comprobación
+   * AUTOMÁTICA de Qt, no la sustituye por ninguna, así que sin este
+   * chequeo manual cualquier certificado colaría.
+   *
+   * @return true si el certificado coincide con el pin y la conexión
+   *   puede seguir usándose; false si NO coincide -- @p sock YA ha sido
+   *   abortado por esta función, el llamador no debe seguir usándolo.
    */
-  static void gestionarErroresSsl(QSslSocket* sock, const QList<QSslError>& errores) {
-    if (errores.size() != 1 || errores.first().error() != QSslError::SelfSignedCertificate) {
-      return;
-    }
+  static bool certificadoValido(QSslSocket* sock) {
     QByteArray huella = QCryptographicHash::hash(
-        errores.first().certificate().publicKey().toDer(), QCryptographicHash::Sha256).toHex();
-    if (huella == QByteArray(net::SERVER_CERT_PIN_SHA256)) {
-      sock->ignoreSslErrors();
-    }
+        sock->peerCertificate().publicKey().toDer(), QCryptographicHash::Sha256).toHex();
+    if (huella == QByteArray(net::SERVER_CERT_PIN_SHA256)) return true;
+    sock->abort();
+    return false;
   }
 
   /**
@@ -1428,17 +1444,18 @@ class NetworkClient : public QObject {
                              std::function<void(const std::string&)> alRecibir,
                              int timeoutMs = 4000) {
     auto* sock = new QSslSocket(this);
+    // Ver el comentario grande de certificadoValido() -- VerifyNone antes
+    // de conectar, en vez de sslErrors()/ignoreSslErrors(), backend-agnóstico.
+    sock->setPeerVerifyMode(QSslSocket::VerifyNone);
     auto buffer = std::make_shared<QByteArray>();
     // Evita que alRecibir() se dispare dos veces (p. ej. el timeout de
     // abajo Y un errorOccurred casi simultáneo al hacer sock->abort()).
     auto respondido = std::make_shared<bool>(false);
-    connect(sock, &QSslSocket::sslErrors, sock, [sock](const QList<QSslError>& errores) {
-      gestionarErroresSsl(sock, errores);
-    });
     // encrypted(), no connected(): connected() solo confirma el TCP
     // crudo -- mandar el mensaje ahí sería mandarlo antes de que el
     // *handshake* TLS termine.
     connect(sock, &QSslSocket::encrypted, sock, [sock, msgSaliente]() {
+      if (!certificadoValido(sock)) return;
       uint32_t len = qToBigEndian<uint32_t>(static_cast<uint32_t>(msgSaliente.payload.size()));
       sock->write(reinterpret_cast<const char*>(&len), 4);
       sock->write(msgSaliente.payload.data(), static_cast<qint64>(msgSaliente.payload.size()));
@@ -1732,13 +1749,11 @@ class NetworkClient : public QObject {
     }
     senalesConectadas_ = true;
 
-    connect(&socket_, &QSslSocket::sslErrors, this,
-            [this](const QList<QSslError>& errores) { gestionarErroresSsl(&socket_, errores); });
-
     // encrypted(), no connected(): connected() solo confirma el TCP
     // crudo -- el resto de este bloque (reconexión, primer mensaje...)
     // no debe correr hasta que el *handshake* TLS termine de verdad.
     connect(&socket_, &QSslSocket::encrypted, this, [this]() {
+      if (!certificadoValido(&socket_)) return;
       buffer_.clear();
       esperandoHeader_ = true;
       if (reconectando_) {
