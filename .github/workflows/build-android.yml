@@ -145,20 +145,25 @@ jobs:
       - name: Instalar Qt6 para escritorio (moc/rcc/qmlcachegen — corren en el runner, no en el móvil)
         uses: jurplel/install-qt-action@v4
         with:
-          # 6.7.3 -> 6.9.* (2026-09-16): Qt en FreeType (Linux/Android, a
-          # diferencia de Windows) no sabía pintar fuentes de emoji a
-          # color (COLR/CPAL, ver assets/fonts/TwemojiMozilla.ttf) hasta
-          # un parche de la serie 6.8.x, y quedó bien resuelto (+CBDT/
-          # COLRv1) en la 6.9 -- "Emoji in Qt 6.9", blog oficial de Qt.
-          # 6.7.3 (lo que había) es anterior a los dos, así que el emoji
-          # de verdad tecleado por otro jugador en el chat salía en
-          # blanco en Android -- reportado 2026-09-16 pese a que el
-          # registro de la fuente (main-mobile.cpp) ya estaba bien desde
-          # el 2026-09-14, nunca fue un bug del proyecto. MISMA versión
-          # que la instalación de abajo (Qt para Android) a propósito --
-          # las herramientas de aquí (qmlcachegen) tienen que coincidir
-          # con el Qt contra el que se cross-compila.
-          version: '6.9.*'
+          # Se intentó subir a 6.9.* (2026-09-16) para arreglar el emoji a
+          # color en Android (FreeType no sabía pintar COLR/CPAL hasta un
+          # parche de la serie 6.8.x, resuelto del todo en la 6.9 --
+          # "Emoji in Qt 6.9", blog oficial de Qt) -- REVERTIDO el mismo
+          # día: el paso de abajo (Qt para Android) falló en CI, y
+          # reproducido en local con aqtinstall (la misma herramienta que
+          # usa esta acción -- `aqt list-qt linux android`, `aqt list-qt
+          # windows android`, `aqt list-qt mac android`) confirma que
+          # Qt 6.8+ para ANDROID no está publicado en su catálogo para
+          # NINGÚN sistema anfitrión todavía (6.7.3 es el tope, a
+          # diferencia de escritorio, que ya llega a 6.12) -- no es un
+          # fallo de este workflow, es un límite real de aqtinstall/los
+          # paquetes de Qt disponibles hoy. El emoji a color en Android
+          # se queda pendiente hasta que ese catálogo se ponga al día
+          # (revisar `aqt list-qt linux android` de vez en cuando).
+          # MISMA versión que la instalación de abajo (Qt para Android) a
+          # propósito -- las herramientas de aquí (qmlcachegen) tienen que
+          # coincidir con el Qt contra el que se cross-compila.
+          version: '6.7.3'
           host: 'linux'
           target: 'desktop'
           # qtshadertools: compila assets/shaders/dither.frag a .qsb (el dithering
@@ -175,9 +180,9 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           # Ver el comentario largo en la instalación de escritorio de
-          # arriba -- misma versión, mismo motivo (soporte de fuentes de
-          # emoji a color en FreeType).
-          version: '6.9.*'
+          # arriba -- misma versión, mismo motivo (6.8+ para Android no
+          # existe todavía en el catálogo de aqtinstall).
+          version: '6.7.3'
           host: 'linux'
           target: 'android'
           arch: 'android_arm64_v8a'
@@ -272,12 +277,20 @@ jobs:
       # oficial de Qt de configurar CMake para Android.
       - name: Configurar CMake (cross-compilando para Android)
         run: |
-          QT_HOST_DIR="${{ github.workspace }}/qt/Qt/6.7.3/gcc_64"
-          if [ ! -d "$QT_HOST_DIR" ]; then
-            echo "QT_HOST_DIR no existe en la ruta esperada: $QT_HOST_DIR"
+          # Encontrado A MANO, no con la versión escrita a fuego (bug real
+          # 2026-09-16: la instalación de escritorio subió a 6.9.* pero
+          # esta ruta se quedó apuntando a "6.7.3", así que el configure
+          # fallaba pese a que las dos instalaciones de Qt de arriba
+          # hubieran ido bien) -- "find" localiza la que sea que install-qt-action
+          # haya dejado bajo qt/Qt/, sea cual sea la versión exacta que
+          # pidan los pasos de arriba en cada momento.
+          QT_HOST_DIR="$(find "${{ github.workspace }}/qt/Qt" -maxdepth 2 -type d -name "gcc_64" | sort -V | tail -1)"
+          if [ -z "$QT_HOST_DIR" ] || [ ! -d "$QT_HOST_DIR" ]; then
+            echo "No se encontró ningún gcc_64 bajo ${{ github.workspace }}/qt/Qt -- contenido real:"
             find "${{ github.workspace }}/qt" -maxdepth 4 -type d
             exit 1
           fi
+          echo "QT_HOST_DIR resuelto a: $QT_HOST_DIR"
           NDK_DIR="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
           # RelWithDebInfo (igual que los otros workflows) en vez del
           # Debug de antes: ahora sí hay un keystore de verdad (variables

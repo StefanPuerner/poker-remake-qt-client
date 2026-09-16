@@ -125,11 +125,25 @@ jobs:
 
       # Paso 7: dejarlo como resultado descargable de esta ejecución del
       # workflow (pestaña "Actions" → esta ejecución → "Artifacts").
+      #
+      # archive: false -- sin él, upload-artifact comprime SIEMPRE en un
+      # .zip lo que se le suba, aunque ya sea un .zip -- "zip dentro de
+      # zip" (bug real reportado 2026-09-16: alguien probando desde la
+      # pestaña Actions, no una Release de verdad, encontró un .zip
+      # dentro del .zip descargado, entró a ese interior sin extraerlo, y
+      # el .exe fallaba con "no se encontró tal.dll" porque Windows lo
+      # ejecutaba aislado desde dentro del zip, sin sus DLL al lado --
+      # nada roto en el paquete en sí). Mismo arreglo que ya tenía
+      # build-android.yml para su .apk -- ver su comentario gemelo. Solo
+      # afecta a la descarga desde "Artifacts" de una ejecución concreta,
+      # nunca a los assets de una Release de verdad (esos se adjuntan
+      # directos en el paso de abajo, sin pasar por upload-artifact).
       - name: Subir el .zip como artefacto
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: PokerRemake-Windows
           path: PokerRemake-Windows-x86_64.zip
+          archive: false
+          if-no-files-found: error
 
       # Paso 8: adjuntar el .zip al Release de GitHub correspondiente a la
       # etiqueta que disparó este workflow. Si el Release no existe
