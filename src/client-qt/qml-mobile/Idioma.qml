@@ -271,10 +271,15 @@ QtObject {
             de: "Experimenteller Bereich: Herausforderungen, Belohnungen und Regeln dieser Leiter können sich vor der finalen Version noch stark ändern."
         },
         "marca_completado": { es: "✓ Completado", en: "✓ Completed", de: "✓ Abgeschlossen" },
-        "reto_recompensa": {
-            es: "Recompensa: {0} Tréboles + título.", en: "Reward: {0} Clovers + title.",
-            de: "Belohnung: {0} Kleeblätter + Titel."
-        },
+        // Reward row del rediseño de tarjetas (2026-09-16, "menos texto,
+        // que se entienda visualmente") -- sustituye a la vieja
+        // "reto_recompensa" (una frase completa por tarjeta). Ahora es
+        // "Recompensas:" + icono+número de Tréboles/XP + el sufijo del
+        // título (el único que SÍ va escrito, pedido explícito del
+        // usuario -- los demás son icono, no texto).
+        "etiqueta_recompensas_reto": { es: "Recompensas:", en: "Rewards:", de: "Belohnungen:" },
+        "sufijo_mas_titulo": { es: "+ título", en: "+ title", de: "+ Titel" },
+        "etiqueta_mas_decoracion": { es: "+ {0}", en: "+ {0}", de: "+ {0}" },
         "boton_reclamar_recompensa": {
             es: "Reclamar recompensa", en: "Claim reward", de: "Belohnung einlösen"
         },

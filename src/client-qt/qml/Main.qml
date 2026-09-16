@@ -262,27 +262,39 @@ ApplicationWindow {
     // este número, los vuelve a fijar él mismo (ver kRetosSolitario,
     // AccountManager.cpp); si algún día no coincidieran, ganaría siempre el
     // servidor. codigoPredecesor "" en el primero -- sin requisito.
+    // rareza/xp: puramente decorativos, mismo criterio de arriba -- deben
+    // coincidir con kCatalogoLogros (AccountManager.cpp) o el círculo
+    // numerado de la tarjeta se pintaría de un color que no es el real.
+    // reto_solitario_3 subió de plata a oro 2026-09-16 (iba con menos XP
+    // que reto_solitario_4 pese a ser el primer "Experto" 1 contra 1 de
+    // la escalera). decoracionNombre: "" = ninguna, solo el 5 la lleva
+    // (corona_real, ver el comentario de kRetosSolitario).
     readonly property var retosSolitario: [
         { codigo: "reto_solitario_1", codigoPredecesor: "",
           nombre: Idioma.t("reto_solitario_1_nombre"),
           descripcion: Idioma.t("reto_solitario_1_descripcion"),
-          numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 20 },
+          numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200,
+          treboles: 20, xp: 50, rareza: "bronce", decoracionNombre: "" },
         { codigo: "reto_solitario_2", codigoPredecesor: "reto_solitario_1",
           nombre: Idioma.t("reto_solitario_2_nombre"),
           descripcion: Idioma.t("reto_solitario_2_descripcion"),
-          numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 35 },
+          numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200,
+          treboles: 35, xp: 150, rareza: "plata", decoracionNombre: "" },
         { codigo: "reto_solitario_3", codigoPredecesor: "reto_solitario_2",
           nombre: Idioma.t("reto_solitario_3_nombre"),
           descripcion: Idioma.t("reto_solitario_3_descripcion"),
-          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 40 },
+          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200,
+          treboles: 45, xp: 400, rareza: "oro", decoracionNombre: "" },
         { codigo: "reto_solitario_4", codigoPredecesor: "reto_solitario_3",
           nombre: Idioma.t("reto_solitario_4_nombre"),
           descripcion: Idioma.t("reto_solitario_4_descripcion"),
-          numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12, treboles: 50 },
+          numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12,
+          treboles: 55, xp: 400, rareza: "oro", decoracionNombre: "" },
         { codigo: "reto_solitario_5", codigoPredecesor: "reto_solitario_4",
           nombre: Idioma.t("reto_solitario_5_nombre"),
           descripcion: Idioma.t("reto_solitario_5_descripcion"),
-          numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200, treboles: 60 },
+          numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200,
+          treboles: 70, xp: 400, rareza: "oro", decoracionNombre: Idioma.t("objeto_corona_real_nombre") },
     ]
     // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
     // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
@@ -3132,110 +3144,230 @@ ApplicationWindow {
 
                     Repeater {
                         model: retosSolitario
-                        delegate: Rectangle {
+                        // Rediseño 2026-09-16 (pedido explícito del usuario:
+                        // "menos texto, que las cosas se entiendan
+                        // visualmente" + "mismo estilo de bordeado y
+                        // detalle que Tienda/Amigos en Social") -- de una
+                        // Rectangle plana a la misma "ficha de casino" que
+                        // ya usan Tienda/Logros/Salas: sombra desplazada,
+                        // degradado, hilo dorado interior y encogido al
+                        // pasar el ratón (antes solo tenía el dithering).
+                        // El círculo numerado sustituye a cualquier "Reto
+                        // N" en texto -- coloreado según la rareza real del
+                        // logro que da ese peldaño (bronce/plata/oro, ver
+                        // colorRareza() y retosSolitario más arriba), y con
+                        // "✓" en vez del número una vez completado -- eso
+                        // también sustituye a la vieja marca "✓ Completado"
+                        // en texto, que sobraba al lado.
+                        delegate: Item {
                             id: tarjetaReto
                             required property var modelData
+                            required property int index
                             readonly property bool disponible: retoDisponible(modelData.codigoPredecesor)
                             readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
                             readonly property bool completado: retoLogroDesbloqueado(modelData.codigo)
                             // Solo con cuenta real y conexión de verdad --
                             // invitado no tiene dónde acreditar nada.
                             readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
+                            readonly property color colorTier: colorRareza(modelData.rareza)
 
                             width: parent.width
-                            height: columnaReto.height + 28 * Tema.escala
-                            radius: 12 * Tema.escala
-                            color: Tema.colorPanel
-                            border.width: 1
-                            border.color: Tema.colorBorde
-                            // Bloqueado -- mismo criterio que "Comprado"
-                            // (CLAUDE.md, "Convenciones de diseño"): opacidad
-                            // baja, sin Rectangle ni color especial nuevo.
-                            opacity: disponible ? 1.0 : 0.55
-                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                            layer.enabled: true
-                            layer.effect: ShaderEffect {
-                                property variant source
-                                property real amplitud: 30.0
-                                fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                            height: fondoReto.height + 9 * Tema.escala
+
+                            Rectangle {
+                                anchors.top: fondoReto.top
+                                anchors.topMargin: 3 * Tema.escala
+                                anchors.left: fondoReto.left
+                                anchors.right: fondoReto.right
+                                height: fondoReto.height
+                                radius: fondoReto.radius
+                                color: "black"
+                                opacity: 0.35
                             }
 
-                            Column {
-                                id: columnaReto
-                                anchors.centerIn: parent
-                                width: parent.width - 32 * Tema.escala
-                                spacing: 10 * Tema.escala
+                            Rectangle {
+                                id: fondoReto
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: columnaReto.height + 28 * Tema.escala
+                                radius: 12 * Tema.escala
+                                // Bloqueado -- mismo criterio que "Comprado"
+                                // (CLAUDE.md, "Convenciones de diseño"):
+                                // opacidad baja, sin Rectangle nuevo.
+                                opacity: tarjetaReto.disponible ? 1.0 : 0.55
+                                border.width: tarjetaReto.completado ? 1.8 : 1
+                                border.color: tarjetaReto.completado ? tarjetaReto.colorTier : Tema.colorBorde
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                                }
+                                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                                layer.enabled: true
+                                layer.effect: ShaderEffect {
+                                    property variant source
+                                    property real amplitud: 30.0
+                                    fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                                }
+                                // Se encoge un poco al pasar el ratón por
+                                // encima -- mismo criterio que Tienda/
+                                // Amigos/Salas.
+                                scale: zonaHoverReto.containsMouse ? 0.97 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 100 } }
 
-                                Row {
-                                    width: parent.width
-                                    Text {
-                                        width: parent.width - marcaCompletado.width
-                                        text: tarjetaReto.modelData.nombre
-                                        color: Tema.colorAccent
-                                        font.bold: true
-                                        font.pixelSize: 14 * Tema.escala
-                                        elide: Text.ElideRight
+                                // Hilo interior -- el "doble bisel" de ficha
+                                // de casino, mismo criterio que Tienda.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 2 * Tema.escala
+                                    radius: parent.radius - 2 * Tema.escala
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.rgba(tarjetaReto.colorTier.r, tarjetaReto.colorTier.g,
+                                                           tarjetaReto.colorTier.b,
+                                                           tarjetaReto.completado ? 0.55 : 0.28)
+                                }
+
+                                MouseArea {
+                                    id: zonaHoverReto
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                }
+
+                                Column {
+                                    id: columnaReto
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 14 * Tema.escala
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 16 * Tema.escala
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 16 * Tema.escala
+                                    spacing: 10 * Tema.escala
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 12 * Tema.escala
+                                        Rectangle {
+                                            id: circuloReto
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 32 * Tema.escala
+                                            height: width
+                                            radius: width / 2
+                                            color: tarjetaReto.completado ? tarjetaReto.colorTier : "transparent"
+                                            border.width: 1.5
+                                            border.color: tarjetaReto.colorTier
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: tarjetaReto.completado ? "✓" : String(tarjetaReto.index + 1)
+                                                color: tarjetaReto.completado ? Tema.colorFondo : tarjetaReto.colorTier
+                                                font.bold: true
+                                                font.pixelSize: 14 * Tema.escala
+                                            }
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - circuloReto.width - parent.spacing
+                                            text: tarjetaReto.modelData.nombre
+                                            color: Tema.colorAccent
+                                            font.bold: true
+                                            font.pixelSize: 14 * Tema.escala
+                                            elide: Text.ElideRight
+                                        }
                                     }
                                     Text {
-                                        id: marcaCompletado
-                                        visible: tarjetaReto.completado
-                                        text: Idioma.t("marca_completado")
-                                        color: Tema.colorAccent
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: tarjetaReto.modelData.descripcion
+                                        color: Tema.colorTexto
+                                        font.pixelSize: 12 * Tema.escala
+                                    }
+                                    Text {
+                                        visible: !tarjetaReto.disponible
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: Idioma.t("error_reto_orden")
+                                        color: Tema.colorTextoTenue
                                         font.pixelSize: 11 * Tema.escala
                                     }
-                                }
-                                Text {
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                    text: tarjetaReto.modelData.descripcion
-                                    color: Tema.colorTexto
-                                    font.pixelSize: 12 * Tema.escala
-                                }
-                                Text {
-                                    visible: !tarjetaReto.disponible
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                    text: Idioma.t("error_reto_orden")
-                                    color: Tema.colorTextoTenue
-                                    font.pixelSize: 11 * Tema.escala
-                                }
-                                Text {
-                                    visible: tarjetaReto.disponible && !tarjetaReto.completado
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                    text: Idioma.tf("reto_recompensa", [tarjetaReto.modelData.treboles])
-                                    color: Tema.colorTextoTenue
-                                    font.pixelSize: 11 * Tema.escala
-                                }
+                                    // Recompensas -- SIEMPRE visibles (pedido
+                                    // explícito), icono+número para
+                                    // Tréboles/XP; el título (y, en el reto
+                                    // 5, la decoración) sí van escritos --
+                                    // Flow en vez de Row: si no cabe en una
+                                    // línea (reto 5, con la decoración
+                                    // extra), pasa sola a la siguiente en
+                                    // vez de salirse de la tarjeta.
+                                    Flow {
+                                        width: parent.width
+                                        spacing: 6 * Tema.escala
+                                        Text {
+                                            text: Idioma.t("etiqueta_recompensas_reto")
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 11 * Tema.escala
+                                        }
+                                        IconoTrebol {
+                                            width: 11 * Tema.escala
+                                            height: width
+                                            colorTrebol: Tema.colorTextoTenue
+                                        }
+                                        Text {
+                                            text: tarjetaReto.modelData.treboles
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 11 * Tema.escala
+                                        }
+                                        IconoXP {
+                                            width: 11 * Tema.escala
+                                            height: width
+                                            colorXP: Tema.colorTextoTenue
+                                        }
+                                        Text {
+                                            text: tarjetaReto.modelData.xp
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 11 * Tema.escala
+                                        }
+                                        Text {
+                                            text: Idioma.t("sufijo_mas_titulo")
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 11 * Tema.escala
+                                        }
+                                        Text {
+                                            visible: tarjetaReto.modelData.decoracionNombre !== ""
+                                            text: Idioma.tf("etiqueta_mas_decoracion", [tarjetaReto.modelData.decoracionNombre])
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 11 * Tema.escala
+                                        }
+                                    }
 
-                                // Reclamar es la acción principal en cuanto hay
-                                // algo que reclamar -- "Jugar de nuevo" queda
-                                // como enlace secundario, discreto, para quien
-                                // quiera practicar antes de reclamar.
-                                BotonRelleno {
-                                    visible: tarjetaReto.disponible && tarjetaReto.ganadoPendiente && !tarjetaReto.completado
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    enabled: tarjetaReto.puedeReclamar
-                                    text: tarjetaReto.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
-                                    onClicked: redcliente.reclamarRecompensaReto(
-                                        servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
-                                }
-                                BotonRelleno {
-                                    visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("boton_jugar")
-                                    onClicked: iniciarReto(tarjetaReto.modelData)
-                                }
-                                Text {
-                                    visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado)
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("enlace_jugar_de_nuevo")
-                                    color: Tema.colorAccent
-                                    font.pixelSize: 12 * Tema.escala
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
+                                    // Reclamar es la acción principal en cuanto hay
+                                    // algo que reclamar -- "Jugar de nuevo" queda
+                                    // como enlace secundario, discreto, para quien
+                                    // quiera practicar antes de reclamar.
+                                    BotonRelleno {
+                                        visible: tarjetaReto.disponible && tarjetaReto.ganadoPendiente && !tarjetaReto.completado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        enabled: tarjetaReto.puedeReclamar
+                                        text: tarjetaReto.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                        onClicked: redcliente.reclamarRecompensaReto(
+                                            servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_jugar")
                                         onClicked: iniciarReto(tarjetaReto.modelData)
+                                    }
+                                    Text {
+                                        visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado)
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("enlace_jugar_de_nuevo")
+                                        color: Tema.colorAccent
+                                        font.pixelSize: 12 * Tema.escala
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: iniciarReto(tarjetaReto.modelData)
+                                        }
                                     }
                                 }
                             }

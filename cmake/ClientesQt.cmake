@@ -150,6 +150,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PaloIcono.qml
             src/client-qt/qml/IconoFicha.qml
             src/client-qt/qml/IconoTrebol.qml
+            src/client-qt/qml/IconoXP.qml
             src/client-qt/qml/IconoOjo.qml
             src/client-qt/qml/Asiento.qml
             src/client-qt/qml/AsientoMini.qml
@@ -456,6 +457,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/PaloIcono.qml
             src/client-qt/qml-mobile/IconoFicha.qml
             src/client-qt/qml-mobile/IconoTrebol.qml
+            src/client-qt/qml-mobile/IconoXP.qml
             src/client-qt/qml-mobile/Avatar.qml
             src/client-qt/qml-mobile/Asiento.qml
             src/client-qt/qml-mobile/Mesa.qml

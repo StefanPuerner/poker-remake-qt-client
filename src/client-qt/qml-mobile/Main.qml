@@ -152,27 +152,39 @@ ApplicationWindow {
     // este número, los vuelve a fijar él mismo (ver kRetosSolitario,
     // AccountManager.cpp); si algún día no coincidieran, ganaría siempre el
     // servidor. codigoPredecesor "" en el primero -- sin requisito.
+    // rareza/xp: puramente decorativos, mismo criterio de arriba -- deben
+    // coincidir con kCatalogoLogros (AccountManager.cpp) o el círculo
+    // numerado de la tarjeta se pintaría de un color que no es el real.
+    // reto_solitario_3 subió de plata a oro 2026-09-16 (iba con menos XP
+    // que reto_solitario_4 pese a ser el primer "Experto" 1 contra 1 de
+    // la escalera). decoracionNombre: "" = ninguna, solo el 5 la lleva
+    // (corona_real, ver el comentario de kRetosSolitario).
     readonly property var retosSolitario: [
         { codigo: "reto_solitario_1", codigoPredecesor: "",
           nombre: Idioma.t("reto_solitario_1_nombre"),
           descripcion: Idioma.t("reto_solitario_1_descripcion"),
-          numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 20 },
+          numBots: 2, dificultadBots: 0, saldo: 500, numManos: 200,
+          treboles: 20, xp: 50, rareza: "bronce", decoracionNombre: "" },
         { codigo: "reto_solitario_2", codigoPredecesor: "reto_solitario_1",
           nombre: Idioma.t("reto_solitario_2_nombre"),
           descripcion: Idioma.t("reto_solitario_2_descripcion"),
-          numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200, treboles: 35 },
+          numBots: 5, dificultadBots: 0, saldo: 500, numManos: 200,
+          treboles: 35, xp: 150, rareza: "plata", decoracionNombre: "" },
         { codigo: "reto_solitario_3", codigoPredecesor: "reto_solitario_2",
           nombre: Idioma.t("reto_solitario_3_nombre"),
           descripcion: Idioma.t("reto_solitario_3_descripcion"),
-          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 40 },
+          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200,
+          treboles: 45, xp: 400, rareza: "oro", decoracionNombre: "" },
         { codigo: "reto_solitario_4", codigoPredecesor: "reto_solitario_3",
           nombre: Idioma.t("reto_solitario_4_nombre"),
           descripcion: Idioma.t("reto_solitario_4_descripcion"),
-          numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12, treboles: 50 },
+          numBots: 3, dificultadBots: 1, saldo: 500, numManos: 12,
+          treboles: 55, xp: 400, rareza: "oro", decoracionNombre: "" },
         { codigo: "reto_solitario_5", codigoPredecesor: "reto_solitario_4",
           nombre: Idioma.t("reto_solitario_5_nombre"),
           descripcion: Idioma.t("reto_solitario_5_descripcion"),
-          numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200, treboles: 60 },
+          numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200,
+          treboles: 70, xp: 400, rareza: "oro", decoracionNombre: Idioma.t("objeto_corona_real_nombre") },
     ]
     // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
     // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
@@ -3592,101 +3604,200 @@ ApplicationWindow {
 
                 Repeater {
                     model: ventana.retosSolitario
-                    delegate: Rectangle {
+                    // Rediseño 2026-09-16 -- ver el comentario largo en
+                    // qml/Main.qml (mismo cambio, mismas razones: menos
+                    // texto, mismo estilo de "ficha de casino" que Tienda/
+                    // Amigos, círculo numerado en vez de "Reto N" en
+                    // texto). En móvil el "reactivo" es al PULSAR
+                    // (pressed), no al pasar el ratón -- no hay hover
+                    // táctil, mismo criterio que el resto de tarjetas de
+                    // este cliente (areaChatAmigoMovil, etc.).
+                    delegate: Item {
                         id: tarjetaRetoMovil
                         required property var modelData
+                        required property int index
                         readonly property bool disponible: ventana.retoDisponible(modelData.codigoPredecesor)
                         readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
                         readonly property bool completado: ventana.retoLogroDesbloqueado(modelData.codigo)
                         readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
+                        readonly property color colorTier: ventana.colorRareza(modelData.rareza)
 
                         width: parent.width
-                        height: columnaRetoMovil.height + 24 * Tema.escala
-                        radius: 12 * Tema.escala
-                        color: Tema.colorPanel
-                        border.width: 1
-                        border.color: Tema.colorBorde
-                        opacity: disponible ? 1.0 : 0.55
-                        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                        layer.enabled: true
-                        layer.effect: ShaderEffect {
-                            property variant source
-                            property real amplitud: 30.0
-                            fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                        height: fondoRetoMovil.height + 8 * Tema.escala
+
+                        Rectangle {
+                            anchors.top: fondoRetoMovil.top
+                            anchors.topMargin: 3 * Tema.escala
+                            anchors.left: fondoRetoMovil.left
+                            anchors.right: fondoRetoMovil.right
+                            height: fondoRetoMovil.height
+                            radius: fondoRetoMovil.radius
+                            color: "black"
+                            opacity: 0.35
                         }
 
-                        Column {
-                            id: columnaRetoMovil
-                            anchors.centerIn: parent
-                            width: parent.width - 28 * Tema.escala
-                            spacing: 8 * Tema.escala
+                        Rectangle {
+                            id: fondoRetoMovil
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: columnaRetoMovil.height + 24 * Tema.escala
+                            radius: 12 * Tema.escala
+                            opacity: tarjetaRetoMovil.disponible ? 1.0 : 0.55
+                            border.width: tarjetaRetoMovil.completado ? 1.8 : 1
+                            border.color: tarjetaRetoMovil.completado ? tarjetaRetoMovil.colorTier : Tema.colorBorde
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                GradientStop { position: 1.0; color: Tema.colorPanel }
+                            }
+                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither_movil.frag.
+                            layer.enabled: true
+                            layer.effect: ShaderEffect {
+                                property variant source
+                                property real amplitud: 30.0
+                                fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                            }
+                            scale: zonaTapReto.pressed ? 0.97 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 100 } }
 
-                            Row {
-                                width: parent.width
-                                Text {
-                                    width: parent.width - marcaCompletadoMovil.width
-                                    text: tarjetaRetoMovil.modelData.nombre
-                                    color: Tema.colorAccent
-                                    font.bold: true
-                                    font.pixelSize: 13 * Tema.escala
-                                    elide: Text.ElideRight
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 2 * Tema.escala
+                                radius: parent.radius - 2 * Tema.escala
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Qt.rgba(tarjetaRetoMovil.colorTier.r, tarjetaRetoMovil.colorTier.g,
+                                                       tarjetaRetoMovil.colorTier.b,
+                                                       tarjetaRetoMovil.completado ? 0.55 : 0.28)
+                            }
+
+                            MouseArea {
+                                id: zonaTapReto
+                                anchors.fill: parent
+                            }
+
+                            Column {
+                                id: columnaRetoMovil
+                                anchors.top: parent.top
+                                anchors.topMargin: 12 * Tema.escala
+                                anchors.left: parent.left
+                                anchors.leftMargin: 14 * Tema.escala
+                                anchors.right: parent.right
+                                anchors.rightMargin: 14 * Tema.escala
+                                spacing: 8 * Tema.escala
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 10 * Tema.escala
+                                    Rectangle {
+                                        id: circuloRetoMovil
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 28 * Tema.escala
+                                        height: width
+                                        radius: width / 2
+                                        color: tarjetaRetoMovil.completado ? tarjetaRetoMovil.colorTier : "transparent"
+                                        border.width: 1.5
+                                        border.color: tarjetaRetoMovil.colorTier
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: tarjetaRetoMovil.completado ? "✓" : String(tarjetaRetoMovil.index + 1)
+                                            color: tarjetaRetoMovil.completado ? Tema.colorFondo : tarjetaRetoMovil.colorTier
+                                            font.bold: true
+                                            font.pixelSize: 13 * Tema.escala
+                                        }
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - circuloRetoMovil.width - parent.spacing
+                                        text: tarjetaRetoMovil.modelData.nombre
+                                        color: Tema.colorAccent
+                                        font.bold: true
+                                        font.pixelSize: 13 * Tema.escala
+                                        elide: Text.ElideRight
+                                    }
                                 }
                                 Text {
-                                    id: marcaCompletadoMovil
-                                    visible: tarjetaRetoMovil.completado
-                                    text: Idioma.t("marca_completado")
-                                    color: Tema.colorAccent
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: tarjetaRetoMovil.modelData.descripcion
+                                    color: Tema.colorTexto
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Text {
+                                    visible: !tarjetaRetoMovil.disponible
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: Idioma.t("error_reto_orden")
+                                    color: Tema.colorTextoTenue
                                     font.pixelSize: 10 * Tema.escala
                                 }
-                            }
-                            Text {
-                                width: parent.width
-                                wrapMode: Text.WordWrap
-                                text: tarjetaRetoMovil.modelData.descripcion
-                                color: Tema.colorTexto
-                                font.pixelSize: 11 * Tema.escala
-                            }
-                            Text {
-                                visible: !tarjetaRetoMovil.disponible
-                                width: parent.width
-                                wrapMode: Text.WordWrap
-                                text: Idioma.t("error_reto_orden")
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 10 * Tema.escala
-                            }
-                            Text {
-                                visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.completado
-                                width: parent.width
-                                wrapMode: Text.WordWrap
-                                text: Idioma.tf("reto_recompensa", [tarjetaRetoMovil.modelData.treboles])
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 10 * Tema.escala
-                            }
+                                Flow {
+                                    width: parent.width
+                                    spacing: 5 * Tema.escala
+                                    Text {
+                                        text: Idioma.t("etiqueta_recompensas_reto")
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                    }
+                                    IconoTrebol {
+                                        width: 10 * Tema.escala
+                                        height: width
+                                        colorTrebol: Tema.colorTextoTenue
+                                    }
+                                    Text {
+                                        text: tarjetaRetoMovil.modelData.treboles
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                    }
+                                    IconoXP {
+                                        width: 10 * Tema.escala
+                                        height: width
+                                        colorXP: Tema.colorTextoTenue
+                                    }
+                                    Text {
+                                        text: tarjetaRetoMovil.modelData.xp
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                    }
+                                    Text {
+                                        text: Idioma.t("sufijo_mas_titulo")
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                    }
+                                    Text {
+                                        visible: tarjetaRetoMovil.modelData.decoracionNombre !== ""
+                                        text: Idioma.tf("etiqueta_mas_decoracion", [tarjetaRetoMovil.modelData.decoracionNombre])
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                    }
+                                }
 
-                            BotonRelleno {
-                                visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.completado
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                enabled: tarjetaRetoMovil.puedeReclamar
-                                text: tarjetaRetoMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
-                                onClicked: redcliente.reclamarRecompensaReto(
-                                    ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
-                                    tarjetaRetoMovil.modelData.codigo)
-                            }
-                            BotonRelleno {
-                                visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: Idioma.t("boton_jugar")
-                                onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
-                            }
-                            Text {
-                                visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado)
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: Idioma.t("enlace_jugar_de_nuevo")
-                                color: Tema.colorAccent
-                                font.pixelSize: 11 * Tema.escala
-                                MouseArea {
-                                    anchors.fill: parent
+                                BotonRelleno {
+                                    visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.completado
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    enabled: tarjetaRetoMovil.puedeReclamar
+                                    text: tarjetaRetoMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                    onClicked: redcliente.reclamarRecompensaReto(
+                                        ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                        tarjetaRetoMovil.modelData.codigo)
+                                }
+                                BotonRelleno {
+                                    visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.t("boton_jugar")
                                     onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
+                                }
+                                Text {
+                                    visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado)
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.t("enlace_jugar_de_nuevo")
+                                    color: Tema.colorAccent
+                                    font.pixelSize: 11 * Tema.escala
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
+                                    }
                                 }
                             }
                         }
