@@ -3405,7 +3405,7 @@ ApplicationWindow {
                     }
                 }
             }
-            delegate: Rectangle {
+            delegate: Item {
                 id: filaRankingMovil
                 required property int accountId
                 required property string username
@@ -3419,65 +3419,120 @@ ApplicationWindow {
                     username.toLowerCase() === ventana.nombreJugador.toLowerCase()
                 width: ListView.view.width
                 height: Math.max(Tema.tamanoMinTactil, 56 * Tema.escala)
-                radius: 6 * Tema.escala
-                color: esUsuarioPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.1) : Tema.colorFondo
-                border.width: esUsuarioPropio ? 1.5 : 1
-                border.color: esUsuarioPropio ? Tema.colorAccent : Tema.colorBorde
 
-                Row {
+                // "Ficha de casino" (2026-09-16, pedido explícito: mismo
+                // estilo que el resto de la app) -- mismo patrón que
+                // celdaAmigoMovil/tarjetaSalaMovil: sombra desplazada
+                // barata SIN escalar.
+                Rectangle {
                     anchors.fill: parent
-                    anchors.leftMargin: 10 * Tema.escala
-                    anchors.rightMargin: 10 * Tema.escala
-                    Text {
-                        width: 28 * Tema.escala
-                        anchors.verticalCenter: parent.verticalCenter
-                        // "posicion", no "index+1" -- el top 3 ya no vive
-                        // en este modelo (ver el podio de arriba).
-                        text: filaRankingMovil.posicion + ""
-                        font.family: Tema.fuenteElegante
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 14 * Tema.escala
+                    anchors.topMargin: 3 * Tema.escala
+                    radius: 8 * Tema.escala
+                    color: "black"
+                    opacity: 0.35
+                }
+
+                Rectangle {
+                    id: tarjetaFilaMovil
+                    anchors.fill: parent
+                    radius: 8 * Tema.escala
+                    border.width: filaRankingMovil.esUsuarioPropio ? 1.5 : 1.2
+                    border.color: filaRankingMovil.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.4)
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0.0
+                            color: filaRankingMovil.esUsuarioPropio
+                                   ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.22)
+                                   : Qt.lighter(Tema.colorPanel, 1.65)
+                        }
+                        GradientStop {
+                            position: 0.18
+                            color: filaRankingMovil.esUsuarioPropio
+                                   ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.14)
+                                   : Qt.lighter(Tema.colorPanel, 1.4)
+                        }
+                        GradientStop {
+                            position: 1.0
+                            color: filaRankingMovil.esUsuarioPropio
+                                   ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.08)
+                                   : Tema.colorPanel
+                        }
                     }
+                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                    layer.enabled: true
+                    layer.effect: ShaderEffect {
+                        property variant source
+                        property real amplitud: 30.0
+                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                    }
+
+                    // Hilo dorado por dentro del bisel exterior -- el
+                    // "doble bisel" de ficha de casino.
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 2 * Tema.escala
+                        radius: parent.radius - 2 * Tema.escala
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                               filaRankingMovil.esUsuarioPropio ? 0.35 : 0.18)
+                    }
+
                     Row {
-                        width: filaRankingMovil.width - 28 * Tema.escala - 160 * Tema.escala - 20 * Tema.escala
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8 * Tema.escala
-                        Avatar {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10 * Tema.escala
+                        anchors.rightMargin: 10 * Tema.escala
+                        Text {
+                            width: 28 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
-                            letra: filaRankingMovil.username.length > 0 ? filaRankingMovil.username.charAt(0).toUpperCase() : "?"
-                            // Sin textura/efecto/decoraciones -- reservadas
-                            // como "premio" exclusivo del podio de arriba,
-                            // mismo criterio que escritorio.
-                            tamano: 34 * Tema.escala
-                            marco: Tema.marcoPorPartidasGanadas(filaRankingMovil.partidasGanadas, filaRankingMovil.tieneMarcoBasico)
-                            colorBorde: filaRankingMovil.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
+                            // "posicion", no "index+1" -- el top 3 ya no vive
+                            // en este modelo (ver el podio de arriba).
+                            text: filaRankingMovil.posicion + ""
+                            font.family: Tema.fuenteElegante
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 14 * Tema.escala
+                        }
+                        Row {
+                            width: filaRankingMovil.width - 28 * Tema.escala - 160 * Tema.escala - 20 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8 * Tema.escala
+                            Avatar {
+                                anchors.verticalCenter: parent.verticalCenter
+                                letra: filaRankingMovil.username.length > 0 ? filaRankingMovil.username.charAt(0).toUpperCase() : "?"
+                                // Sin textura/efecto/decoraciones -- reservadas
+                                // como "premio" exclusivo del podio de arriba,
+                                // mismo criterio que escritorio.
+                                tamano: 34 * Tema.escala
+                                marco: Tema.marcoPorPartidasGanadas(filaRankingMovil.partidasGanadas, filaRankingMovil.tieneMarcoBasico)
+                                colorBorde: filaRankingMovil.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: filaRankingMovil.username + (filaRankingMovil.esUsuarioPropio ? Idioma.t("sufijo_tu") : "")
+                                font.bold: filaRankingMovil.esUsuarioPropio
+                                color: Tema.colorTexto
+                                elide: Text.ElideRight
+                                font.pixelSize: 12 * Tema.escala
+                            }
                         }
                         Text {
+                            width: 80 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
-                            text: filaRankingMovil.username + (filaRankingMovil.esUsuarioPropio ? Idioma.t("sufijo_tu") : "")
-                            font.bold: filaRankingMovil.esUsuarioPropio
+                            horizontalAlignment: Text.AlignRight
+                            text: ventana.ordenRankingActual === 2 ? (filaRankingMovil.elo + "") : (filaRankingMovil.partidasGanadas + "")
                             color: Tema.colorTexto
-                            elide: Text.ElideRight
                             font.pixelSize: 12 * Tema.escala
                         }
-                    }
-                    Text {
-                        width: 80 * Tema.escala
-                        anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignRight
-                        text: ventana.ordenRankingActual === 2 ? (filaRankingMovil.elo + "") : (filaRankingMovil.partidasGanadas + "")
-                        color: Tema.colorTexto
-                        font.pixelSize: 12 * Tema.escala
-                    }
-                    Text {
-                        width: 80 * Tema.escala
-                        anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignRight
-                        text: ventana.ordenRankingActual === 2
-                              ? (filaRankingMovil.partidasJugadas + "")
-                              : (Math.round(100 * filaRankingMovil.partidasGanadas / filaRankingMovil.partidasJugadas) + "%")
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 12 * Tema.escala
+                        Text {
+                            width: 80 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: Text.AlignRight
+                            text: ventana.ordenRankingActual === 2
+                                  ? (filaRankingMovil.partidasJugadas + "")
+                                  : (Math.round(100 * filaRankingMovil.partidasGanadas / filaRankingMovil.partidasJugadas) + "%")
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 12 * Tema.escala
+                        }
                     }
                 }
                 // Fila completa abre el perfil público -- mismo criterio

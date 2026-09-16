@@ -2593,17 +2593,16 @@ ApplicationWindow {
             border.width: 1
             border.color: Qt.rgba(0, 0, 0, 0.3)
             radius: 10 * Tema.escala
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                GradientStop { position: 1.0; color: Tema.colorPanel }
-            }
-            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-            layer.enabled: true
-            layer.effect: ShaderEffect {
-                property variant source
-                property real amplitud: 30.0
-                fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
-            }
+            // Color PLANO, no degradado (corregido 2026-09-16 -- bug real
+            // reportado en captura: quitar el dithering pero dejar el
+            // degradado de arriba dejaba bandas de Mach bien visibles, "las
+            // líneas claras", en una superficie tan grande como esta. Ya no
+            // hay degradado que pueda bandear -- las filas de dentro son las
+            // que llevan textura y volumen (ver filaRanking más abajo); este
+            // panel es solo su fondo, "liso" de verdad, no una versión sin
+            // dithering de lo de antes. Mismo tono ya plano que usa el móvil
+            // aquí desde siempre, nunca tuvo este bug.
+            color: Tema.colorPanel
 
             Text {
                 anchors.centerIn: parent
@@ -2865,7 +2864,7 @@ ApplicationWindow {
                         }
                     }
                 }
-                delegate: Rectangle {
+                delegate: Item {
                         id: filaRanking
                         required property int accountId
                         required property string username
@@ -2883,106 +2882,142 @@ ApplicationWindow {
                         // arriba subió mucho de escala y dejó estas filas
                         // pequeñas en comparación).
                         height: 68 * Tema.escala
-                        radius: 10 * Tema.escala
-                        // Fila normal: mismo degradado elevado que el resto
-                        // del rediseño (antes plano, Tema.colorFondo). La
-                        // fila propia lleva el mismo degradado pero teñido
-                        // de acento -- distinguible sin caer en un relleno
-                        // plano (un Rectangle con "gradient" fijado ignora
-                        // "color" del todo, así que no se puede alternar
-                        // entre las dos con una condición en "gradient"
-                        // mismo -- por eso el color se decide en cada
-                        // GradientStop en vez de en el Gradient entero).
-                        gradient: Gradient {
-                            GradientStop {
-                                position: 0.0
-                                color: filaRanking.esUsuarioPropio
-                                       ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.18)
-                                       : Qt.lighter(Tema.colorPanel, 1.5)
-                            }
-                            GradientStop {
-                                position: 1.0
-                                color: filaRanking.esUsuarioPropio
-                                       ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.08)
-                                       : Tema.colorPanel
-                            }
-                        }
-                        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                        layer.enabled: true
-                        layer.effect: ShaderEffect {
-                            property variant source
-                            property real amplitud: 30.0
-                            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
-                        }
-                        border.width: esUsuarioPropio ? 1.5 : 1
-                        border.color: esUsuarioPropio ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.35)
 
-                        Row {
+                        // "Ficha de casino" (2026-09-16, pedido explícito:
+                        // mismo estilo que las tarjetas de Salas/Tienda) --
+                        // sombra desplazada barata SIN escalar, mismo
+                        // criterio que gridSalas más arriba.
+                        Rectangle {
                             anchors.fill: parent
-                            anchors.leftMargin: 14 * Tema.escala
-                            anchors.rightMargin: 14 * Tema.escala
-                            Text {
-                                width: 34 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                // "posicion", no "index+1" -- el top 3 ya no
-                                // vive en este modelo (ver el podio más
-                                // arriba), así que el índice del ListView ya
-                                // no coincide con el puesto real.
-                                text: filaRanking.posicion + ""
-                                font.family: Tema.fuenteElegante
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 18 * Tema.escala
+                            anchors.topMargin: 3 * Tema.escala
+                            radius: 10 * Tema.escala
+                            color: "black"
+                            opacity: 0.35
+                        }
+
+                        Rectangle {
+                            id: tarjetaFila
+                            anchors.fill: parent
+                            radius: 10 * Tema.escala
+                            border.width: filaRanking.esUsuarioPropio ? 1.5 : 1.2
+                            border.color: filaRanking.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(0, 0, 0, 0.4)
+                            // Degradado de 3 paradas (antes 2), mismo criterio
+                            // que las tarjetas de Salas/Tienda. La fila propia
+                            // lleva el mismo degradado pero teñido de acento --
+                            // distinguible sin caer en un relleno plano (un
+                            // Rectangle con "gradient" fijado ignora "color"
+                            // del todo, así que no se puede alternar entre las
+                            // dos con una condición en "gradient" mismo -- por
+                            // eso el color se decide en cada GradientStop en
+                            // vez de en el Gradient entero).
+                            gradient: Gradient {
+                                GradientStop {
+                                    position: 0.0
+                                    color: filaRanking.esUsuarioPropio
+                                           ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.22)
+                                           : Qt.lighter(Tema.colorPanel, 1.65)
+                                }
+                                GradientStop {
+                                    position: 0.18
+                                    color: filaRanking.esUsuarioPropio
+                                           ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.14)
+                                           : Qt.lighter(Tema.colorPanel, 1.4)
+                                }
+                                GradientStop {
+                                    position: 1.0
+                                    color: filaRanking.esUsuarioPropio
+                                           ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.08)
+                                           : Tema.colorPanel
+                                }
                             }
+                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                            layer.enabled: true
+                            layer.effect: ShaderEffect {
+                                property variant source
+                                property real amplitud: 30.0
+                                fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                            }
+
+                            // Hilo dorado por dentro del bisel exterior -- el
+                            // "doble bisel" de ficha de casino (mismo patrón
+                            // que gridSalas).
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 2 * Tema.escala
+                                radius: parent.radius - 2 * Tema.escala
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                       filaRanking.esUsuarioPropio ? 0.35 : 0.16)
+                            }
+
                             Row {
-                                width: filaRanking.width - 34 * Tema.escala - 220 * Tema.escala - 28 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 12 * Tema.escala
-                                Avatar {
+                                anchors.fill: parent
+                                anchors.leftMargin: 14 * Tema.escala
+                                anchors.rightMargin: 14 * Tema.escala
+                                Text {
+                                    width: 34 * Tema.escala
                                     anchors.verticalCenter: parent.verticalCenter
-                                    letra: filaRanking.username.length > 0 ? filaRanking.username.charAt(0).toUpperCase() : "?"
-                                    // 34 → 44 (2026-09-01, pedido explícito:
-                                    // "aumenta el tamaño del resto de la
-                                    // lista"). Sigue sin textura/efecto/
-                                    // decoraciones -- decisión mantenida a
-                                    // propósito, no solo por tamaño: esas se
-                                    // reservan como el "premio" exclusivo
-                                    // del podio de arriba, no porque a 44px
-                                    // se vean mal (a 44px ya se leerían
-                                    // razonablemente bien).
-                                    tamano: 44 * Tema.escala
-                                    // tieneMarcoBasico real desde 2026-09-01
-                                    // (podio de Ranking) -- antes era false a
-                                    // propósito, así que Hierro nunca se veía
-                                    // aquí (solo Bronce en adelante).
-                                    marco: Tema.marcoPorPartidasGanadas(filaRanking.partidasGanadas, filaRanking.tieneMarcoBasico)
-                                    colorBorde: filaRanking.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
+                                    // "posicion", no "index+1" -- el top 3 ya no
+                                    // vive en este modelo (ver el podio más
+                                    // arriba), así que el índice del ListView ya
+                                    // no coincide con el puesto real.
+                                    text: filaRanking.posicion + ""
+                                    font.family: Tema.fuenteElegante
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 18 * Tema.escala
+                                }
+                                Row {
+                                    width: filaRanking.width - 34 * Tema.escala - 220 * Tema.escala - 28 * Tema.escala
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 12 * Tema.escala
+                                    Avatar {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        letra: filaRanking.username.length > 0 ? filaRanking.username.charAt(0).toUpperCase() : "?"
+                                        // 34 → 44 (2026-09-01, pedido explícito:
+                                        // "aumenta el tamaño del resto de la
+                                        // lista"). Sigue sin textura/efecto/
+                                        // decoraciones -- decisión mantenida a
+                                        // propósito, no solo por tamaño: esas se
+                                        // reservan como el "premio" exclusivo
+                                        // del podio de arriba, no porque a 44px
+                                        // se vean mal (a 44px ya se leerían
+                                        // razonablemente bien).
+                                        tamano: 44 * Tema.escala
+                                        // tieneMarcoBasico real desde 2026-09-01
+                                        // (podio de Ranking) -- antes era false a
+                                        // propósito, así que Hierro nunca se veía
+                                        // aquí (solo Bronce en adelante).
+                                        marco: Tema.marcoPorPartidasGanadas(filaRanking.partidasGanadas, filaRanking.tieneMarcoBasico)
+                                        colorBorde: filaRanking.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: filaRanking.username + (filaRanking.esUsuarioPropio ? Idioma.t("sufijo_tu") : "")
+                                        font.bold: filaRanking.esUsuarioPropio
+                                        color: Tema.colorTexto
+                                        elide: Text.ElideRight
+                                        font.pixelSize: 15 * Tema.escala
+                                    }
                                 }
                                 Text {
+                                    width: 110 * Tema.escala
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: filaRanking.username + (filaRanking.esUsuarioPropio ? Idioma.t("sufijo_tu") : "")
-                                    font.bold: filaRanking.esUsuarioPropio
+                                    horizontalAlignment: Text.AlignRight
+                                    text: ordenRankingActual === 2 ? (filaRanking.elo + "") : (filaRanking.partidasGanadas + "")
                                     color: Tema.colorTexto
-                                    elide: Text.ElideRight
                                     font.pixelSize: 15 * Tema.escala
                                 }
-                            }
-                            Text {
-                                width: 110 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                horizontalAlignment: Text.AlignRight
-                                text: ordenRankingActual === 2 ? (filaRanking.elo + "") : (filaRanking.partidasGanadas + "")
-                                color: Tema.colorTexto
-                                font.pixelSize: 15 * Tema.escala
-                            }
-                            Text {
-                                width: 110 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                horizontalAlignment: Text.AlignRight
-                                text: ordenRankingActual === 2
-                                      ? (filaRanking.partidasJugadas + "")
-                                      : (Math.round(100 * filaRanking.partidasGanadas / filaRanking.partidasJugadas) + "%")
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 14 * Tema.escala
+                                Text {
+                                    width: 110 * Tema.escala
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    horizontalAlignment: Text.AlignRight
+                                    text: ordenRankingActual === 2
+                                          ? (filaRanking.partidasJugadas + "")
+                                          : (Math.round(100 * filaRanking.partidasGanadas / filaRanking.partidasJugadas) + "%")
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 14 * Tema.escala
+                                }
                             }
                         }
                         // Fila completa abre el perfil público -- mismo
