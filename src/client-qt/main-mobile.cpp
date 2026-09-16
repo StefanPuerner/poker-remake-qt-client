@@ -11,6 +11,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickStyle>
 #include <QSslSocket>
 #include <QDebug>
 
@@ -108,17 +109,6 @@ void extenderBajoElRecorte() {
 #endif
 
 int main(int argc, char* argv[]) {
-#ifdef Q_OS_WIN
-  // Solo relevante cuando PokerClientMobile se compila como binario de
-  // escritorio normal en Windows (ver el comentario en cmake/ClientesQt.cmake) --
-  // mismo motivo que en src/client-qt/main.cpp: Schannel es el backend
-  // TLS nativo de Windows, sin .dll que empaquetar.
-  if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
-    qWarning() << "No se pudo activar el backend TLS Schannel -- las "
-                  "conexiones al servidor probablemente fallarán.";
-  }
-#endif
-
   QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
       Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
@@ -142,6 +132,25 @@ int main(int argc, char* argv[]) {
   }
 
   QGuiApplication app(argc, argv);
+#ifdef Q_OS_WIN
+  // Solo relevante cuando PokerClientMobile se compila como binario de
+  // escritorio normal en Windows (ver el comentario en cmake/ClientesQt.cmake) --
+  // mismo motivo y mismo orden que en src/client-qt/main.cpp (bug real,
+  // 2026-09-16): tiene que ir DESPUÉS de construir QGuiApplication, o
+  // QSslSocket no ve el plugin tls\qschannelbackend.dll que deja
+  // windeployqt junto al .exe (Qt solo añade el directorio del propio
+  // .exe a sus rutas de plugins una vez que QCoreApplication existe).
+  if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
+    qWarning() << "No se pudo activar el backend TLS Schannel -- las "
+                  "conexiones al servidor probablemente fallarán.";
+  }
+#endif
+  // Mismo motivo que en src/client-qt/main.cpp: fija el estilo de Qt Quick
+  // Controls de forma explícita en vez de confiar en el import de
+  // "QtQuick.Controls.Material" de qml-mobile/Main.qml para seleccionarlo
+  // solo -- en Windows el estilo nativo gana por defecto y no soporta la
+  // personalización de background/contentItem que usan los componentes.
+  QQuickStyle::setStyle(QStringLiteral("Material"));
   // Sin esto, Qt.labs.settings (nombre/sonido/tema persistentes, ver
   // qml-mobile/Main.qml) no sabe dónde escribir -- mismo motivo que en el
   // cliente de escritorio (src/client-qt/main.cpp). Nombre de aplicación

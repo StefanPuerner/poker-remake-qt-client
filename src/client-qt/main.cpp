@@ -9,6 +9,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickStyle>
 #include <QSslSocket>
 #include <QDebug>
 
@@ -26,23 +27,6 @@
 #endif
 
 int main(int argc, char* argv[]) {
-#ifdef Q_OS_WIN
-  // Windows no trae OpenSSL instalado por defecto (a diferencia de Linux)
-  // ni se empaqueta aquí (a diferencia de Android, ver
-  // cmake/ClientesQt.cmake::add_android_openssl_libraries) -- sin esto, QSslSocket
-  // intenta el backend OpenSSL por defecto, no encuentra sus .dll y el
-  // *handshake* TLS del servidor nunca llega a completarse (confirmado en
-  // real: el build de Windows no conectaba). Schannel es el backend TLS
-  // NATIVO de Windows -- viene con el sistema operativo, cero .dll que
-  // empaquetar. Tiene que fijarse ANTES de cualquier uso real de
-  // QSslSocket (la primera conexión ocurre bastante después, desde QML,
-  // pero fijarlo aquí, lo primero de main(), es lo más seguro).
-  if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
-    qWarning() << "No se pudo activar el backend TLS Schannel -- las "
-                  "conexiones al servidor probablemente fallarán.";
-  }
-#endif
-
   // Sin esto, Qt REDONDEA el factor de escala fraccional que reporta el
   // compositor (habitual en GNOME/Wayland con paneles de más resolución:
   // 125%, 150%...) al entero más cercano antes de decidir cuántos píxeles
@@ -72,6 +56,44 @@ int main(int argc, char* argv[]) {
   }
 
   QGuiApplication app(argc, argv);
+#ifdef Q_OS_WIN
+  // Windows no trae OpenSSL instalado por defecto (a diferencia de Linux)
+  // ni se empaqueta aquí (a diferencia de Android, ver
+  // cmake/ClientesQt.cmake::add_android_openssl_libraries) -- sin esto, QSslSocket
+  // intenta el backend OpenSSL por defecto, no encuentra sus .dll y el
+  // *handshake* TLS del servidor nunca llega a completarse (confirmado en
+  // real: el build de Windows no conectaba). Schannel es el backend TLS
+  // NATIVO de Windows -- viene con el sistema operativo, cero .dll que
+  // empaquetar.
+  //
+  // Tiene que fijarse DESPUÉS de construir QGuiApplication, no antes
+  // (bug real, 2026-09-16): Qt solo añade el directorio del propio .exe
+  // -- donde windeployqt/el paso "Asegurar el plugin TLS" del workflow
+  // dejan tls\qschannelbackend.dll -- a sus rutas de búsqueda de plugins
+  // una vez que QCoreApplication existe (necesita argv[0] para calcular
+  // applicationDirPath()). Llamar a esto antes de QGuiApplication hacía
+  // que QSslSocket no viera ese plugin aunque estuviera físicamente en la
+  // carpeta, y setActiveBackend fallaba con "Cannot set unavailable
+  // backend named schannel as active" -- el cliente de Windows solo podía
+  // jugar offline desde que se introdujo TLS.
+  if (!QSslSocket::setActiveBackend(QStringLiteral("schannel"))) {
+    qWarning() << "No se pudo activar el backend TLS Schannel -- las "
+                  "conexiones al servidor probablemente fallarán.";
+  }
+#endif
+  // Fija el estilo de Qt Quick Controls de forma explícita, en vez de
+  // confiar en el import de "QtQuick.Controls.Material" de Main.qml para
+  // seleccionarlo solo. Sin esto, en Linux el estilo por defecto resulta
+  // "Fusion" (soporta personalizar background/contentItem, como hacen
+  // BotonContorno/BotonRelleno/CampoTexto/MarcoHueco -- cero avisos), pero
+  // en Windows gana el estilo nativo "Windows", que NO soporta esa
+  // personalización -- de ahí los cientos de "The current style does not
+  // support customization" en la consola de Windows (bug real,
+  // 2026-09-16), y probablemente también los avisos de DirectWrite por
+  // "MS Sans Serif" (ese estilo nativo consulta fuentes de diálogo
+  // clásicas de Win32 que este estilo no necesita). Debe fijarse antes de
+  // que el motor QML cargue cualquier QML que importe Qt Quick Controls.
+  QQuickStyle::setStyle(QStringLiteral("Material"));
   // Sin esto, Qt.labs.settings (usado en Main.qml para recordar nombre,
   // sonido y tema entre sesiones) no sabe dónde escribir el fichero de
   // ajustes -- QSettings en formato nativo necesita al menos el nombre de
