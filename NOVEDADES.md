@@ -1,8 +1,13 @@
-# PokerRemake v0.8.3
+# PokerRemake v0.8.4
 
-Incluye todo lo de la v0.8.2, que salió sin estas notas (quedó pendiente
-tras el lanzamiento) -- esta versión, además, arregla la integración
-continua de Android sin cambios para quien juega.
+Arregla que el cliente se reportara a sí mismo como v0.8.1 en Ajustes y en
+el aviso de actualización aunque el binario fuera más nuevo -- pasaba
+desde la v0.8.2 (el número de versión compilado en el cliente se quedó
+desactualizado, sin relación con las novedades de abajo, que ya llevaba
+instaladas). Sin cambios de juego respecto a la v0.8.3.
+
+Incluye todo lo de la v0.8.2 y v0.8.3, que salieron con esta misma
+descripción sin actualizar.
 
 ## Novedades
 
