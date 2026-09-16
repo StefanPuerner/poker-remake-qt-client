@@ -68,7 +68,13 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     #  option(): el repo privado pide CMake 3.10, y ahí option() pisaría un
     #  set() hecho antes (política CMP0077).
     if(NOT DEFINED POKER_TORNEOS)
-        set(POKER_TORNEOS OFF)
+        # Encendido 2026-09-16 (pedido explícito: "libera la sección de
+        # torneos que tenemos para el público para cuando subamos la
+        # siguiente versión") -- confirmado en vivo, ver
+        # docs/plan-torneos-solitario.md. Sigue marcada "Experimental" en
+        # la propia pantalla (insignia + aviso, Idioma.qml), así que
+        # activarla no promete más de lo que hay.
+        set(POKER_TORNEOS ON)
     endif()
     message(STATUS "Pestaña Torneos en los clientes: ${POKER_TORNEOS}")
 

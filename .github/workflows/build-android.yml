@@ -145,7 +145,20 @@ jobs:
       - name: Instalar Qt6 para escritorio (moc/rcc/qmlcachegen — corren en el runner, no en el móvil)
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.7.3'
+          # 6.7.3 -> 6.9.* (2026-09-16): Qt en FreeType (Linux/Android, a
+          # diferencia de Windows) no sabía pintar fuentes de emoji a
+          # color (COLR/CPAL, ver assets/fonts/TwemojiMozilla.ttf) hasta
+          # un parche de la serie 6.8.x, y quedó bien resuelto (+CBDT/
+          # COLRv1) en la 6.9 -- "Emoji in Qt 6.9", blog oficial de Qt.
+          # 6.7.3 (lo que había) es anterior a los dos, así que el emoji
+          # de verdad tecleado por otro jugador en el chat salía en
+          # blanco en Android -- reportado 2026-09-16 pese a que el
+          # registro de la fuente (main-mobile.cpp) ya estaba bien desde
+          # el 2026-09-14, nunca fue un bug del proyecto. MISMA versión
+          # que la instalación de abajo (Qt para Android) a propósito --
+          # las herramientas de aquí (qmlcachegen) tienen que coincidir
+          # con el Qt contra el que se cross-compila.
+          version: '6.9.*'
           host: 'linux'
           target: 'desktop'
           # qtshadertools: compila assets/shaders/dither.frag a .qsb (el dithering
@@ -161,7 +174,10 @@ jobs:
       - name: Instalar Qt6 para Android (arm64-v8a)
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.7.3'
+          # Ver el comentario largo en la instalación de escritorio de
+          # arriba -- misma versión, mismo motivo (soporte de fuentes de
+          # emoji a color en FreeType).
+          version: '6.9.*'
           host: 'linux'
           target: 'android'
           arch: 'android_arm64_v8a'
