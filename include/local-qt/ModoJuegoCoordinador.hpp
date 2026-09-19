@@ -126,6 +126,20 @@ class ModoJuegoCoordinador : public QObject {
     return clienteLocal_->boteSinShowdownPendienteOffline();
   }
 
+  /// ¿Hay una partida guardada de este reto? Se consulta aquí (no en
+  /// "redcliente") porque hace falta ANTES de decidir a qué cliente pasar.
+  Q_INVOKABLE bool hayRetoGuardado(const QString& codigo) const {
+    return clienteLocal_->hayRetoGuardado(codigo);
+  }
+
+  /// Manos mostradas pendientes ("Pareja:3,Full House:1") y su confirmación.
+  Q_INVOKABLE QString manosMostradasPendientesOffline() const {
+    return clienteLocal_->manosMostradasPendientesOffline();
+  }
+  Q_INVOKABLE void confirmarManosMostradasSincronizadas(const QString& enviado) {
+    clienteLocal_->confirmarManosMostradasSincronizadas(enviado);
+  }
+
   /// Lo llama QML cuando el servidor confirma cuánto XP offline acreditó.
   Q_INVOKABLE void confirmarXpOfflineSincronizado(int acreditado) {
     clienteLocal_->confirmarXpOfflineSincronizado(acreditado);

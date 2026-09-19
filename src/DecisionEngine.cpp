@@ -721,5 +721,36 @@ Accion DecisionEngine::pensarAccion(const GameState& state,
     return {TipoAccion::CALL, aPagar, true, ""};
   }
 
+  // ── 11. DEFENSA MÍNIMA ──────────────────────────────────────────────────────
+  // Hasta aquí el bot se retiraba cada vez que su puntuación quedaba por
+  // debajo de un umbral que apenas dependía del precio: apostándole el mínimo
+  // (media apuesta, o menos) en cada calle se retiraba ~45% de las veces por
+  // calle -- unas 8 de cada 10 manos a lo largo de las tres calles. Contra una
+  // apuesta de tamaño b sobre un bote p, quien nunca defiende más de p/(p+b)
+  // de su rango es explotable por cualquiera que apueste sin mano (reporte del
+  // reto 3 de Torneos Solitario, 2026-09-19). Aquí, en vez de retirarse sin
+  // más, paga con esa probabilidad, más alta cuanto más cerca estaba del
+  // umbral (un proyecto o una pareja floja, no una carta alta sin nada).
+  //
+  // Solo postflop y solo ante apuestas pequeñas o medianas: ante una apuesta
+  // grande retirarse con una mano floja sigue siendo lo correcto, y con
+  // varias subidas encima el rival tiene mano de verdad.
+  if (state.rondaActual != Rondas::PREFLOP && aPagar > 0 && aPagar < saldo &&
+      aPagar <= std::max(state.ciegaGrande * 4, saldo / 8) &&
+      state.raisesRivalesEstaMano < 3) {
+    double botePrevio = std::max(1, state.boteTotal - aPagar);
+    double mdf = botePrevio / (botePrevio + aPagar);
+    double firmeza = (dificultad == DificultadBots::FACIL)  ? 0.90 :
+                     (dificultad == DificultadBots::NORMAL) ? 0.80 : 0.72;
+    if (nivel == Comportamiento::SEGURO)        firmeza *= 0.85;
+    else if (nivel == Comportamiento::AGRESIVO) firmeza *= 1.10;
+    if (state.raisesRivalesEstaMano >= 2) firmeza *= 0.6;
+    double cercania = std::clamp(1.0 - (umbralFold - decisionScore) / 0.30, 0.0, 1.0);
+    double probDefiende = std::clamp(mdf * firmeza * (0.35 + 0.65 * cercania), 0.0, 0.85);
+    static thread_local std::mt19937 genDefensa(std::random_device{}());
+    std::uniform_real_distribution<> tirada(0.0, 1.0);
+    if (tirada(genDefensa) < probDefiende) return {TipoAccion::CALL, aPagar, true, ""};
+  }
+
   return {TipoAccion::FOLD, 0, true, ""};
 }

@@ -8,8 +8,10 @@
 #include <thread>
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QObject>
+#include <QMap>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QString>
@@ -90,6 +92,12 @@ class LocalGameClient : public QObject {
     ganoPartidaPendienteOffline_ = ajustes.value("offline/ganoPartidaPendiente").toBool();
     logrosPendientesOffline_ = ajustes.value("offline/logrosPendientes").toStringList();
     boteSinShowdownPendienteOffline_ = ajustes.value("offline/boteSinShowdownPendiente").toInt();
+    for (const QString& par : ajustes.value("offline/manosMostradasPendientes").toStringList()) {
+      int dosPuntos = par.lastIndexOf(':');
+      if (dosPuntos <= 0) continue;
+      int veces = par.mid(dosPuntos + 1).toInt();
+      if (veces > 0) manosMostradasPendientes_[par.left(dosPuntos)] = veces;
+    }
   }
 
   ~LocalGameClient() override {
@@ -147,6 +155,32 @@ class LocalGameClient : public QObject {
   Q_INVOKABLE QStringList logrosPendientesOffline() const { return logrosPendientesOffline_; }
   /// "veces_gano_sin_showdown" pendiente de entregar al servidor.
   Q_INVOKABLE int boteSinShowdownPendienteOffline() const { return boteSinShowdownPendienteOffline_; }
+
+  /// Manos mostradas pendientes, "Pareja:3,Full House:1" (vacío si ninguna).
+  /// Es la foto que QML manda al servidor; ver confirmarManosMostradasSincronizadas().
+  Q_INVOKABLE QString manosMostradasPendientesOffline() const {
+    QStringList partes;
+    for (auto it = manosMostradasPendientes_.cbegin(); it != manosMostradasPendientes_.cend(); ++it) {
+      partes << QString("%1:%2").arg(it.key()).arg(it.value());
+    }
+    return partes.join(',');
+  }
+
+  /// Lo llama QML al confirmar el servidor: descuenta lo que se ENVIÓ (la
+  /// foto de manosMostradasPendientesOffline()), no todo lo pendiente -- si
+  /// acabó otra partida entre el envío y la respuesta, sus manos siguen
+  /// pendientes. Lo que el servidor recortó se descarta a propósito.
+  Q_INVOKABLE void confirmarManosMostradasSincronizadas(const QString& enviado) {
+    for (const QString& par : enviado.split(',', Qt::SkipEmptyParts)) {
+      int dosPuntos = par.lastIndexOf(':');
+      if (dosPuntos <= 0) continue;
+      QString combo = par.left(dosPuntos);
+      int restante = manosMostradasPendientes_.value(combo) - par.mid(dosPuntos + 1).toInt();
+      if (restante > 0) manosMostradasPendientes_[combo] = restante;
+      else manosMostradasPendientes_.remove(combo);
+    }
+    guardarManosMostradasPendientes();
+  }
 
   /// Lo llama QML cuando el servidor confirma qué se acreditó de verdad.
   /// A diferencia del XP, la victoria básica y los logros son idempotentes
@@ -300,11 +334,18 @@ class LocalGameClient : public QObject {
       jugadores.push_back(new Bot("Bot" + std::to_string(i + 1), saldo));
     }
 
-    hiloMotor_ = std::thread([this, jugadores, numManos, ciegaGrande, reglas, saldo,
+    // Si esta partida es un reto, su guardado vive en un fichero fijo; empezar
+    // de cero descarta el que hubiera.
+    const QString archivoReto = retoEnCurso_.isEmpty() ? QString() : rutaRetoGuardado(retoEnCurso_);
+    retoEnCurso_.clear();
+    if (!archivoReto.isEmpty()) QFile::remove(archivoReto);
+
+    hiloMotor_ = std::thread([this, jugadores, numManos, ciegaGrande, reglas, saldo, archivoReto,
                               obs = std::move(observadorOwned)]() mutable {
       TexasHoldem partida(jugadores, numManos, ciegaGrande, /*supervisor=*/false, reglas);
       partida.setSaldoInicial(saldo);
       partida.setCarpetaDatos(carpetaGuardadoLocal().toStdString());
+      if (!archivoReto.isEmpty()) partida.setArchivoOrigen(archivoReto.toStdString());
       obs->setJugadoresPartida(&partida.jugadoresMutable());
       partida.setObserver(std::move(obs));
       partida.iniciarPartida();
@@ -370,7 +411,7 @@ class LocalGameClient : public QObject {
   Q_INVOKABLE void consultarTienda(const QString&, quint16, QString) {}
   Q_INVOKABLE void exportarEstadisticas(const QString&, quint16, QString) {}
   Q_INVOKABLE void sincronizarXpOffline(const QString&, quint16, QString, int) {}
-  Q_INVOKABLE void sincronizarProgresoOffline(const QString&, quint16, QString, bool, QStringList, int) {}
+  Q_INVOKABLE void sincronizarProgresoOffline(const QString&, quint16, QString, bool, QStringList, int, QString) {}
   Q_INVOKABLE void comprarObjeto(const QString&, quint16, QString, QString) {}
   Q_INVOKABLE void equiparObjeto(const QString&, quint16, QString, QString, QString, QString = QString()) {}
   // Reclamar recompensa de reto exige conexión real -- ver el comentario
@@ -439,6 +480,37 @@ class LocalGameClient : public QObject {
       emit guardadaBorrada(QString::fromUtf8(e.what()));
     }
     emitirListaGuardadas();
+  }
+
+  // ── Guardado de retos (Torneos > Solitario) ───────────────────────────────
+  //  Cada reto tiene UN fichero propio, reto_<codigo>.pok, en la carpeta de
+  //  guardados locales: "Guardar y salir" lo sobreescribe (sin pedir nombre),
+  //  terminar la partida lo borra, y "Continuar" lo reanuda. No aparece en la
+  //  lista de partidas guardadas normales (ver emitirListaGuardadas()).
+
+  /// Marca que la PRÓXIMA iniciarPartidaLocal() es este reto: su partida
+  /// guardará y reanudará sobre el fichero del reto. Empezar un reto de cero
+  /// descarta el guardado anterior.
+  Q_INVOKABLE void setRetoEnCurso(const QString& codigo) { retoEnCurso_ = codigo; }
+
+  /// ¿Hay una partida guardada de este reto?
+  Q_INVOKABLE bool hayRetoGuardado(const QString& codigo) const {
+    return QFileInfo::exists(rutaRetoGuardado(codigo));
+  }
+
+  /// Reanuda el reto guardado. @p saldoInicial es el saldo con el que empezó
+  /// (el .pok no lo guarda y se usa para las estadísticas de fin de partida).
+  Q_INVOKABLE void continuarReto(const QString& codigo, int saldoInicial) {
+    PartidaSnapshot snap;
+    try {
+      snap = FileManager::cargarPartida(rutaRetoGuardado(codigo).toStdString());
+    } catch (const std::exception& e) {
+      emit errorSala(QString("No se pudo cargar el reto: ") + QString::fromUtf8(e.what()));
+      return;
+    }
+    // Un reto nunca pregunta por alargar la partida (el .pok no guarda ese
+    // ajuste y su valor por defecto sí preguntaría).
+    arrancarPartida(snap, rutaRetoGuardado(codigo), /*preguntarExtension=*/false, saldoInicial);
   }
 
   /// Reanuda una partida local guardada. Los dos últimos parámetros
@@ -664,6 +736,13 @@ class LocalGameClient : public QObject {
     return carpetaGuardadoLocal() + QFileInfo(archivo).fileName();
   }
 
+  /// Fichero de guardado de un reto ("reto_solitario_3" -> reto_solitario_3.pok).
+  QString rutaRetoGuardado(const QString& codigo) const {
+    QString base = QFileInfo(codigo).fileName();
+    if (!base.startsWith("reto_")) base = "reto_" + base;
+    return carpetaGuardadoLocal() + base + ".pok";
+  }
+
   /**
    * @brief Emite guardadasActualizadas() con el MISMO formato que el
    * servidor ("nombre:humanos:bots:fecha;...", ver el dispatcher de
@@ -681,6 +760,9 @@ class LocalGameClient : public QObject {
       // no partidas que el jugador haya guardado -- mismo filtro que el
       // servidor aplica antes de ofrecerlas.
       if (a.nombre.rfind("autosave", 0) == 0 || a.nombre.rfind("recovery_", 0) == 0) continue;
+      // Los guardados de retos se reanudan desde su tarjeta, no desde aquí:
+      // desde la lista normal la partida no sabría que es un reto.
+      if (a.nombre.rfind("reto_", 0) == 0) continue;
       int humanos = 0, bots = 0;
       try {
         PartidaSnapshot snap =
@@ -713,7 +795,8 @@ class LocalGameClient : public QObject {
    * humano (un .pok que viniera de una partida en red) pasa a ser un bot,
    * igual que hace el servidor con los humanos que no reconectan.
    */
-  void arrancarPartida(const PartidaSnapshot& snap, const QString& rutaOrigen) {
+  void arrancarPartida(const PartidaSnapshot& snap, const QString& rutaOrigen,
+                       bool preguntarExtension = true, int saldoInicialForzado = 0) {
     if (hiloMotor_.joinable()) hiloMotor_.join();
 
     auto observadorOwned = std::make_unique<LocalGameObserver>();
@@ -727,7 +810,7 @@ class LocalGameClient : public QObject {
     // la partida y luego la guardas y la reanudas, sí te preguntará al llegar
     // al límite de manos. Preferible a tocar el formato del fichero (y su
     // checksum, compartido con el servidor) por un detalle menor.
-    observador_->setPreguntarExtension(true);
+    observador_->setPreguntarExtension(preguntarExtension);
 
     std::vector<Player*> jugadores;
     std::string nombreHumano;
@@ -757,6 +840,7 @@ class LocalGameClient : public QObject {
 
     int saldoInicial = 0;
     for (const auto& js : snap.jugadores) saldoInicial = std::max(saldoInicial, js.saldo);
+    if (saldoInicialForzado > 0) saldoInicial = saldoInicialForzado;
 
     hiloMotor_ = std::thread([this, jugadores, snap, rutaOrigen, saldoInicial,
                               obs = std::move(observadorOwned)]() mutable {
@@ -778,7 +862,7 @@ class LocalGameClient : public QObject {
 
     emit partidaIniciada(snap.objetivoManos, static_cast<int>(snap.reglas.tipoLimite),
                          snap.reglas.permitirRecompra, /*rellenarConBots=*/false,
-                         /*preguntarExtension=*/true, QString::fromStdString(nombreHumano));
+                         preguntarExtension, QString::fromStdString(nombreHumano));
   }
 
   /// Conecta cada señal de observador_ a la señal gemela de este objeto --
@@ -839,6 +923,10 @@ class LocalGameClient : public QObject {
       QSettings().setValue("offline/logrosPendientes", logrosPendientesOffline_);
       emit logrosPendientesOfflineCambio();
     });
+    connect(observador_, &LocalGameObserver::manoMostradaOffline, this, [this](QString combo) {
+      ++manosMostradasPendientes_[combo];
+      guardarManosMostradasPendientes();
+    });
     connect(observador_, &LocalGameObserver::boteSinShowdownOffline, this, [this]() {
       ++boteSinShowdownPendienteOffline_;
       QSettings().setValue("offline/boteSinShowdownPendiente", boteSinShowdownPendienteOffline_);
@@ -887,5 +975,14 @@ class LocalGameClient : public QObject {
   bool acumularXpOffline_ = false;
   bool ganoPartidaPendienteOffline_ = false;
   QStringList logrosPendientesOffline_;
+  QString retoEnCurso_;  ///< Código del reto cuya partida se va a iniciar (ver setRetoEnCurso()).
+  QMap<QString, int> manosMostradasPendientes_;  ///< combinación -> veces, pendiente de sincronizar
+  void guardarManosMostradasPendientes() {
+    QStringList partes;
+    for (auto it = manosMostradasPendientes_.cbegin(); it != manosMostradasPendientes_.cend(); ++it) {
+      partes << QString("%1:%2").arg(it.key()).arg(it.value());
+    }
+    QSettings().setValue("offline/manosMostradasPendientes", partes);
+  }
   int boteSinShowdownPendienteOffline_ = 0;
 };

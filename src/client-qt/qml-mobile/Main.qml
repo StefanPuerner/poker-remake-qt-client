@@ -105,6 +105,10 @@ ApplicationWindow {
     // Transitorio, no persiste -- si la app se cierra a media partida, se
     // pierde igual que la propia partida.
     property string retoEnCurso: ""
+    // Se incrementa cada vez que puede haber cambiado un guardado de reto
+    // (guardar y salir, terminar, abandonar, empezar de cero): las tarjetas
+    // de Torneos lo leen para volver a preguntar "¿hay partida guardada?".
+    property int retosGuardadosRev: 0
     // CSV de retos ganados pero SIN reclamar todavía (persistido, ver
     // Settings más abajo) -- separado de "ya reclamado" (que vive en
     // logrosModel, viene del servidor) porque jugar un reto no necesita
@@ -188,7 +192,7 @@ ApplicationWindow {
     ]
     // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
     // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
-    function iniciarReto(reto) {
+    function iniciarReto(reto, continuar) {
         // Reasignar "redcliente" ANTES de llamar a iniciarPartidaLocal() --
         // confirmado que la reasignación se propaga de inmediato, dentro
         // del mismo bloque de JS (ver el comentario de
@@ -196,6 +200,21 @@ ApplicationWindow {
         modoJuego.activarModoLocal();
         ventana.modoOfflineActivo = true;
         retoEnCurso = reto.codigo;
+        // Con cuenta (online o cacheada) la partida cuenta como una contra bots
+        // normal: XP, marco, logros y estadísticas se acumulan y se entregan al
+        // servidor al terminar (ver pedirDatosDeCuenta()). Sin esto, un reto jugado
+        // CONECTADO no acumulaba nada -- el flag solo se ponía al entrar sin conexión.
+        redcliente.setAcumularXpOffline(tokenSesion !== "" || offlineConCuenta);
+        retosGuardadosRev++;
+        if (continuar) {
+            // Reanuda la partida guardada del reto (fichero propio, ver
+            // LocalGameClient::continuarReto()).
+            redcliente.continuarReto(reto.codigo, reto.saldo);
+            return;
+        }
+        // Nueva partida del reto: su guardado (si lo hay) se descarta y el
+        // siguiente "Guardar y salir" escribe sobre el fichero del reto.
+        redcliente.setRetoEnCurso(reto.codigo);
         redcliente.iniciarPartidaLocal(
             nombreJugador, reto.numBots, reto.numManos,
             /*ciegaGrande=*/20, reto.saldo, /*tipoLimite=*/0,
@@ -213,6 +232,9 @@ ApplicationWindow {
     // gemelo en qml/Main.qml (escritorio): sin esto la caché offline se
     // quedaba solo con el nombre y la sesión sin conexión entraba con tu
     // cuenta pero sin nivel, XP ni cosméticos.
+    // Manos mostradas enviadas en la última sincronización de progreso offline
+    // ("Pareja:3,Full House:1"), a la espera de la confirmación del servidor.
+    property string manosMostradasEnCurso: ""
     function pedirDatosDeCuenta() {
         if (tokenSesion === "") return;
         redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
@@ -232,10 +254,15 @@ ApplicationWindow {
         // que el XP de arriba, mensaje aparte (ver AccountManager::
         // sincronizarProgresoOffline()).
         if (modoJuego.ganoPartidaPendienteOffline || modoJuego.logrosPendientesOffline.length > 0
-                || modoJuego.boteSinShowdownPendienteOffline > 0) {
+                || modoJuego.boteSinShowdownPendienteOffline > 0
+            || modoJuego.manosMostradasPendientesOffline !== "") {
+            // Foto de las manos mostradas que se mandan: al confirmar solo se
+            // descuenta esto (si acaba otra partida mientras tanto, sus manos siguen
+            // pendientes).
+            manosMostradasEnCurso = modoJuego.manosMostradasPendientesOffline();
             redcliente.sincronizarProgresoOffline(servidorHost, servidorPuerto, tokenSesion,
                     modoJuego.ganoPartidaPendienteOffline, modoJuego.logrosPendientesOffline,
-                    modoJuego.boteSinShowdownPendienteOffline);
+                    modoJuego.boteSinShowdownPendienteOffline, manosMostradasEnCurso);
         }
     }
 
@@ -1784,6 +1811,7 @@ ApplicationWindow {
                 marcarRetoGanadoPendiente(retoEnCurso);
             }
             retoEnCurso = "";
+            retosGuardadosRev++;  // terminar la partida borra el guardado del reto
             pantalla = "Fin";
             // Modo offline (Torneos > Solitario) -- ver el comentario
             // gemelo en qml/Main.qml (escritorio). Va ANTES de las
@@ -1792,6 +1820,9 @@ ApplicationWindow {
             if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
                 modoJuego.activarModoRed();
                 ventana.modoOfflineActivo = false;
+                // La partida local que acaba de terminar dejó XP/logros/manos pendientes:
+                // se entregan ya, no en el próximo inicio de sesión.
+                if (tokenSesion !== "") ventana.pedirDatosDeCuenta();
             }
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
@@ -1808,10 +1839,22 @@ ApplicationWindow {
             votoExtensionAbierto = false;
             esperandoManosExtra = false;
             soyYoQuienElige = false;
-            pantalla = "Fin";
+            if (retoEnCurso !== "") {
+                // "Guardar y salir" desde un reto: de vuelta a la lista de retos,
+                // donde la tarjeta ya dice "Continuar".
+                retoEnCurso = "";
+                retosGuardadosRev++;
+                partidaGuardada = false;
+                pantalla = "Torneos";
+            } else {
+                pantalla = "Fin";
+            }
             if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
                 modoJuego.activarModoRed();
                 ventana.modoOfflineActivo = false;
+                // La partida local que acaba de terminar dejó XP/logros/manos pendientes:
+                // se entregan ya, no en el próximo inicio de sesión.
+                if (tokenSesion !== "") ventana.pedirDatosDeCuenta();
             }
         }
         function onAbandonaste(mensaje) {
@@ -1825,12 +1868,17 @@ ApplicationWindow {
             // para siempre tras abandonar -- ver Main.qml de qml/.
             soyHost = false;
             // Ver el comentario gemelo en qml/Main.qml.
-            pantalla = (ventana.sesionOffline && torneosHabilitados) ? "Torneos" : "Salas";
+            pantalla = (retoEnCurso !== "" || (ventana.sesionOffline && torneosHabilitados)) ? "Torneos" : "Salas";
+            retoEnCurso = "";
+            retosGuardadosRev++;
             // Ver el comentario en onFinDePartida -- aquí va ANTES de las
             // llamadas de red porque ninguna lee nada de LocalGameClient primero.
             if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
                 modoJuego.activarModoRed();
                 ventana.modoOfflineActivo = false;
+                // La partida local que acaba de terminar dejó XP/logros/manos pendientes:
+                // se entregan ya, no en el próximo inicio de sesión.
+                if (tokenSesion !== "") ventana.pedirDatosDeCuenta();
             }
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
@@ -1959,7 +2007,12 @@ ApplicationWindow {
         // al reconectar, sin tener que reabrir sesión.
         function onProgresoOfflineSincronizado(marcoBasicoOtorgado, logrosDesbloqueados, boteSinShowdownAcreditado, mensaje) {
             modoJuego.confirmarProgresoOfflineSincronizado(logrosDesbloqueados, boteSinShowdownAcreditado);
-            if (marcoBasicoOtorgado || logrosDesbloqueados.length > 0) {
+            // Las manos mostradas (contadores de Cuenta > Perfil) no viajan de vuelta:
+            // se descuenta lo enviado y se refrescan las estadísticas.
+            var hubo_manos = manosMostradasEnCurso !== "";
+            modoJuego.confirmarManosMostradasSincronizadas(manosMostradasEnCurso);
+            manosMostradasEnCurso = "";
+            if (marcoBasicoOtorgado || logrosDesbloqueados.length > 0 || hubo_manos) {
                 redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
                 redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
             }
@@ -3731,6 +3784,7 @@ ApplicationWindow {
                         readonly property bool disponible: ventana.retoDisponible(modelData.codigoPredecesor)
                         readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
                         readonly property bool completado: ventana.retoLogroDesbloqueado(modelData.codigo)
+                        readonly property bool guardado: ventana.retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
                         readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
                         readonly property color colorTier: ventana.colorRareza(modelData.rareza)
 
@@ -3893,21 +3947,29 @@ ApplicationWindow {
                                         ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
                                         tarjetaRetoMovil.modelData.codigo)
                                 }
+                                // Con una partida guardada del reto, "Continuar" es la
+                                // acción principal y empezar de cero queda como enlace.
                                 BotonRelleno {
-                                    visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente
+                                    visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.guardado
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.t("boton_continuar_reto")
+                                    onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, true)
+                                }
+                                BotonRelleno {
+                                    visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.guardado
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: Idioma.t("boton_jugar")
-                                    onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
+                                    onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, false)
                                 }
                                 Text {
-                                    visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado)
+                                    visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado || tarjetaRetoMovil.guardado)
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("enlace_jugar_de_nuevo")
+                                    text: tarjetaRetoMovil.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
                                     color: Tema.colorAccent
                                     font.pixelSize: 11 * Tema.escala
                                     MouseArea {
                                         anchors.fill: parent
-                                        onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData)
+                                        onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, false)
                                     }
                                 }
                             }

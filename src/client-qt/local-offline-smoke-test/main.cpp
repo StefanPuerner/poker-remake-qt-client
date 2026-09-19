@@ -8,6 +8,9 @@
 //      "guardar y salir" -- comprueba que se escribe el .pok.
 //   B. Lista las guardadas, comprueba el CSV, y RECARGA esa partida para
 //      terminarla -- comprueba que reanudar funciona de verdad.
+//   C. Igual con un RETO de Torneos: su guardado va a su propio fichero
+//      (reto_*.pok), no sale en la lista normal, "continuar" lo reanuda y
+//      terminar la partida lo borra.
 //
 // Confirma cosas que una compilación limpia NO garantiza: que el código de
 // las clases compila (nadie más las incluye), que el ciclo GUI<->motor no
@@ -27,7 +30,10 @@ int manosVistas = 0;
 bool finVisto = false;
 bool guardadoVisto = false;
 bool recargaVista = false;
+bool retoTerminado = false;
 QString archivoGuardado;
+int faseReto = 0;  // 0 = aún no, 1 = jugando el reto, 2 = reanudado
+const QString codigoReto = "reto_solitario_smoke";
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -63,7 +69,10 @@ int main(int argc, char* argv[]) {
 
     // Fase A: tras 2 manos, guardar y salir. Fase B: seguir hasta el final.
     QObject::connect(&cliente, &LocalGameClient::esperandoVoto, [&](QString) {
-        if (!guardadoVisto && manosVistas >= 2) {
+        if (faseReto == 1 && manosVistas >= 2) {
+            qInfo() << "[smoke] (reto) guardarYSalir() tras" << manosVistas << "manos";
+            cliente.guardarYSalir();
+        } else if (faseReto == 0 && !guardadoVisto && manosVistas >= 2) {
             qInfo() << "[smoke] guardarYSalir() tras" << manosVistas << "manos";
             cliente.guardarYSalir();
         } else {
@@ -85,6 +94,33 @@ int main(int argc, char* argv[]) {
     });
 
     QObject::connect(&cliente, &LocalGameClient::partidaGuardada, [&](QString archivo) {
+        if (faseReto == 1) {
+            qInfo() << "[smoke] === RETO GUARDADO ===" << archivo;
+            if (!cliente.hayRetoGuardado(codigoReto)) {
+                qCritical() << "[smoke] FALLA: hayRetoGuardado() dice que no hay guardado";
+                std::exit(1);
+            }
+            if (!archivo.contains("reto_solitario_smoke")) {
+                qCritical() << "[smoke] FALLA: el reto no se guardó en su fichero propio:" << archivo;
+                std::exit(1);
+            }
+            QTimer::singleShot(200, [&]() {
+                // No debe salir en la lista de guardadas normales.
+                QObject::connect(&cliente, &LocalGameClient::guardadasActualizadas,
+                                 [&](QString csv) {
+                    if (faseReto != 1) return;
+                    if (!csv.isEmpty()) {
+                        qCritical() << "[smoke] FALLA: el guardado del reto sale en la lista normal:" << csv;
+                        std::exit(1);
+                    }
+                    faseReto = 2;
+                    qInfo() << "[smoke] continuando el reto";
+                    cliente.continuarReto(codigoReto, 500);
+                });
+                cliente.listarGuardadas("", 0);
+            });
+            return;
+        }
         guardadoVisto = true;
         archivoGuardado = archivo;
         qInfo() << "[smoke] === PARTIDA GUARDADA ===" << archivo;
@@ -113,12 +149,28 @@ int main(int argc, char* argv[]) {
         [&](QString ganador, int saldo, bool porLimite) {
             qInfo() << "[smoke] === FIN DE PARTIDA === ganador=" << ganador
                     << "saldo=" << saldo << "porLimite=" << porLimite;
-            finVisto = true;
-            QCoreApplication::quit();
+            if (faseReto == 0) {
+                finVisto = true;
+                // Fase C: el mismo recorrido con un reto.
+                faseReto = 1;
+                manosVistas = 0;
+                qInfo() << "[smoke] --- fase reto ---";
+                cliente.setRetoEnCurso(codigoReto);
+                cliente.iniciarPartidaLocal("Humano", 2, 6, 20, 500, 0, false, 0, 0, false, false);
+                return;
+            }
+            if (faseReto == 2) {
+                if (cliente.hayRetoGuardado(codigoReto)) {
+                    qCritical() << "[smoke] FALLA: terminar el reto no borró su guardado";
+                    std::exit(1);
+                }
+                retoTerminado = true;
+                QCoreApplication::quit();
+            }
         });
 
-    QTimer::singleShot(30'000, &app, [&]() {
-        if (finVisto) return;
+    QTimer::singleShot(60'000, &app, [&]() {
+        if (retoTerminado) return;
         qCritical() << "[smoke] TIMEOUT -- posible deadlock. manos=" << manosVistas
                     << "guardado=" << guardadoVisto << "recarga=" << recargaVista;
         std::exit(1);
@@ -134,6 +186,7 @@ int main(int argc, char* argv[]) {
     if (!guardadoVisto) { qCritical() << "[smoke] FALLA: nunca se guardó"; return 1; }
     if (!recargaVista)  { qCritical() << "[smoke] FALLA: nunca se recargó"; return 1; }
     if (!finVisto)      { qCritical() << "[smoke] FALLA: no terminó"; return 1; }
+    if (!retoTerminado) { qCritical() << "[smoke] FALLA: el reto no llegó al final"; return 1; }
     qInfo() << "[smoke] XP offline acumulado:" << cliente.xpOfflinePendiente();
     if (cliente.xpOfflinePendiente() <= 0) {
         qCritical() << "[smoke] FALLA: no se acumuló XP sin conexión";

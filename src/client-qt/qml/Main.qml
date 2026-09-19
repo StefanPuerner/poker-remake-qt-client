@@ -238,6 +238,10 @@ ApplicationWindow {
     // Transitorio, no persiste -- si la app se cierra a media partida, se
     // pierde igual que la propia partida.
     property string retoEnCurso: ""
+    // Se incrementa cada vez que puede haber cambiado un guardado de reto
+    // (guardar y salir, terminar, abandonar, empezar de cero): las tarjetas
+    // de Torneos lo leen para volver a preguntar "¿hay partida guardada?".
+    property int retosGuardadosRev: 0
     // CSV de retos ganados pero SIN reclamar todavía (persistido, ver
     // Settings más abajo) -- separado de "ya reclamado" (que vive en
     // logrosModel, viene del servidor) porque jugar un reto no necesita
@@ -321,7 +325,7 @@ ApplicationWindow {
     ]
     // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
     // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
-    function iniciarReto(reto) {
+    function iniciarReto(reto, continuar) {
         // Reasignar "redcliente" ANTES de llamar a iniciarPartidaLocal() --
         // confirmado que la reasignación se propaga de inmediato, dentro
         // del mismo bloque de JS (ver el comentario de
@@ -329,6 +333,21 @@ ApplicationWindow {
         modoJuego.activarModoLocal();
         ventana.modoOfflineActivo = true;
         retoEnCurso = reto.codigo;
+        // Con cuenta (online o cacheada) la partida cuenta como una contra bots
+        // normal: XP, marco, logros y estadísticas se acumulan y se entregan al
+        // servidor al terminar (ver pedirDatosDeCuenta()). Sin esto, un reto jugado
+        // CONECTADO no acumulaba nada -- el flag solo se ponía al entrar sin conexión.
+        redcliente.setAcumularXpOffline(tokenSesion !== "" || offlineConCuenta);
+        retosGuardadosRev++;
+        if (continuar) {
+            // Reanuda la partida guardada del reto (fichero propio, ver
+            // LocalGameClient::continuarReto()).
+            redcliente.continuarReto(reto.codigo, reto.saldo);
+            return;
+        }
+        // Nueva partida del reto: su guardado (si lo hay) se descarta y el
+        // siguiente "Guardar y salir" escribe sobre el fichero del reto.
+        redcliente.setRetoEnCurso(reto.codigo);
         redcliente.iniciarPartidaLocal(
             nombreUsuario.text, reto.numBots, reto.numManos,
             /*ciegaGrande=*/20, reto.saldo, /*tipoLimite=*/0,
@@ -899,6 +918,9 @@ ApplicationWindow {
     //  - El contador de Tréboles de la barra superior los lee igual
     //    (estadisticasCuenta.treboles), así que hasta ahora salía a 0
     //    hasta que visitaras Cuenta.
+    // Manos mostradas enviadas en la última sincronización de progreso offline
+    // ("Pareja:3,Full House:1"), a la espera de la confirmación del servidor.
+    property string manosMostradasEnCurso: ""
     function pedirDatosDeCuenta() {
         if (tokenSesion === "") return;
         redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
@@ -918,10 +940,15 @@ ApplicationWindow {
         // que el XP de arriba, mensaje aparte (ver AccountManager::
         // sincronizarProgresoOffline()).
         if (modoJuego.ganoPartidaPendienteOffline || modoJuego.logrosPendientesOffline.length > 0
-                || modoJuego.boteSinShowdownPendienteOffline > 0) {
+                || modoJuego.boteSinShowdownPendienteOffline > 0
+            || modoJuego.manosMostradasPendientesOffline !== "") {
+            // Foto de las manos mostradas que se mandan: al confirmar solo se
+            // descuenta esto (si acaba otra partida mientras tanto, sus manos siguen
+            // pendientes).
+            manosMostradasEnCurso = modoJuego.manosMostradasPendientesOffline();
             redcliente.sincronizarProgresoOffline(servidorHost, servidorPuerto, tokenSesion,
                     modoJuego.ganoPartidaPendienteOffline, modoJuego.logrosPendientesOffline,
-                    modoJuego.boteSinShowdownPendienteOffline);
+                    modoJuego.boteSinShowdownPendienteOffline, manosMostradasEnCurso);
         }
     }
 
@@ -3256,6 +3283,7 @@ ApplicationWindow {
                             readonly property bool disponible: retoDisponible(modelData.codigoPredecesor)
                             readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
                             readonly property bool completado: retoLogroDesbloqueado(modelData.codigo)
+                            readonly property bool guardado: retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
                             // Solo con cuenta real y conexión de verdad --
                             // invitado no tiene dónde acreditar nada.
                             readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
@@ -3443,22 +3471,30 @@ ApplicationWindow {
                                         onClicked: redcliente.reclamarRecompensaReto(
                                             servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
                                     }
+                                    // Con una partida guardada del reto, "Continuar" es la
+                                    // acción principal y empezar de cero queda como enlace.
                                     BotonRelleno {
-                                        visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente
+                                        visible: tarjetaReto.disponible && tarjetaReto.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_continuar_reto")
+                                        onClicked: iniciarReto(tarjetaReto.modelData, true)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente && !tarjetaReto.guardado
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: Idioma.t("boton_jugar")
-                                        onClicked: iniciarReto(tarjetaReto.modelData)
+                                        onClicked: iniciarReto(tarjetaReto.modelData, false)
                                     }
                                     Text {
-                                        visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado)
+                                        visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado || tarjetaReto.guardado)
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        text: Idioma.t("enlace_jugar_de_nuevo")
+                                        text: tarjetaReto.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
                                         color: Tema.colorAccent
                                         font.pixelSize: 12 * Tema.escala
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: iniciarReto(tarjetaReto.modelData)
+                                            onClicked: iniciarReto(tarjetaReto.modelData, false)
                                         }
                                     }
                                 }
@@ -6044,7 +6080,12 @@ ApplicationWindow {
             // vea de inmediato al reconectar, sin tener que reabrir sesión.
             function onProgresoOfflineSincronizado(marcoBasicoOtorgado, logrosDesbloqueados, boteSinShowdownAcreditado, mensaje) {
                 modoJuego.confirmarProgresoOfflineSincronizado(logrosDesbloqueados, boteSinShowdownAcreditado);
-                if (marcoBasicoOtorgado || logrosDesbloqueados.length > 0) {
+                // Las manos mostradas (contadores de Cuenta > Perfil) no viajan de vuelta:
+                // se descuenta lo enviado y se refrescan las estadísticas.
+                var hubo_manos = manosMostradasEnCurso !== "";
+                modoJuego.confirmarManosMostradasSincronizadas(manosMostradasEnCurso);
+                manosMostradasEnCurso = "";
+                if (marcoBasicoOtorgado || logrosDesbloqueados.length > 0 || hubo_manos) {
                     redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
                     redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
                 }
@@ -6513,6 +6554,7 @@ ApplicationWindow {
                     marcarRetoGanadoPendiente(retoEnCurso);
                 }
                 retoEnCurso = "";
+                retosGuardadosRev++;  // terminar la partida borra el guardado del reto
                 pantalla = "Fin";
                 // Modo offline (Torneos > Solitario) -- devolver "redcliente"
                 // a NetworkClient ANTES de las dos llamadas de red de abajo
@@ -6521,6 +6563,9 @@ ApplicationWindow {
                 if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
                     modoJuego.activarModoRed();
                     ventana.modoOfflineActivo = false;
+                    // La partida local que acaba de terminar dejó XP/logros/manos pendientes:
+                    // se entregan ya, no en el próximo inicio de sesión.
+                    if (tokenSesion !== "") ventana.pedirDatosDeCuenta();
                 }
                 if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
             }
@@ -6542,13 +6587,18 @@ ApplicationWindow {
                 // Sin conexión, "Salas" está oculta del riel (lista salas
                 // del servidor) -- volver a Torneos, que es de donde se
                 // sale a jugar en local.
-                pantalla = (ventana.sesionOffline && torneosHabilitados) ? "Torneos" : "Salas";
+                pantalla = (retoEnCurso !== "" || (ventana.sesionOffline && torneosHabilitados)) ? "Torneos" : "Salas";
+                retoEnCurso = "";
+                retosGuardadosRev++;
                 // Ver el comentario gemelo en onFinDePartida -- aquí va
                 // ANTES de las llamadas de red porque ninguna lee nada de
                 // LocalGameClient primero.
                 if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
                     modoJuego.activarModoRed();
                     ventana.modoOfflineActivo = false;
+                    // La partida local que acaba de terminar dejó XP/logros/manos pendientes:
+                    // se entregan ya, no en el próximo inicio de sesión.
+                    if (tokenSesion !== "") ventana.pedirDatosDeCuenta();
                 }
                 redcliente.refrescarSalas(servidorHost, servidorPuerto);
                 if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
@@ -6577,11 +6627,23 @@ ApplicationWindow {
                 votoExtensionAbierto = false;
                 esperandoManosExtra = false;
                 soyYoQuienElige = false;
-                pantalla = "Fin";
+                if (retoEnCurso !== "") {
+                    // "Guardar y salir" desde un reto: de vuelta a la lista de retos,
+                    // donde la tarjeta ya dice "Continuar".
+                    retoEnCurso = "";
+                    retosGuardadosRev++;
+                    partidaGuardada = false;
+                    pantalla = "Torneos";
+                } else {
+                    pantalla = "Fin";
+                }
                 // Ver el comentario en onFinDePartida.
                 if (ventana.modoOfflineActivo && !ventana.sesionOffline) {
                     modoJuego.activarModoRed();
                     ventana.modoOfflineActivo = false;
+                    // La partida local que acaba de terminar dejó XP/logros/manos pendientes:
+                    // se entregan ya, no en el próximo inicio de sesión.
+                    if (tokenSesion !== "") ventana.pedirDatosDeCuenta();
                 }
             }
             function onReconectando(segundosRestantes) {

@@ -299,6 +299,11 @@ class LocalGameObserver : public QObject, public IGameObserver {
     // que NetworkObserver::onMuestraCartas() (mismo PokerEngine evaluando),
     // pero solo para el humano -- ver AccountManager::sincronizarProgresoOffline().
     if (xpActivo_ && nombre == jugadorHumano_) {
+      // Contador de combinaciones + mejor mano (Cuenta > Perfil): cuenta CADA
+      // showdown del humano, mismo criterio sin umbral que
+      // NetworkObserver::onMuestraCartas(). Se entrega al servidor con
+      // sincronizarProgresoOffline() (que lo acota por tiempo transcurrido).
+      emit manoMostradaOffline(QString::fromStdString(combo));
       if (combo == "Escalera Real") {
         emit logroOfflineGanado("la_corona");
       } else if (combo == "Escalera Color") {
@@ -344,7 +349,13 @@ class LocalGameObserver : public QObject, public IGameObserver {
   }
 
   void onGanadorSinShowdown(const std::string& nombre, int bote,
-                            const std::string& /*handName*/) override {
+                            const std::string& handName) override {
+    // Igual que en red (NetworkObserver::onGanadorSinShowdown()): la
+    // combinación de quien se lleva el bote sin showdown también cuenta
+    // para las estadísticas, aunque no se enseñe a nadie.
+    if (xpActivo_ && nombre == jugadorHumano_ && !handName.empty()) {
+      emit manoMostradaOffline(QString::fromStdString(handName));
+    }
     // "El Farolero" -- mismo criterio que registrarBoteSinShowdownYComprobarLogro()
     // online (AccountManager.cpp), pero acotado por tiempo transcurrido al
     // sincronizar (ver LocalGameClient) en vez de contado sin límite aquí.
@@ -563,6 +574,9 @@ class LocalGameObserver : public QObject, public IGameObserver {
   /// El humano acaba de ganar un bote SIN showdown -- un "veces_gano_sin_showdown"
   /// más para "El Farolero". LocalGameClient lo suma a su bolsa pendiente.
   void boteSinShowdownOffline();
+  /// El humano acaba de mostrar (o ganar con) una combinación: un veces_*
+  /// más para sus estadísticas. LocalGameClient lo suma a su bolsa pendiente.
+  void manoMostradaOffline(QString combo);
   /// Datos crudos de fin de partida -- LocalGameClient los guarda en sus
   /// propias Q_PROPERTY (manosDisputadasFinal/etc) y ES QUIEN emite
   /// estadisticasFinCambiaron()/finDePartida() de verdad hacia QML (mismo

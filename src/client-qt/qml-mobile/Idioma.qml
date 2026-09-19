@@ -294,6 +294,8 @@ QtObject {
         },
         "boton_jugar": { es: "Jugar", en: "Play", de: "Spielen" },
         "enlace_jugar_de_nuevo": { es: "Jugar de nuevo", en: "Play again", de: "Nochmal spielen" },
+        "boton_continuar_reto": { es: "Continuar", en: "Continue", de: "Fortsetzen" },
+        "enlace_empezar_de_nuevo": { es: "Empezar de nuevo", en: "Start over", de: "Neu beginnen" },
         "reto_solitario_1_nombre": {
             es: "Reto 1 · Primeros pasos", en: "Challenge 1 · First steps",
             de: "Herausforderung 1 · Erste Schritte"

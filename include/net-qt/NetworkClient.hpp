@@ -423,6 +423,8 @@ class NetworkClient : public QObject {
   Q_INVOKABLE void iniciarPartidaLocal(const QString&, int, int, int, int, int, bool, int,
                                        int, bool, bool) {}
   Q_INVOKABLE void setAcumularXpOffline(bool) {}
+  Q_INVOKABLE void setRetoEnCurso(const QString&) {}
+  Q_INVOKABLE void continuarReto(const QString&, int) {}
 
   Q_INVOKABLE void sincronizarXpOffline(const QString& host, quint16 puerto, QString token,
                                         int xp) {
@@ -448,15 +450,16 @@ class NetworkClient : public QObject {
    */
   Q_INVOKABLE void sincronizarProgresoOffline(const QString& host, quint16 puerto, QString token,
                                               bool ganoPartida, QStringList logros,
-                                              int boteSinShowdown) {
+                                              int boteSinShowdown, QString manosMostradas) {
     if (token.isEmpty()) return;
-    if (!ganoPartida && logros.isEmpty() && boteSinShowdown <= 0) return;
+    if (!ganoPartida && logros.isEmpty() && boteSinShowdown <= 0 && manosMostradas.isEmpty()) return;
     enviarPeticionEfimera(host, puerto,
         net::buildMsg(net::MsgType::SINCRONIZAR_PROGRESO_OFFLINE,
                       {{"token", token.toStdString()},
                        {"gano_partida", ganoPartida ? "1" : "0"},
                        {"logros", logros.join(',').toStdString()},
-                       {"bote_sin_showdown", std::to_string(boteSinShowdown)}}),
+                       {"bote_sin_showdown", std::to_string(boteSinShowdown)},
+                       {"manos_mostradas", manosMostradas.toStdString()}}),
         [this](const std::string& payload) {
           QStringList logrosDesbloqueados =
               QString::fromStdString(net::jsonGetStr(payload, "logros_desbloqueados"))
