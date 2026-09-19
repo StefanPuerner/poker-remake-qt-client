@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include <chrono>
+#include <thread>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -183,8 +185,17 @@ class LocalGameObserver : public QObject, public IGameObserver {
         "separador");
   }
 
+  // Se ejecuta en el hilo del motor: dormir aquí no congela la interfaz. Ver
+  // IGameObserver::onPausaAnimacionMesa().
+  void onPausaAnimacionMesa(int ms) override {
+    if (ms <= 0) return;
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  }
+
   void onCobroCiegas(const std::string& jPequena, int montoPequena,
                      const std::string& jGrande, int montoGrande) override {
+    emit fichasApostadas(QString::fromStdString(jPequena), montoPequena);
+    emit fichasApostadas(QString::fromStdString(jGrande), montoGrande);
     emit eventoJuego(QString(": ciega pequeña (%1)").arg(montoPequena), "sistema",
                      QString::fromStdString(jPequena));
     emit eventoJuego(QString(": ciega grande (%1)").arg(montoGrande), "sistema",
@@ -250,6 +261,11 @@ class LocalGameObserver : public QObject, public IGameObserver {
     if (nombre == jugadorHumano_ && accion == TipoAccion::FOLD) humanoFoldeoEstaMano_ = true;
     emit eventoJuego(linea, tipo, QString::fromStdString(nombre));
     emit accionRealizada(QString::fromStdString(nombre), accionStr);
+    // Fichas que se mueven de verdad al bote (CALL/RAISE/ALL_IN) -- para la
+    // animación de la mesa; check y fold no llevan cantidad.
+    if (cantidad > 0 && accion != TipoAccion::FOLD) {
+      emit fichasApostadas(QString::fromStdString(nombre), cantidad);
+    }
   }
 
   void onCabeceraResumen() override {
@@ -514,6 +530,8 @@ class LocalGameObserver : public QObject, public IGameObserver {
   void comboActualizado(QString actual, QString probable, QString maxima);
   void misCartasRepartidas(QString c1, QString c2);
   void accionRealizada(QString jugador, QString accion);
+  /// Fichas que acaban de irse al bote desde el asiento de @p jugador.
+  void fichasApostadas(QString jugador, int cantidad);
   void showdownIniciado(QString cartasCsv);
   void boteEvaluado(int numBote, int cantidad, QString jugadoresCsv);
   void cartasMostradas(QString jugador, QString cartasCsv, QString combo);

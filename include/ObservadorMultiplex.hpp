@@ -48,6 +48,10 @@ class ObservadorMultiplex : public IGameObserver {
     principal_->onDealerYCiegasAsignados(jDealer, jPequena, jGrande);
     if (secundario_) secundario_->onDealerYCiegasAsignados(jDealer, jPequena, jGrande);
   }
+  void onPausaAnimacionMesa(int ms) override {
+    principal_->onPausaAnimacionMesa(ms);
+    if (secundario_) secundario_->onPausaAnimacionMesa(ms);
+  }
   void onRepartoCartasIniciales() override {
     principal_->onRepartoCartasIniciales();
     if (secundario_) secundario_->onRepartoCartasIniciales();

@@ -486,6 +486,9 @@ void Partida::ejecutarMano() {
   baraja_.mezclar();
 
   observer_->onInicioMano(manoActual_, ciegaGrande_);
+  // Hueco para que el cliente cobre el bote y voltee las cartas de la mano
+  // anterior ANTES del preflop -- ver IGameObserver::onPausaAnimacionMesa().
+  if (hayManoPrevia_) observer_->onPausaAnimacionMesa(PAUSA_ANIMACION_MESA_MS);
 
   cobrarCiegas();
   repartirCartasIniciales();  // Virtual puro
@@ -545,6 +548,7 @@ void Partida::ejecutarMano() {
   registrarEliminados();
   rotarDealer();
   manoActual_++;
+  hayManoPrevia_ = true;
 }
 
 // MOTOR DE APUESTAS

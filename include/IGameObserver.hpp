@@ -50,6 +50,14 @@ class IGameObserver {
   virtual void onDealerYCiegasAsignados(const std::string& /*jDealer*/,
                                         const std::string& /*jPequena*/,
                                         const std::string& /*jGrande*/) {}
+  /// Pausa de @p ms milisegundos justo después de anunciar una mano NUEVA (no
+  /// la primera de la sesión) y antes de cobrar ciegas: el cliente aprovecha
+  /// ese hueco para animar el cobro del bote y voltear las cartas comunitarias
+  /// de la mano anterior, y la mesa no debe seguir mientras tanto para que no
+  /// se solape con el preflop. Default no-op -- solo tienen sentido los
+  /// observadores con una interfaz gráfica detrás (NetworkObserver y
+  /// LocalGameObserver).
+  virtual void onPausaAnimacionMesa(int /*ms*/) {}
   virtual void onRepartoCartasIniciales() = 0;
   virtual void onRepartiendoComunitarias(const std::string& faseDesc, int numCartas) = 0;
 

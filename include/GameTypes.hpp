@@ -14,6 +14,14 @@
 /// (NetworkPlayer, al construir TU_TURNO) para que ambos usen el mismo valor.
 constexpr int TURNO_TIMEOUT_MS = 30'000;
 
+/// Pausa entre manos para la animación de mesa (cobro del bote + cartas
+/// comunitarias que se voltean), antes de cobrar las ciegas de la mano nueva.
+/// APARCADA A 0 (2026-09-19): el gancho ya está cableado pero la animación
+/// del cliente todavía no existe, y con un valor > 0 la mesa se pararía sin
+/// motivo entre manos. Cuando exista, ~1700 (el cliente la anima en ~1.2s).
+/// Ver IGameObserver::onPausaAnimacionMesa().
+constexpr int PAUSA_ANIMACION_MESA_MS = 0;
+
 /// Fases de una mano de poker (en orden cronológico).
 enum class Rondas { PREFLOP, FLOP, TURN, RIVER, SHOWDOWN };
 

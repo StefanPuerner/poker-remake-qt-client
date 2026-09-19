@@ -67,6 +67,9 @@ class Partida {
   /// Ver setCarpetaDatos(). Vacía = carpetaData().
   std::string  carpetaDatos_ = "";
   bool         modoSupervisor_;
+  /// true desde que termina la primera mano de esta sesión: la siguiente
+  /// hace la pausa de animación de mesa (ver IGameObserver::onPausaAnimacionMesa()).
+  bool         hayManoPrevia_ = false;
   ReglasJuego  reglas_;
   int          raisesEnEstaMano_;        ///< Contador de raises en la mano actual (para range modeling en IA).
   TipoAccion   ultimaAccionRonda_;       ///< Última acción (para detectar señales de debilidad).

@@ -513,6 +513,7 @@ class LocalGameClient : public QObject {
   void comboActualizado(QString actual, QString probable, QString maxima);
   void misCartasRepartidas(QString c1, QString c2);
   void accionRealizada(QString jugador, QString accion);
+  void fichasApostadas(QString jugador, int cantidad);
   void showdownIniciado(QString cartasCsv);
   void boteEvaluado(int numBote, int cantidad, QString jugadoresCsv);
   void cartasMostradas(QString jugador, QString cartasCsv, QString combo);
@@ -796,6 +797,7 @@ class LocalGameClient : public QObject {
     connect(observador_, &LocalGameObserver::misCartasRepartidas, this,
             &LocalGameClient::misCartasRepartidas);
     connect(observador_, &LocalGameObserver::accionRealizada, this, &LocalGameClient::accionRealizada);
+    connect(observador_, &LocalGameObserver::fichasApostadas, this, &LocalGameClient::fichasApostadas);
     connect(observador_, &LocalGameObserver::showdownIniciado, this, &LocalGameClient::showdownIniciado);
     connect(observador_, &LocalGameObserver::boteEvaluado, this, &LocalGameClient::boteEvaluado);
     connect(observador_, &LocalGameObserver::cartasMostradas, this, &LocalGameClient::cartasMostradas);

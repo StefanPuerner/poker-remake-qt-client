@@ -1122,6 +1122,9 @@ class NetworkClient : public QObject {
    */
   void eventoJuego(QString evento, QString tipo = "accion", QString jugador = "");
   void accionRealizada(QString jugador, QString accion);
+  /// Fichas que acaban de irse al bote desde el asiento de @p jugador
+  /// (apuestas y ciegas) -- para la animación de la mesa.
+  void fichasApostadas(QString jugador, int cantidad);
   void nuevaMano(int mano, int ciega);
   /// Cartas propias, justo al repartir — antes solo llegaban dentro de
   /// esMiTurno(), así que no se conocían hasta el primer turno propio.
@@ -2032,6 +2035,8 @@ class NetworkClient : public QObject {
                                 "sistema", jPequena);
               emit eventoJuego(": ciega grande (" + QString::number(montoGrande) + ")",
                                 "sistema", jGrande);
+              emit fichasApostadas(jPequena, montoPequena);
+              emit fichasApostadas(jGrande, montoGrande);
             } else if (evento == "COMUNITARIAS") {
               QString fase = QString::fromStdString(net::jsonGetStr(payload, "fase"));
               emit eventoJuego("── " + fase + " ──", "separador");
@@ -2083,6 +2088,7 @@ class NetworkClient : public QObject {
               else if (accion == "RAISE" || accion == "ALL_IN") tipoAccion = "agresion";
               emit eventoJuego(linea, tipoAccion, jugador);
               emit accionRealizada(jugador, accion);
+              if (cantidad > 0 && accion != "FOLD") emit fichasApostadas(jugador, cantidad);
             } else if (evento == "ESPERAR_VOTO") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
               emit esperandoVoto(mensaje);
