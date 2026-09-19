@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QList>
+#include <QHash>
 #include <QObject>
 #include <QSettings>
 #include <QSslCertificate>
@@ -750,8 +751,31 @@ class NetworkClient : public QObject {
     enviarPeticionEfimera(host, puerto,
         net::buildMsg(net::MsgType::LISTAR_AMIGOS, {{"token", token_.toStdString()}}),
         [this](const std::string& payload) {
-          emit amigosActualizados(parsearFilasSocial(
-              net::jsonGetStr(payload, "amigos"), {"accountId", "estado", "username"}));
+          QVariantList amigos = parsearFilasSocial(
+              net::jsonGetStr(payload, "amigos"), {"accountId", "estado", "username"});
+          // Personalización de cada amigo (campo "avatares", ver el servidor):
+          // se fusiona aquí, por accountId, para que QML reciba una sola fila
+          // por amigo. Un servidor anterior no lo manda -- las filas quedan
+          // tal cual y QML usa valores por defecto.
+          const QVariantList avatares = parsearFilasSocial(
+              net::jsonGetStr(payload, "avatares"),
+              {"accountId", "partidasGanadas", "tieneMarcoBasico", "textura", "efecto",
+               "decoracionLateral1", "decoracionLateral2", "decoracionSuperior",
+               "acabadoLateral1", "acabadoLateral2", "acabadoSuperior"});
+          QHash<int, QVariantMap> avatarPorId;
+          for (const QVariant& v : avatares) {
+            QVariantMap m = v.toMap();
+            avatarPorId.insert(m.value("accountId").toInt(), m);
+          }
+          for (QVariant& v : amigos) {
+            QVariantMap fila = v.toMap();
+            const QVariantMap av = avatarPorId.value(fila.value("accountId").toInt());
+            for (auto it = av.constBegin(); it != av.constEnd(); ++it) {
+              if (it.key() != "accountId") fila.insert(it.key(), it.value());
+            }
+            v = fila;
+          }
+          emit amigosActualizados(amigos);
         });
   }
 

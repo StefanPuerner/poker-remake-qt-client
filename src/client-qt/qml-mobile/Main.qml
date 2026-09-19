@@ -900,7 +900,20 @@ ApplicationWindow {
                 // chat rompe "Can't assign to existing role... of
                 // different type").
                 ultimoEsMio: r2 ? !!r2.ultimoEsMio : false,
-                noLeidos: r2 ? r2.noLeidos : 0
+                noLeidos: r2 ? r2.noLeidos : 0,
+                // Personalización del amigo, para pintar su avatar completo
+                // en la tarjeta (campo "avatares" de AMIGOS_LISTA). Un
+                // servidor anterior no lo manda: valores por defecto.
+                partidasGanadas: a.partidasGanadas || 0,
+                tieneMarcoBasico: !!a.tieneMarcoBasico,
+                textura: a.textura || "",
+                efecto: a.efecto || "",
+                decoracionLateral1: a.decoracionLateral1 || "",
+                decoracionLateral2: a.decoracionLateral2 || "",
+                decoracionSuperior: a.decoracionSuperior || "",
+                acabadoLateral1: a.acabadoLateral1 || "",
+                acabadoLateral2: a.acabadoLateral2 || "",
+                acabadoSuperior: a.acabadoSuperior || ""
             });
             // Cabecera del chat flotante al día si está abierta justo para
             // este amigo -- mismo criterio que escritorio (chatAmigoSeleccionadoEstado).
@@ -4066,6 +4079,16 @@ ApplicationWindow {
                 required property string ultimoTexto
                 required property bool ultimoEsMio
                 required property int noLeidos
+                required property int partidasGanadas
+                required property bool tieneMarcoBasico
+                required property string textura
+                required property string efecto
+                required property string decoracionLateral1
+                required property string decoracionLateral2
+                required property string decoracionSuperior
+                required property string acabadoLateral1
+                required property string acabadoLateral2
+                required property string acabadoSuperior
                 width: gridAmigosMovil.cellWidth
                 height: gridAmigosMovil.cellHeight
 
@@ -4125,14 +4148,26 @@ ApplicationWindow {
                     Avatar {
                         id: avatarCeldaAmigoMovil
                         anchors.left: parent.left
-                        anchors.leftMargin: 8 * Tema.escala
+                        // Avatar COMPLETO del amigo. Margen izquierdo amplio: las
+                        // decoraciones laterales sobresalen del aro y esta tarjeta
+                        // lleva capa (dithering) que recorta lo que se salga.
+                        anchors.leftMargin: 20 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         letra: celdaAmigoMovil.username.length > 0 ? celdaAmigoMovil.username.charAt(0).toUpperCase() : "?"
                         tamano: 28 * Tema.escala
+                        marco: Tema.marcoPorPartidasGanadas(celdaAmigoMovil.partidasGanadas, celdaAmigoMovil.tieneMarcoBasico)
+                        textura: celdaAmigoMovil.textura
+                        efecto: celdaAmigoMovil.efecto
+                        decoracionLateral1: celdaAmigoMovil.decoracionLateral1
+                        decoracionLateral2: celdaAmigoMovil.decoracionLateral2
+                        decoracionSuperior: celdaAmigoMovil.decoracionSuperior
+                        acabadoLateral1: celdaAmigoMovil.acabadoLateral1
+                        acabadoLateral2: celdaAmigoMovil.acabadoLateral2
+                        acabadoSuperior: celdaAmigoMovil.acabadoSuperior
                     }
                     Column {
                         anchors.left: avatarCeldaAmigoMovil.right
-                        anchors.leftMargin: 7 * Tema.escala
+                        anchors.leftMargin: 22 * Tema.escala
                         anchors.right: badgeNoLeidosAmigoMovil.visible ? badgeNoLeidosAmigoMovil.left : parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.rightMargin: 6 * Tema.escala
@@ -5401,6 +5436,17 @@ ApplicationWindow {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     width: columnaMinirielMovil.width + 16 * Tema.escala
+                    // Las pestañas viven aquí (no en el Repeater) para poder contarlas:
+                    // el alto de cada botón se reparte según cuántas hay y cuánto
+                    // sitio da el panel. Con 5 pestañas y una pantalla apaisada baja,
+                    // el alto natural (46*escala) hacía que el riel entero se saliera
+                    // del panel: "Mesa" por abajo y "Texturas" pisando la barra de
+                    // pestañas de arriba (visto en el móvil, 2026-09-19).
+                    readonly property var etiquetas: [Idioma.t("tab_texturas"), Idioma.t("tab_efectos"), Idioma.t("tab_decoraciones"), Idioma.t("tab_titulos"), Idioma.t("tab_mesa")]
+                    readonly property real altoBoton: Math.max(
+                        32 * Tema.escala,
+                        Math.min(Math.max(Tema.tamanoMinTactil, 46 * Tema.escala),
+                                 (height - (etiquetas.length - 1) * columnaMinirielMovil.spacing - 8 * Tema.escala) / etiquetas.length))
 
                     Column {
                         id: columnaMinirielMovil
@@ -5408,7 +5454,7 @@ ApplicationWindow {
                         width: 76 * Tema.escala
                         spacing: 8 * Tema.escala
                         Repeater {
-                            model: [Idioma.t("tab_texturas"), Idioma.t("tab_efectos"), Idioma.t("tab_decoraciones"), Idioma.t("tab_titulos"), Idioma.t("tab_mesa")]
+                            model: minirielPersonalizarMovil.etiquetas
                             // "Ficha de casino" (2026-09-02, diseño A elegido por
                             // el usuario tras el artifact "Tarjetas de Mesa
                             // Real") -- activo usa EL MISMO degradado metálico
@@ -5423,7 +5469,7 @@ ApplicationWindow {
                                 required property int index
                                 readonly property bool activo: envolturaMinirielMovil.index === ventana.pestanaPersonalizarActual
                                 width: columnaMinirielMovil.width
-                                height: Math.max(Tema.tamanoMinTactil, 46 * Tema.escala)
+                                height: minirielPersonalizarMovil.altoBoton
 
                             // Sombra -- el inactivo queda a ras (sin
                             // sombra) para que el realce se note por

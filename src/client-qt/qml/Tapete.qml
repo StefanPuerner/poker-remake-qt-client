@@ -75,16 +75,18 @@ Item {
     readonly property real grosorRiel: conRiel ? Math.min(height * 0.11, 64) : 0
     readonly property color maderaOscura: "#2A1508"
 
-    // Densidad: la madera (2600x1300) se muestra entre 0.3x y 0.75x -- en una
+    // Densidad: la madera (2600x1300) se muestra entre 0.12x y 0.75x -- en una
     // mesa de pantalla completa va a 0.75x, sin ampliar, así que la veta no se
     // ensancha; si aun así la mesa es mayor que la imagen, se amplía lo justo
     // para cubrirla. Las celdas de los dibujos (px lógicos a densidad plena)
-    // solo se achican en mesas pequeñas (factor 0.7-1), nunca crecen.
-    readonly property real escalaMadera: Math.max(0.3, Math.min(0.75, width / 1500))
-    readonly property real factorDensidad: Math.max(0.7, Math.min(1, width / 1400))
+    // solo se achican en mesas pequeñas (factor 0.35-1, hasta unos 490px de
+    // ancho: en la vista previa del móvil, con la mesa diminuta, un par de
+    // rombos y una veta gigante no se leían como tapete), nunca crecen.
+    readonly property real escalaMadera: Math.max(0.12, Math.min(0.75, width / 1500))
+    readonly property real factorDensidad: Math.max(0.35, Math.min(1, width / 1400))
     readonly property var periodoBase: ({ rombos: 44, palos: 84, puntos: 18 })
     readonly property real periodoPatron: patron === "" ? 1
-                                          : Math.max(8, Math.round(periodoBase[patron] * factorDensidad))
+                                          : Math.max(6, Math.round(periodoBase[patron] * factorDensidad))
 
     // ── Madera (pastilla entera o aro del riel) ──────────────────────────
     Item {

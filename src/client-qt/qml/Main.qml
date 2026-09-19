@@ -1153,7 +1153,20 @@ ApplicationWindow {
                 // (r2.ultimoEsMio como int) rompía con "Can't assign to
                 // existing role 'ultimoEsMio' of different type".
                 ultimoEsMio: r2 ? !!r2.ultimoEsMio : false,
-                noLeidos: r2 ? r2.noLeidos : 0
+                noLeidos: r2 ? r2.noLeidos : 0,
+                // Personalización del amigo, para pintar su avatar completo
+                // en la tarjeta (campo "avatares" de AMIGOS_LISTA). Un
+                // servidor anterior no lo manda: valores por defecto.
+                partidasGanadas: a.partidasGanadas || 0,
+                tieneMarcoBasico: !!a.tieneMarcoBasico,
+                textura: a.textura || "",
+                efecto: a.efecto || "",
+                decoracionLateral1: a.decoracionLateral1 || "",
+                decoracionLateral2: a.decoracionLateral2 || "",
+                decoracionSuperior: a.decoracionSuperior || "",
+                acabadoLateral1: a.acabadoLateral1 || "",
+                acabadoLateral2: a.acabadoLateral2 || "",
+                acabadoSuperior: a.acabadoSuperior || ""
             });
             if (chatAmigoSeleccionado === a.accountId) chatAmigoSeleccionadoEstado = a.estado;
         }
@@ -3668,8 +3681,20 @@ ApplicationWindow {
                         required property string ultimoTexto
                         required property bool ultimoEsMio
                         required property int noLeidos
+                        required property int partidasGanadas
+                        required property bool tieneMarcoBasico
+                        required property string textura
+                        required property string efecto
+                        required property string decoracionLateral1
+                        required property string decoracionLateral2
+                        required property string decoracionSuperior
+                        required property string acabadoLateral1
+                        required property string acabadoLateral2
+                        required property string acabadoSuperior
                         width: ListView.view.width
-                        height: 76 * Tema.escala
+                        // 76 -> 84: la decoración superior (coronas...) sobresale
+                        // por encima del aro y con 76 se cortaba.
+                        height: 84 * Tema.escala
 
                         // "Ficha de casino" (2026-09-02, pedido explícito:
                         // "aplicar el mismo estilo a los amigos y salas")
@@ -3734,17 +3759,30 @@ ApplicationWindow {
                         // un hermano del Row, no de avatarFilaAmigo (bug
                         // real en producción: "Cannot anchor to an item
                         // that isn't a parent or sibling", 2026-08-27).
+                        // Avatar COMPLETO del amigo (marco, textura, efecto y
+                        // decoraciones). Margen izquierdo amplio: las decoraciones
+                        // laterales sobresalen del aro, y esta tarjeta lleva capa
+                        // (dithering) que recorta lo que se salga de ella.
                         Avatar {
                             id: avatarFilaAmigo
                             anchors.left: parent.left
-                            anchors.leftMargin: 12 * Tema.escala
+                            anchors.leftMargin: 34 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
                             letra: filaAmigoChat.username.length > 0 ? filaAmigoChat.username.charAt(0).toUpperCase() : "?"
                             tamano: 40 * Tema.escala
+                            marco: Tema.marcoPorPartidasGanadas(filaAmigoChat.partidasGanadas, filaAmigoChat.tieneMarcoBasico)
+                            textura: filaAmigoChat.textura
+                            efecto: filaAmigoChat.efecto
+                            decoracionLateral1: filaAmigoChat.decoracionLateral1
+                            decoracionLateral2: filaAmigoChat.decoracionLateral2
+                            decoracionSuperior: filaAmigoChat.decoracionSuperior
+                            acabadoLateral1: filaAmigoChat.acabadoLateral1
+                            acabadoLateral2: filaAmigoChat.acabadoLateral2
+                            acabadoSuperior: filaAmigoChat.acabadoSuperior
                         }
                         Column {
                             anchors.left: avatarFilaAmigo.right
-                            anchors.leftMargin: 10 * Tema.escala
+                            anchors.leftMargin: 28 * Tema.escala
                             anchors.right: columnaEstadoAmigo.left
                             anchors.rightMargin: 8 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
