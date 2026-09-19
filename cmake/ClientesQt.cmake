@@ -155,6 +155,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/Carta.qml
             src/client-qt/qml/PaloIcono.qml
             src/client-qt/qml/Tapete.qml
+            src/client-qt/qml/FichasVolando.qml
             src/client-qt/qml/IconoFicha.qml
             src/client-qt/qml/IconoTrebol.qml
             src/client-qt/qml/IconoOjo.qml
@@ -475,6 +476,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/Carta.qml
             src/client-qt/qml-mobile/PaloIcono.qml
             src/client-qt/qml-mobile/Tapete.qml
+            src/client-qt/qml-mobile/FichasVolando.qml
             src/client-qt/qml-mobile/IconoFicha.qml
             src/client-qt/qml-mobile/IconoTrebol.qml
             src/client-qt/qml-mobile/Avatar.qml

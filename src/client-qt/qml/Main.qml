@@ -6144,6 +6144,10 @@ ApplicationWindow {
                 preguntarExtensionActual = preguntarExtension;
                 soyHost = (host === nombreUsuario.text);
             }
+            // Animación de apuesta: fichas del avatar al bote (Mesa.qml).
+            function onFichasApostadas(jugador, cantidad) {
+                mesaJuego.lanzarFichas(jugador, cantidad);
+            }
             function onTapeteAnfitrionActualizado(tapete) {
                 tapeteAnfitrion = tapete;
             }
@@ -6231,6 +6235,12 @@ ApplicationWindow {
             function onNuevaMano(mano, ciega) {
                 manoActual = mano;
                 ciegaActual = ciega;
+                // Cobro del bote: el showdown que se cierra ya trae los premios; las
+                // fichas van del bote a cada ganador antes de vaciar nada, y se
+                // limpia para no cobrar dos veces.
+                var ganadores = revealsShowdown.filter(function(r) { return r.premio > 0; });
+                if (ganadores.length > 0) mesaJuego.cobrarBote(ganadores);
+                revealsShowdown = [];
                 retirados = [];
                 // Sin esto, el preflop de la mano nueva sigue mostrando las
                 // 5 cartas comunitarias de la mano anterior hasta que llega

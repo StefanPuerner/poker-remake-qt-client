@@ -16,11 +16,17 @@ constexpr int TURNO_TIMEOUT_MS = 30'000;
 
 /// Pausa entre manos para la animación de mesa (cobro del bote + cartas
 /// comunitarias que se voltean), antes de cobrar las ciegas de la mano nueva.
-/// APARCADA A 0 (2026-09-19): el gancho ya está cableado pero la animación
-/// del cliente todavía no existe, y con un valor > 0 la mesa se pararía sin
-/// motivo entre manos. Cuando exista, ~1700 (el cliente la anima en ~1.2s).
-/// Ver IGameObserver::onPausaAnimacionMesa().
-constexpr int PAUSA_ANIMACION_MESA_MS = 0;
+/// El cliente anima el cobro (~0.9 s) y el volteo (~0.5 s) en paralelo dentro
+/// de este hueco; poner 0 para quitar la pausa (el juego sigue sin animar el
+/// cobro). Ver IGameObserver::onPausaAnimacionMesa().
+constexpr int PAUSA_ANIMACION_MESA_MS = 1300;
+
+/// Plazo para votar en las pantallas de entre manos (continuar / extender la
+/// partida). Antes no había: un jugador con el socket vivo pero sin mirar la
+/// app (segundo plano, panel cerrado) colgaba la mesa entera. Al vencer, el
+/// voto de fin de mano cuenta como "continuar" y el de extensión como "no"
+/// (sin unanimidad no se alarga la partida).
+constexpr int VOTO_TIMEOUT_MS = 60'000;
 
 /// Fases de una mano de poker (en orden cronológico).
 enum class Rondas { PREFLOP, FLOP, TURN, RIVER, SHOWDOWN };

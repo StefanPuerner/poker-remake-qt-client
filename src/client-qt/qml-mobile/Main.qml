@@ -1503,6 +1503,10 @@ ApplicationWindow {
             preguntarExtensionActual = preguntarExtension;
             soyHost = (host === nombreJugador);
         }
+        // Animación de apuesta: fichas del avatar al bote (Mesa.qml).
+        function onFichasApostadas(jugador, cantidad) {
+            mesaJuegoMovil.lanzarFichas(jugador, cantidad);
+        }
         function onTapeteAnfitrionActualizado(tapete) {
             tapeteAnfitrion = tapete;
         }
@@ -1572,6 +1576,12 @@ ApplicationWindow {
         function onNuevaMano(mano, ciega) {
             manoActual = mano;
             ciegaActual = ciega;
+            // Cobro del bote: el showdown que se cierra ya trae los premios; las
+            // fichas van del bote a cada ganador antes de vaciar nada, y se
+            // limpia para no cobrar dos veces.
+            var ganadores = revealsShowdown.filter(function(r) { return r.premio > 0; });
+            if (ganadores.length > 0) mesaJuegoMovil.cobrarBote(ganadores);
+            revealsShowdown = [];
             retirados = [];
             cartasMesa = [];
             miCarta1 = "";
