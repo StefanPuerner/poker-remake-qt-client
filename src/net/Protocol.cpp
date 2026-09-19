@@ -315,7 +315,24 @@ std::string jsonGetStr(const std::string& json, const std::string& key) {
   // Devuelve VALUE sin las comillas ni el escapado, o "" si no existe.
   std::string patron = "\"" + key + "\":\"";
   auto pos = json.find(patron);
-  if (pos == std::string::npos) return "";
+  if (pos == std::string::npos) {
+    // buildMsg() escribe SIN comillas todo valor formado solo por dígitos
+    // (lo trata como número), así que un texto como la contraseña
+    // "12345678", un mensaje de chat "123" o un nombre "2024" llega aquí
+    // como "key":12345678. Sin este respaldo se leía como vacío -- y
+    // "12345678" se rechazaba por corta (bug real reportado 2026-09-19).
+    std::string patronNum = "\"" + key + "\":";
+    auto posNum = json.find(patronNum);
+    if (posNum == std::string::npos) return "";
+    posNum += patronNum.size();
+    while (posNum < json.size() && json[posNum] == ' ') ++posNum;
+    auto finNum = posNum;
+    while (finNum < json.size() &&
+           (json[finNum] == '-' || (json[finNum] >= '0' && json[finNum] <= '9'))) {
+      ++finNum;
+    }
+    return json.substr(posNum, finNum - posNum);
+  }
 
   pos += patron.size();
 

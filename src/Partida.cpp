@@ -11,6 +11,7 @@
 #include "../include/Interfaz.hpp"
 #include "../include/LocalObserver.hpp"
 #include "../include/PathUtils.hpp"
+#include "../include/ReglasRaise.hpp"
 #include "../include/Persona.hpp"
 
 Partida::Partida(const std::vector<std::string>& nombresHumanos, int numBots,
@@ -608,8 +609,14 @@ void Partida::gestionarRondaDeApuestas() {
   // real reportado en producción. Con el chequeo, el bucle ni se ejecuta:
   // se salta directo a la limpieza de abajo y ejecutarMano() sigue
   // repartiendo calles hasta el showdown, sin pedir ninguna decisión de más.
+  //
+  // Ojo con la excepción: si el único ACTIVO que queda aún no ha igualado la
+  // apuesta más alta (p. ej. pasó, y luego otro fue all-in y el tercero se
+  // retiró), sí tiene una decisión real -- igualar o retirarse. Sin esto la
+  // mano terminaba sin darle turno (bug real reportado 2026-09-19: jugador 1
+  // check, jugador 2 all-in, jugador 3 fold -> el 1 nunca podía responder).
   while (jugadoresPendientesDeHablar > 0 && contarJugadoresActivos() > 1 &&
-         contarJugadoresQuePuedenApostar() > 1) {
+         (contarJugadoresQuePuedenApostar() > 1 || hayApuestaPorIgualar())) {
     Player* p = jugadores_[idxActual];
 
     // Solo actúan los que están ACTIVOS
@@ -665,6 +672,12 @@ void Partida::gestionarRondaDeApuestas() {
         if (a.tipo == TipoAccion::VER_CARTAS) {
           observer_->onVerCartasPropias(p->getNombre(), p->getCartas());
           continue;
+        }
+
+        // Lo que manda un humano (sobre todo por red) se valida aquí: ni el
+        // NetworkPlayer ni el resto comprueban la lógica de la jugada.
+        if (a.valido && p->esHumano()) {
+          a = validarAccionHumana(state, a);
         }
 
         if (!a.valido && p->esHumano()) {
@@ -782,7 +795,7 @@ void Partida::procesarAccion(Player* p, const Accion& a) {
     return;
   }
 
-  int cantidadADescontar = a.cantidad;
+  int cantidadADescontar = std::max(0, a.cantidad);
 
   // Seguridad: no puede apostar más de lo que tiene
   if (cantidadADescontar > p->getSaldo()) {
@@ -1101,6 +1114,59 @@ int Partida::contarJugadoresQuePuedenApostar() const {
     if (p->getEstado() == PlayerState::ACTIVO) count++;
   }
   return count;
+}
+
+Accion Partida::validarAccionHumana(const GameState& state, Accion a) const {
+  const int aPagar = std::max(0, state.apuestaAIgualar - state.miApuestaEnRonda);
+  auto invalida = [](std::string mensaje) {
+    return Accion{TipoAccion::ERROR, 0, false, std::move(mensaje)};
+  };
+
+  switch (a.tipo) {
+    case TipoAccion::FOLD:
+      a.cantidad = 0;
+      return a;
+    case TipoAccion::CHECK:
+      if (aPagar > 0) {
+        return invalida("No puedes pasar: hay que igualar " +
+                        std::to_string(aPagar) + " o retirarse.");
+      }
+      a.cantidad = 0;
+      return a;
+    case TipoAccion::CALL:
+      // Igualar sin nada que igualar es un check.
+      if (aPagar == 0) return Accion{TipoAccion::CHECK, 0, true, ""};
+      a.cantidad = std::min(aPagar, state.miSaldo);
+      return a;
+    case TipoAccion::RAISE: {
+      auto [minExtra, maxExtra] =
+          calcularLimitesRaise(state, aPagar, state.miSaldo);
+      if (maxExtra <= 0) {
+        return invalida("No tienes saldo suficiente para subir la apuesta.");
+      }
+      const int extra = a.cantidad - aPagar;
+      if (extra < minExtra || extra > maxExtra) {
+        return invalida("La subida debe estar entre " + std::to_string(minExtra) +
+                        " y " + std::to_string(maxExtra) + ".");
+      }
+      return a;
+    }
+    case TipoAccion::ALL_IN:
+      a.cantidad = state.miSaldo;
+      return a;
+    default:
+      return invalida("Acción no válida.");
+  }
+}
+
+bool Partida::hayApuestaPorIgualar() const {
+  for (Player* p : jugadores_) {
+    if (p->getEstado() == PlayerState::ACTIVO &&
+        p->getApuestaAcumuladaRonda() < apuestaMaximaRonda_) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // GENERAR SNAPSHOT (GUARDAR PARTIDA)

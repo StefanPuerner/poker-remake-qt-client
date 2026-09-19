@@ -175,7 +175,8 @@ std::string jugadoresMesaToStr(const std::vector<DatosJugadorMesa>& jugadores) {
               j.decoracionSuperior + ':' +
               j.acabadoLateral1 + ':' +
               j.acabadoLateral2 + ':' +
-              j.acabadoSuperior;
+              j.acabadoSuperior + ':' +
+              j.reversoCarta;
   }
   return result;
 }

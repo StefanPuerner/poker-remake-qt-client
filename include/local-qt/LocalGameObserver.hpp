@@ -506,7 +506,8 @@ class LocalGameObserver : public QObject, public IGameObserver {
   void eventoJuego(QString evento, QString tipo = "accion", QString jugador = "");
   void mesaActualizada(QString mesa);
   void estadoMesaActualizado(QString ronda, int bote, QString turno, QString jugadoresStr,
-                             int timeoutMs, QString dealer, QString sb, QString bb);
+                             int timeoutMs, QString dealer, QString sb, QString bb,
+                             bool soloVsBots);
   void esMiTurno(int bote, int igualar, int miSaldo, int miApuesta, int timeoutMs,
                 int minSubida, int maxSubida, QString c1, QString c2, QString comboActual,
                 QString comboProbable, QString comboMaxima);
@@ -561,8 +562,13 @@ class LocalGameObserver : public QObject, public IGameObserver {
       // Sin AccountManager offline -- avatar/loadout siempre a su valor
       // por defecto (0/false/""), igual que NetworkObserver cuando
       // cuentas_ es nullptr (ver su comentario en emitirGameState()).
+      // reversoCarta también a "" -- el modo local solo tiene un humano
+      // (siempre "solo vs bots" por construcción), así que Mesa.qml
+      // resuelve el reverso a mostrar desde el loadout YA cacheado en
+      // redcliente.loadoutMarco.reversoCarta, no desde este campo por
+      // asiento (ver Mesa.qml::reversoActivo()).
       datos.push_back({p->getNombre(), p->getSaldo(), p->getApuestaAcumuladaMano(),
-                       0, false, "", "", "", "", "", "", "", ""});
+                       0, false, "", "", "", "", "", "", "", "", ""});
     }
     int boteTotal = 0;
     for (int b : botes) boteTotal += b;
@@ -573,7 +579,10 @@ class LocalGameObserver : public QObject, public IGameObserver {
         QString::fromStdString(jugadorActual_),
         QString::fromStdString(net::ser::jugadoresMesaToStr(datos)), timeoutMs,
         QString::fromStdString(dealerNombre_), QString::fromStdString(sbNombre_),
-        QString::fromStdString(bbNombre_));
+        QString::fromStdString(bbNombre_),
+        // El modo local solo admite un humano -- siempre "solo vs bots"
+        // por construcción, ver el comentario de "datos" más arriba.
+        true);
 
     enviarComboSiAplica(cartasMesaActual_);
   }

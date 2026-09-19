@@ -154,6 +154,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/Idioma.qml
             src/client-qt/qml/Carta.qml
             src/client-qt/qml/PaloIcono.qml
+            src/client-qt/qml/Tapete.qml
             src/client-qt/qml/IconoFicha.qml
             src/client-qt/qml/IconoTrebol.qml
             src/client-qt/qml/IconoOjo.qml
@@ -230,6 +231,18 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             assets/iconos/corona_real.png
             ${ICONOS_ACABADO}
             assets/iconos/palos_en_fila.png
+            # Reverso de cartas -- Fase 1 de "segunda ola de cosméticos"
+            # (2026-09-17), ver scripts/generar_iconos.sh.
+            assets/iconos/reverso_azul_real.png
+            assets/iconos/reverso_esmeralda.png
+            assets/iconos/reverso_carmesi.png
+            assets/iconos/reverso_obsidiana.png
+            assets/iconos/reverso_taberna.png
+            # Tapetes de mesa (2026-09-19), ver scripts/generar_iconos.sh tapetes.
+            assets/tapetes/madera.png
+            assets/tapetes/tesela_rombos.png
+            assets/tapetes/tesela_puntos.png
+            assets/tapetes/tesela_palos.png
             # "mano_real" (La Corona) dejó de ser un icono suelto -- ahora
             # es un abanico de 5 cartas de verdad alrededor de la parte de
             # arriba del marco (pedido explícito 2026-08-31: "para
@@ -461,6 +474,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/ChatBox.qml
             src/client-qt/qml-mobile/Carta.qml
             src/client-qt/qml-mobile/PaloIcono.qml
+            src/client-qt/qml-mobile/Tapete.qml
             src/client-qt/qml-mobile/IconoFicha.qml
             src/client-qt/qml-mobile/IconoTrebol.qml
             src/client-qt/qml-mobile/Avatar.qml
@@ -532,6 +546,18 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             assets/iconos/corona_real.png
             ${ICONOS_ACABADO}
             assets/iconos/palos_en_fila.png
+            # Reverso de cartas -- Fase 1 de "segunda ola de cosméticos"
+            # (2026-09-17), ver scripts/generar_iconos.sh.
+            assets/iconos/reverso_azul_real.png
+            assets/iconos/reverso_esmeralda.png
+            assets/iconos/reverso_carmesi.png
+            assets/iconos/reverso_obsidiana.png
+            assets/iconos/reverso_taberna.png
+            # Tapetes de mesa (2026-09-19), ver scripts/generar_iconos.sh tapetes.
+            assets/tapetes/madera.png
+            assets/tapetes/tesela_rombos.png
+            assets/tapetes/tesela_puntos.png
+            assets/tapetes/tesela_palos.png
             # "mano_real" (La Corona) dejó de ser un icono suelto -- ahora
             # es un abanico de 5 cartas de verdad alrededor de la parte de
             # arriba del marco (pedido explícito 2026-08-31: "para
@@ -704,6 +730,9 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
                 src/client-qt/avatar-test/Main.qml
                 src/client-qt/qml/Tema.qml
                 src/client-qt/qml/Avatar.qml
+                src/client-qt/qml/Carta.qml
+                src/client-qt/qml/PaloIcono.qml
+                src/client-qt/qml/Tapete.qml
         )
         # Avatar.qml pide sus iconos por ruta ABSOLUTA bajo el prefijo del
         # cliente real ("qrc:/qt/qml/PokerQuick/assets/iconos/..."), así
@@ -712,9 +741,10 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         # ninguna decoración -- que es justo lo que hacía falta revisar
         # (2026-09-09, al arreglar los iconos).
         file(GLOB ICONOS_BANCO RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/iconos/*.png)
+        file(GLOB TAPETES_BANCO RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/tapetes/*.png)
         qt_add_resources(AvatarTest "avatartest_iconos"
             PREFIX "/qt/qml/PokerQuick"
-            FILES ${ICONOS_BANCO}
+            FILES ${ICONOS_BANCO} ${TAPETES_BANCO}
         )
         if(TARGET Qt6::ShaderTools)
             qt_add_shaders(AvatarTest "avatartest_shaders"

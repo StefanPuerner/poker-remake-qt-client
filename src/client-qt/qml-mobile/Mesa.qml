@@ -21,12 +21,31 @@ Item {
     property string dealerNombre: ""
     property string sbNombre: ""
     property string bbNombre: ""
+    // Reverso de cartas -- ver el comentario gemelo en
+    // src/client-qt/qml/Mesa.qml (escritorio).
+    property bool soloVsBots: false
+    property string miReversoSkin: ""
+    // Tapete a pintar ("" = el del tema) -- lo resuelve Main.qml.
+    property string tapete: ""
+    // Cartas propias reales -- SOLO móvil las necesita (mini-cartas en
+    // la propia silla también, ver Asiento.qml de este árbol).
+    property string miCarta1: ""
+    property string miCarta2: ""
 
     property int miIndice: {
         for (var i = 0; i < jugadores.count; i++) {
             if (jugadores.get(i).nombre === miNombreJugador) return i;
         }
         return 0;
+    }
+
+    function reversoActivo() {
+        if (mesa.soloVsBots) return mesa.miReversoSkin;
+        for (var i = 0; i < mesa.jugadores.count; i++) {
+            var j = mesa.jugadores.get(i);
+            if (j.nombre === mesa.dealerNombre) return j.reversoCarta || "";
+        }
+        return "";
     }
 
     Rectangle {
@@ -39,22 +58,11 @@ Item {
         border.width: 1
     }
 
-    Rectangle {
+    // El tapete: ver Tapete.qml. "tapete" = código elegido (el del
+    // anfitrión o el propio, lo decide Main.qml); vacío = el del tema.
+    Tapete {
         anchors.fill: parent
-        radius: height / 2
-        border.color: Tema.colorBorde
-        border.width: 3
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorTapete, 1.22) }
-            GradientStop { position: 1.0; color: Tema.colorTapete }
-        }
-        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-        layer.enabled: true
-        layer.effect: ShaderEffect {
-            property variant source
-            property real amplitud: 30.0
-            fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
-        }
+        preset: mesa.tapete
     }
 
     Column {
@@ -68,6 +76,7 @@ Item {
                 delegate: Carta {
                     required property int index
                     codigo: index < mesa.cartasMesa.length ? mesa.cartasMesa[index] : ""
+                    reversoSkin: mesa.reversoActivo()
                 }
             }
         }
@@ -147,6 +156,10 @@ Item {
                 esDealer: posicionador.nombre === mesa.dealerNombre
                 esSb: posicionador.nombre === mesa.sbNombre
                 esBb: posicionador.nombre === mesa.bbNombre
+                esPropio: posicionador.nombre === mesa.miNombreJugador
+                reversoActivo: mesa.reversoActivo()
+                miCarta1: mesa.miCarta1
+                miCarta2: mesa.miCarta2
             }
         }
     }

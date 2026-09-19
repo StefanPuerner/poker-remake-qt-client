@@ -31,6 +31,7 @@ include/Interfaz.hpp
 include/LocalObserver.hpp
 include/Logger.hpp
 include/Mesa.hpp
+include/ObservadorMultiplex.hpp
 include/Partida.hpp
 include/PathUtils.hpp
 include/Persona.hpp

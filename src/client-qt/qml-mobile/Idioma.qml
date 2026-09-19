@@ -411,6 +411,8 @@ QtObject {
         // ── Pantalla Tienda ──────────────────────────────────────────────────
         "titulo_tienda": { es: "Tienda", en: "Shop", de: "Shop" },
         "tab_marco": { es: "Marco", en: "Frame", de: "Rahmen" },
+        // Fase 1 de "segunda ola de cosméticos" (2026-09-17).
+        "tab_mesa": { es: "Mesa", en: "Table", de: "Tisch" },
         "tab_perfil": { es: "Perfil", en: "Profile", de: "Profil" },
         "tienda_invitado_aviso": {
             es: "Inicia sesión para entrar en la tienda.", en: "Log in to enter the shop.",
@@ -433,6 +435,10 @@ QtObject {
         },
         "boton_comprar": { es: "Comprar", en: "Buy", de: "Kaufen" },
         "boton_comprado": { es: "Comprado", en: "Owned", de: "Erworben" },
+        // Mismo estado final visiblemente inactivo que "boton_comprado",
+        // pero para objetos que vinieron de un logro (nunca se compraron) --
+        // pedido explícito 2026-09-17.
+        "boton_obtenido": { es: "Obtenido", en: "Obtained", de: "Erhalten" },
         "boton_quitar_izq": { es: "Quitar izq.", en: "Remove left", de: "Links entfernen" },
         "boton_a_la_izq": { es: "A la izq.", en: "To the left", de: "Nach links" },
         "boton_quitar_der": { es: "Quitar der.", en: "Remove right", de: "Rechts entfernen" },
@@ -635,6 +641,8 @@ QtObject {
         "tab_efectos": { es: "Efectos", en: "Effects", de: "Effekte" },
         "tab_decoraciones": { es: "Decoraciones", en: "Decorations", de: "Dekorationen" },
         "tab_titulos": { es: "Títulos", en: "Titles", de: "Titel" },
+        // Fase 1 de "segunda ola de cosméticos" (2026-09-17).
+        "tab_reversos": { es: "Reversos", en: "Card backs", de: "Kartenrückseiten" },
         "vacio_personalizar": {
             es: "Todavía no tienes nada de esto -- consíguelo en la Tienda.",
             en: "You don't have any of these yet -- get them in the Shop.",
@@ -657,6 +665,7 @@ QtObject {
             es: "Siguiente: {0}", en: "Next: {0}", de: "Nächster: {0}"
         },
         "titulo_tu_avatar": { es: "TU AVATAR", en: "YOUR AVATAR", de: "DEIN AVATAR" },
+        "titulo_tu_mesa": { es: "TU MESA", en: "YOUR TABLE", de: "DEIN TISCH" },
 
         // ── Cajón de Ajustes ─────────────────────────────────────────────────
         "titulo_ajustes": { es: "AJUSTES", en: "SETTINGS", de: "EINSTELLUNGEN" },
@@ -666,6 +675,7 @@ QtObject {
         "tema_burdeos": { es: "Burdeos", en: "Burgundy", de: "Burgund" },
         "tema_grafito": { es: "Grafito", en: "Graphite", de: "Graphit" },
         "tema_porcelana_dorada": { es: "Porcelana dorada", en: "Golden Porcelain", de: "Goldenes Porzellan" },
+        "tema_taberna_real": { es: "Taberna real", en: "Royal Tavern", de: "Königliche Taverne" },
         "titulo_mesa_actual": { es: "MESA ACTUAL", en: "CURRENT TABLE", de: "AKTUELLER TISCH" },
         "ajustes_ciega_actual": { es: "Ciega actual", en: "Current blind", de: "Aktuelles Blind" },
         "ajustes_mano": { es: "Mano", en: "Hand", de: "Hand" },
@@ -1427,5 +1437,29 @@ QtObject {
         "objeto_titulo_ultima_ficha_nombre": { es: "Última ficha", en: "Last Chip", de: "Letzter Chip" },
         "objeto_titulo_rompebancas_nombre": { es: "Rompebancas", en: "Bank Breaker", de: "Bankbrecher" },
         "objeto_titulo_la_casa_nombre": { es: "La Casa", en: "The House", de: "Das Haus" },
+        // Reverso de cartas -- Fase 1 de la "segunda ola de cosméticos".
+        "objeto_reverso_azul_real_nombre": { es: "Azul real", en: "Royal Blue", de: "Königsblau" },
+        "objeto_reverso_esmeralda_nombre": { es: "Esmeralda", en: "Emerald", de: "Smaragd" },
+        "objeto_reverso_carmesi_nombre": { es: "Carmesí", en: "Crimson", de: "Karmesinrot" },
+        "objeto_reverso_obsidiana_nombre": { es: "Obsidiana", en: "Obsidian", de: "Obsidian" },
+        "objeto_reverso_taberna_nombre": { es: "Taberna", en: "Tavern", de: "Taverne" },
+        // Tapetes de mesa (2026-09-19).
+        "objeto_tapete_clasico_nombre": { es: "Clásico", en: "Classic", de: "Klassisch" },
+        "objeto_tapete_granate_nombre": { es: "Granate", en: "Garnet", de: "Granat" },
+        "objeto_tapete_azul_nombre": { es: "Azul", en: "Blue", de: "Blau" },
+        "objeto_tapete_grafito_nombre": { es: "Grafito", en: "Graphite", de: "Graphit" },
+        "objeto_tapete_taberna_nombre": { es: "Taberna", en: "Tavern", de: "Taverne" },
+        "objeto_tapete_porcelana_nombre": { es: "Porcelana", en: "Porcelain", de: "Porzellan" },
+        "objeto_tapete_casino_nombre": { es: "Casino", en: "Casino", de: "Casino" },
+        "objeto_tapete_madera_nombre": { es: "Madera", en: "Wood", de: "Holz" },
+        "texto_ver_mi_tapete": {
+            es: "Ver mi tapete (si no, el del anfitrión)", en: "Show my table (otherwise the host's)",
+            de: "Meinen Tisch anzeigen (sonst den des Gastgebers)"
+        },
+        "texto_tapete_sin_equipado": {
+            es: "Tapete: el del anfitrión (equipa uno para elegir)",
+            en: "Table: the host's (equip one to choose)",
+            de: "Tisch: der des Gastgebers (rüste einen aus, um zu wählen)"
+        },
     })
 }

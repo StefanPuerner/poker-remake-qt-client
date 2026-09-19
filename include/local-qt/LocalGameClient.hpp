@@ -502,7 +502,11 @@ class LocalGameClient : public QObject {
   void eventoJuego(QString evento, QString tipo = "accion", QString jugador = "");
   void mesaActualizada(QString mesa);
   void estadoMesaActualizado(QString ronda, int bote, QString turno, QString jugadoresStr,
-                             int timeoutMs, QString dealer, QString sb, QString bb);
+                             int timeoutMs, QString dealer, QString sb, QString bb,
+                             bool soloVsBots);
+  /// Paridad con NetworkClient -- nunca se emite en modo local (no hay
+  /// anfitrión con tapete propio: la mesa usa el del jugador).
+  void tapeteAnfitrionActualizado(QString tapete);
   void esMiTurno(int bote, int igualar, int miSaldo, int miApuesta, int timeoutMs,
                 int minSubida, int maxSubida, QString c1, QString c2, QString comboActual,
                 QString comboProbable, QString comboMaxima);

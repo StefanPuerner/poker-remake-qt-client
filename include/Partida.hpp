@@ -229,6 +229,18 @@ class Partida {
   /// gestionarRondaDeApuestas().
   int contarJugadoresQuePuedenApostar() const;
 
+  /// @return true si algún jugador ACTIVO (con fichas) todavía no ha
+  /// igualado la apuesta más alta de la ronda -- tiene una respuesta
+  /// pendiente (igualar o retirarse) aunque sea el único que pueda apostar.
+  bool hayApuestaPorIgualar() const;
+
+  /// Comprueba (y normaliza) una jugada de un jugador HUMANO -- lo que
+  /// llega por red no es de fiar: un cliente modificado podía pasar con una
+  /// apuesta pendiente, mandar importes negativos (creando fichas) o subir
+  /// fuera del rango legal. Devuelve la jugada con la cantidad recalculada,
+  /// o valido=false con el motivo si es ilegal.
+  Accion validarAccionHumana(const GameState& state, Accion a) const;
+
   /**
    * @brief Aplica cualquier recompra pendiente (ver
    * IGameObserver::onComprobarRecompras) de jugadores ELIMINADOS, si

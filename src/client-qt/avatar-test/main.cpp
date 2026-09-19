@@ -7,6 +7,11 @@
 // Órdenes (todas opcionales):
 //   --solo-cosmeticos   solo la parte de Fase 5 (texturas y decoraciones),
 //                       que así cabe entera en la ventana
+//   --solo-reversos     solo el reverso de cartas (Fase 1 de "segunda ola
+//                       de cosméticos"), que así cabe entera en la ventana
+//   --solo-tapetes      solo los tapetes de mesa (presets de Tapete.qml)
+//   --tapete-grande C   un tapete (código C) a tamaño de partida, para ver
+//                       cómo escalan la madera y los dibujos
 //   --tema N            índice de paleta de Tema.qml (0 = Verde clásico,
 //                       4 = Porcelana dorada, el tema CLARO)
 //   --captura RUTA      guarda un PNG de la ventana y sale
@@ -47,12 +52,21 @@ int main(int argc, char* argv[]) {
   QGuiApplication app(argc, argv);
 
   bool soloCosmeticos = false;
+  bool soloReversos = false;
+  bool soloTapetes = false;
+  QString tapeteGrande;
   int tema = 0;
   QString rutaCaptura;
   const QStringList args = QCoreApplication::arguments();
   for (int i = 1; i < args.size(); ++i) {
     if (args[i] == "--solo-cosmeticos") {
       soloCosmeticos = true;
+    } else if (args[i] == "--solo-reversos") {
+      soloReversos = true;
+    } else if (args[i] == "--solo-tapetes") {
+      soloTapetes = true;
+    } else if (args[i] == "--tapete-grande" && i + 1 < args.size()) {
+      tapeteGrande = args[++i];
     } else if (args[i] == "--tema" && i + 1 < args.size()) {
       tema = args[++i].toInt();
     } else if (args[i] == "--captura" && i + 1 < args.size()) {
@@ -61,7 +75,9 @@ int main(int argc, char* argv[]) {
   }
 
   QQmlApplicationEngine engine;
-  engine.setInitialProperties({{"soloCosmeticos", soloCosmeticos}, {"temaInicial", tema}});
+  engine.setInitialProperties(
+      {{"soloCosmeticos", soloCosmeticos}, {"soloReversos", soloReversos},
+       {"soloTapetes", soloTapetes}, {"tapeteGrande", tapeteGrande}, {"temaInicial", tema}});
   engine.loadFromModule("PokerAvatarTest", "Main");
   if (engine.rootObjects().isEmpty()) return 1;
 

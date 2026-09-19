@@ -625,6 +625,8 @@ class NetworkClient : public QObject {
           m["acabadoLateral1"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_lateral_1"));
           m["acabadoLateral2"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_lateral_2"));
           m["acabadoSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_superior"));
+          m["reversoCarta"] = QString::fromStdString(net::jsonGetStr(payload, "reverso_carta"));
+          m["tapete"] = QString::fromStdString(net::jsonGetStr(payload, "tapete"));
           loadoutMarco_ = m;
           emit loadoutMarcoCambiaron();
         });
@@ -1075,7 +1077,13 @@ class NetworkClient : public QObject {
                        bool preguntarExtension, QString host);
   void estadoMesaActualizado(QString ronda, int bote, QString turno,
                              QString jugadoresStr, int timeoutMs,
-                             QString dealer, QString sb, QString bb);
+                             QString dealer, QString sb, QString bb,
+                             bool soloVsBots);
+  /// Tapete de mesa del ANFITRIÓN, tal como lo manda GAME_STATE ("" = ninguno).
+  /// Señal aparte para no ensanchar estadoMesaActualizado(), que atraviesa
+  /// también el modo offline (LocalGameClient la declara igual, sin emitirla:
+  /// paridad de API, ver docs/plan-modo-offline.md).
+  void tapeteAnfitrionActualizado(QString tapete);
   /**
    * @brief Una línea para el historial de partida.
    * @param tipo Categoría para colorear el punto de la entrada en Main.qml:
@@ -2214,8 +2222,16 @@ class NetworkClient : public QObject {
                 QString::fromStdString(net::jsonGetStr(payload, "dealer"));
             QString sb = QString::fromStdString(net::jsonGetStr(payload, "sb"));
             QString bb = QString::fromStdString(net::jsonGetStr(payload, "bb"));
+            // "1"/"0" -- ver el comentario de emitirGameState() en
+            // NetworkObserver.cpp. jsonGetInt devuelve 0 si el campo no
+            // viniera (no debería pasar, pero deja el valor por defecto en
+            // "no soy el único humano" en vez de forzar el reverso propio
+            // por error).
+            bool soloVsBots = net::jsonGetInt(payload, "solo_vs_bots") != 0;
             emit estadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
-                                       dealer, sb, bb);
+                                       dealer, sb, bb, soloVsBots);
+            emit tapeteAnfitrionActualizado(
+                QString::fromStdString(net::jsonGetStr(payload, "tapete")));
           } else if (tipo == "TU_TURNO") {
             int bote = net::jsonGetInt(payload, "bote");
             int igualar = net::jsonGetInt(payload, "igualar");

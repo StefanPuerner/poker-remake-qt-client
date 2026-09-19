@@ -13,13 +13,24 @@ Rectangle {
     // cruda (H/D/C/S) -- ver ese fichero.
     property string letraPalo: codigo.slice(-1)
     property bool propia: false
+    // Reverso de carta equipado -- ver el comentario gemelo en
+    // src/client-qt/qml/Carta.qml (escritorio).
+    property string reversoSkin: ""
+    function rutaIconoReverso(codigoReverso) {
+        return codigoReverso === "" ? ""
+             : "qrc:/qt/qml/PokerQuickMobile/assets/iconos/" + codigoReverso + ".png";
+    }
     readonly property bool esRojo: letraPalo === "H" || letraPalo === "D"
     readonly property int tamanoFuente: Math.round(width * 0.20)
     readonly property int margen: Math.round(width * 0.12)
     readonly property int separacionAro: Math.round(width * 0.08)
-    color: bocaAbajo ? Tema.colorTapete : "#efe6d3"
+    // Con un reverso equipado, la carta ES la imagen (llena todo el dorso, con
+    // sus esquinas redondeadas ya horneadas): ni relleno ni borde propios, o
+    // se veía el PNG pequeño dentro de un marco grueso.
+    readonly property bool dorsoConImagen: bocaAbajo && reversoSkin !== ""
+    color: dorsoConImagen ? "transparent" : (bocaAbajo ? Tema.colorTapete : "#efe6d3")
     radius: 6 * Tema.escala
-    border.width: bocaAbajo ? 2 : 0
+    border.width: bocaAbajo && !dorsoConImagen ? 2 : 0
     border.color: Tema.colorAccent
     width: (propia ? 80 : 60) * Tema.escala
     height: (propia ? 112 : 80) * Tema.escala
@@ -36,7 +47,7 @@ Rectangle {
     }
 
     Rectangle {
-        visible: bocaAbajo
+        visible: bocaAbajo && carta.reversoSkin === ""
         anchors.fill: parent
         anchors.margins: Math.round(parent.width * 0.14)
         radius: 4 * Tema.escala
@@ -46,13 +57,26 @@ Rectangle {
         opacity: 0.7
     }
     PaloIcono {
-        visible: bocaAbajo
+        visible: bocaAbajo && carta.reversoSkin === ""
         anchors.centerIn: parent
         width: Math.round(parent.width * 0.4)
         height: width
         letraPalo: "C"
         colorPalo: Tema.colorAccent
         opacity: 0.8
+    }
+    // Reverso de carta equipado -- sustituye al dorso programático de
+    // arriba. mipmap obligatorio (regla del proyecto: si un solo Image
+    // que comparte este PNG se la salta, rompe el mipmap para todos los
+    // que lo usan).
+    Image {
+        visible: bocaAbajo && carta.reversoSkin !== ""
+        anchors.fill: parent
+        source: carta.rutaIconoReverso(carta.reversoSkin)
+        // Stretch: el PNG es 3:4 igual que la carta de mesa; la propia (5:7)
+        // lo estira un 5%, imperceptible y sin bandas.
+        fillMode: Image.Stretch
+        mipmap: true
     }
 
     Column {

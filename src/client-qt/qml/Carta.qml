@@ -17,6 +17,17 @@ Rectangle {
     // un símbolo Unicode de texto a partir de ella.
     property string letraPalo: codigo.slice(-1)
     property bool propia: false
+    // Reverso de carta equipado (Fase 1 de "segunda ola de cosméticos",
+    // 2026-09-17) -- "" = dorso programático de siempre (el bloque de
+    // abajo), cualquier otro valor cambia el dorso por la imagen de ese
+    // reverso. Quien decide QUÉ reverso toca (el del dealer, o el propio
+    // si es solo-vs-bots) es Mesa.qml -- este componente solo pinta lo
+    // que le llega, igual que "codigo" para la cara.
+    property string reversoSkin: ""
+    function rutaIconoReverso(codigoReverso) {
+        return codigoReverso === "" ? ""
+             : "qrc:/qt/qml/PokerQuick/assets/iconos/" + codigoReverso + ".png";
+    }
     readonly property bool esRojo: letraPalo === "H" || letraPalo === "D"
     // Proporcional al propio tamaño de la carta, no un número fijo — así
     // si el ancho cambia (otra pantalla, otro contexto), el texto escala con él.
@@ -29,9 +40,13 @@ Rectangle {
     // elemento, con hueco), así que se imita con un Rectangle aparte, sin
     // relleno, más grande que la carta y centrado sobre ella.
     readonly property int separacionAro: Math.round(width * 0.08)
-    color: bocaAbajo ? Tema.colorTapete : "#efe6d3"
+    // Con un reverso equipado, la carta ES la imagen (llena todo el dorso, con
+    // sus esquinas redondeadas ya horneadas): ni relleno ni borde propios, o
+    // se veía el PNG pequeño dentro de un marco grueso.
+    readonly property bool dorsoConImagen: bocaAbajo && reversoSkin !== ""
+    color: dorsoConImagen ? "transparent" : (bocaAbajo ? Tema.colorTapete : "#efe6d3")
     radius: 6 * Tema.escala
-    border.width: bocaAbajo ? 2 : 0
+    border.width: bocaAbajo && !dorsoConImagen ? 2 : 0
     border.color: Tema.colorAccent
     width: (propia ? 80 : 60) * Tema.escala // medidas quasi aleatorias, habra que ver lo que sea ideal
     height: (propia ? 112 : 80) * Tema.escala
@@ -47,11 +62,12 @@ Rectangle {
         border.color: Tema.colorAccent
     }
 
-    // Dorso: marco interior a juego con el borde exterior + emblema
-    // centrado, en vez de un patrón importado (barato de mantener,
-    // reescala con la carta sin necesitar ninguna imagen).
+    // Dorso programático de siempre (sin reverso equipado): marco interior
+    // a juego con el borde exterior + emblema centrado, en vez de un
+    // patrón importado (barato de mantener, reescala con la carta sin
+    // necesitar ninguna imagen).
     Rectangle {
-        visible: bocaAbajo
+        visible: bocaAbajo && carta.reversoSkin === ""
         anchors.fill: parent
         anchors.margins: Math.round(parent.width * 0.14)
         radius: 4 * Tema.escala
@@ -61,13 +77,26 @@ Rectangle {
         opacity: 0.7
     }
     PaloIcono {
-        visible: bocaAbajo
+        visible: bocaAbajo && carta.reversoSkin === ""
         anchors.centerIn: parent
         width: Math.round(parent.width * 0.4)
         height: width
         letraPalo: "C"
         colorPalo: Tema.colorAccent
         opacity: 0.8
+    }
+    // Reverso de carta equipado -- sustituye al dorso programático de
+    // arriba. mipmap obligatorio (regla del proyecto: si un solo Image
+    // que comparte este PNG se la salta, rompe el mipmap para todos los
+    // que lo usan).
+    Image {
+        visible: bocaAbajo && carta.reversoSkin !== ""
+        anchors.fill: parent
+        source: carta.rutaIconoReverso(carta.reversoSkin)
+        // Stretch: el PNG es 3:4 igual que la carta de mesa; la propia (5:7)
+        // lo estira un 5%, imperceptible y sin bandas.
+        fillMode: Image.Stretch
+        mipmap: true
     }
 
     Column {

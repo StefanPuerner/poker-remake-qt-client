@@ -42,6 +42,18 @@ Column {
     property bool esDealer: false
     property bool esSb: false
     property bool esBb: false
+    // Mini-cartas de mesa -- Fase 1 de "segunda ola de cosméticos"
+    // (2026-09-17). A diferencia de escritorio, en móvil TODAS las
+    // sillas llevan mini-cartas, incluida la propia (pedido explícito:
+    // "en móvil no se ven tan directamente como en escritorio") -- la
+    // propia sale boca ARRIBA con las cartas reales (miCarta1/miCarta2,
+    // ya las conoces), las de los rivales boca abajo con el reverso ya
+    // resuelto por Mesa.qml (reversoActivo, el mismo valor para todos:
+    // el del dealer, o el propio si eres el único humano).
+    property string reversoActivo: ""
+    property bool esPropio: false
+    property string miCarta1: ""
+    property string miCarta2: ""
     opacity: retirado ? 0.45 : 1.0
     onActivoChanged: anillo.requestPaint()
     onFraccionTiempoChanged: if (activo)
@@ -176,40 +188,125 @@ Column {
             }
         }
     }
-    Rectangle {
+    // Placa de nombre/saldo + mini-cartas de mesa, YA JUNTAS al lado del
+    // nombre (rediseño 2026-09-17, pedido explícito: "colocalas a un lado
+    // del nombre del avatar" -- antes iban en una fila propia debajo de
+    // toda la silla). Un Item con anchors a mano en vez de un Row: dentro
+    // de un positioner (Row/Column) los hijos no admiten anchors propios,
+    // y aquí la placa y las cartas necesitan alinearse por su centro
+    // vertical, no solo colocarse uno detrás del otro.
+    Item {
+        id: filaNombreYCartas
         x: (parent.width - width) / 2
-        color: Tema.colorPanel
-        opacity: 0.70
-        border.width: 2
-        border.color: Tema.colorBorde
-        width: infoAsiento.width * 1.2
-        height: infoAsiento.height * 1.
-        radius: width / 10
-        Column {
-            id: infoAsiento
-            anchors.centerIn: parent
-            Text {
-                text: nombre
-                color: Tema.colorTexto
-                font.pixelSize: 13 * Tema.escala
-                font.family: Tema.fuenteElegante
-            }
-            Row {
-                spacing: 3 * Tema.escala
+        readonly property real espacioCartas: 4 * Tema.escala
+        readonly property bool mostrarCartas: !retirado
+        readonly property real anchoCartas: esPropio ? propias.width : abanico.width
+        readonly property real altoCartas: esPropio ? propias.height : abanico.height
+        width: placaNombre.width + (mostrarCartas ? espacioCartas + anchoCartas : 0)
+        height: Math.max(placaNombre.height, mostrarCartas ? altoCartas : 0)
+
+        Rectangle {
+            id: placaNombre
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            color: Tema.colorPanel
+            opacity: 0.70
+            border.width: 2
+            border.color: Tema.colorBorde
+            width: infoAsiento.width * 1.2
+            height: infoAsiento.height * 1.
+            radius: width / 10
+            Column {
+                id: infoAsiento
+                anchors.centerIn: parent
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: saldo
-                    color: Tema.colorAccent
-                    font.bold: true
+                    text: nombre
+                    color: Tema.colorTexto
                     font.pixelSize: 13 * Tema.escala
                     font.family: Tema.fuenteElegante
                 }
-                IconoFicha {
-                    width: 10 * Tema.escala
-                    height: width
-                    anchors.verticalCenter: parent.verticalCenter
-                    colorFicha: Tema.colorAccent
+                Row {
+                    spacing: 3 * Tema.escala
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: saldo
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.pixelSize: 13 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                    }
+                    IconoFicha {
+                        width: 10 * Tema.escala
+                        height: width
+                        anchors.verticalCenter: parent.verticalCenter
+                        colorFicha: Tema.colorAccent
+                    }
                 }
+            }
+        }
+
+        // Abanico de mini-cartas boca abajo -- rivales. Reutiliza la
+        // técnica de "coronaDeCartas" en Avatar.qml (marco de escalera
+        // real/póker de ases): cada carta gira sobre su propia base
+        // (transformOrigin: Item.Bottom) con un ángulo centrado por
+        // índice -- misma fórmula "(index - (N-1)/2) * pasoAngulo", aquí
+        // con N=2 fijo. A diferencia de la corona (que reparte las
+        // cartas en un arco alrededor del marco), aquí no hay círculo --
+        // las dos comparten el mismo punto de apoyo abajo y solo se
+        // desplazan un poco en horizontal, dando el aspecto de "abanico
+        // de mano" solapado e inclinado que pidió el usuario en vez de
+        // las dos cartas rectas de antes.
+        Item {
+            id: abanico
+            visible: filaNombreYCartas.mostrarCartas && !esPropio
+            anchors.left: placaNombre.right
+            anchors.leftMargin: filaNombreYCartas.espacioCartas
+            anchors.verticalCenter: placaNombre.verticalCenter
+            readonly property real anchoCarta: 24 * Tema.escala
+            readonly property real altoCarta: 32 * Tema.escala
+            readonly property real pasoAngulo: 24
+            readonly property real solapeX: 10 * Tema.escala
+            width: anchoCarta + solapeX
+            height: altoCarta * 1.15
+
+            Repeater {
+                model: 2
+                delegate: Carta {
+                    id: cartaAbanico
+                    required property int index
+                    width: abanico.anchoCarta
+                    height: abanico.altoCarta
+                    reversoSkin: asiento.reversoActivo
+                    transformOrigin: Item.Bottom
+                    rotation: (index - 0.5) * abanico.pasoAngulo
+                    x: abanico.width / 2 - width / 2 + (index - 0.5) * abanico.solapeX
+                    y: abanico.height - height
+                    z: index
+                }
+            }
+        }
+
+        // Mini-cartas propias -- rectas y lado a lado "como ahora"
+        // (pedido explícito, a diferencia del abanico de rivales), pero
+        // ligeramente más grandes: en móvil esta es la ÚNICA vista de la
+        // propia mano (no hay barra inferior como en escritorio), así
+        // que tienen que leerse "sin problema".
+        Row {
+            id: propias
+            visible: filaNombreYCartas.mostrarCartas && esPropio
+            anchors.left: placaNombre.right
+            anchors.leftMargin: filaNombreYCartas.espacioCartas
+            anchors.verticalCenter: placaNombre.verticalCenter
+            spacing: 4 * Tema.escala
+            Carta {
+                width: 30 * Tema.escala; height: 40 * Tema.escala
+                codigo: asiento.miCarta1
+                propia: true
+            }
+            Carta {
+                width: 30 * Tema.escala; height: 40 * Tema.escala
+                codigo: asiento.miCarta2
+                propia: true
             }
         }
     }

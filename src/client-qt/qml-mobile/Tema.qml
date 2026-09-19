@@ -51,6 +51,15 @@ QtObject {
             nombre: "Porcelana dorada",
             fondo: "#FAF5EC", tapete: "#CBA968", panel: "#FFFDF9", borde: "#D9C69C",
             accent: "#AD7F2E", texto: "#2A2419", textoTenue: "#7A6E5A", textoMuyTenue: "#9C907A", nombreAjeno: "#7C8CA0"
+        },
+        {
+            // Taberna real -- marrón y dorado, "taberna pero royal" (pedido
+            // explícito 2026-09-16, a juego con el reverso "reverso_taberna"
+            // del barril: mismo acento cálido D9A566 que su TABERNA_CLARO
+            // en scripts/generar_iconos.sh, y tapete = su TABERNA_OSCURO).
+            nombre: "Taberna real",
+            fondo: "#1C1008", tapete: "#6B4226", panel: "#26150A", borde: "#8F5A30",
+            accent: "#D9A566", texto: "#FFFFFF", textoTenue: "#B8A088", textoMuyTenue: "#8C7259", nombreAjeno: "#C9915A"
         }
     ]
     property int temaActual: 0

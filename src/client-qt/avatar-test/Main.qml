@@ -9,7 +9,7 @@ ApplicationWindow {
     id: ventana
     visible: true
     width: 1500
-    height: ventana.soloCosmeticos ? 1260 : 950
+    height: ventana.tapeteGrande !== "" ? 860 : ventana.soloTapetes ? 1000 : (ventana.soloReversos ? 1060 : (ventana.soloCosmeticos ? 1260 : 950))
     title: "Banco de pruebas — marcos y cosméticos de avatar"
     color: Tema.colorFondo
 
@@ -26,6 +26,23 @@ ApplicationWindow {
     // con "--captura"; sin eso, hay que hacer scroll y una captura solo
     // pilla el trozo visible.
     property bool soloCosmeticos: false
+    // Reverso de cartas (Fase 1 de "segunda ola de cosméticos", ver
+    // docs/plan-tienda-v2.md) -- Carta.qml no lo instancia ningún otro
+    // sitio de este banco, así que hace falta su propia vista aislada
+    // capturable, igual que "--solo-cosmeticos".
+    property bool soloReversos: false
+    // Tapetes de mesa (Tapete.qml) -- vista propia, igual que los reversos.
+    property bool soloTapetes: false
+    // Un tapete a tamaño de partida (--tapete-grande CODIGO): para ver cómo
+    // escalan la madera y los dibujos, que a 420px no se aprecia.
+    property string tapeteGrande: ""
+    readonly property var tapetes: ["", "tapete_clasico", "tapete_granate", "tapete_azul",
+                                    "tapete_grafito", "tapete_taberna", "tapete_porcelana",
+                                    "tapete_casino", "tapete_madera"]
+    // "reverso_taberna" confirmado por el usuario el 2026-09-17 ("me
+    // gusta la carta y el icono de barril") tras revisarlo aquí primero
+    // -- ya está en shop_items/AccountManager.cpp/Idioma.qml.
+    readonly property var reversos: ["reverso_azul_real", "reverso_esmeralda", "reverso_carmesi", "reverso_obsidiana", "reverso_taberna"]
     property int temaInicial: 0
     Component.onCompleted: Tema.temaActual = ventana.temaInicial
 
@@ -101,6 +118,99 @@ ApplicationWindow {
                 }
             }
 
+            // ── Reverso de cartas (Fase 1, 2026-09-17) ───────────────────
+            // Carta.qml no aparece en ningún otro sitio de este banco --
+            // sección propia, capturable sola con "--solo-reversos", igual
+            // que "--solo-cosmeticos" para Avatar. Dos tamaños: el real de
+            // mesa (comunitaria/mini-carta) y uno grande "de detalle" para
+            // juzgar el patrón sin forzar la vista.
+            Column {
+                width: parent.width
+                spacing: 14
+                visible: !ventana.soloCosmeticos && !ventana.soloTapetes
+                Text {
+                    text: "REVERSO DE CARTAS (detalle 220px y tamaño real de mesa 60px)"
+                    color: Tema.colorAccent
+                    font.pixelSize: 12
+                    font.letterSpacing: 1
+                }
+                Rectangle {
+                    width: parent.width
+                    height: flowReversos.implicitHeight + 28
+                    radius: 8
+                    color: Tema.colorTapete
+                    Flow {
+                        id: flowReversos
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: 14
+                        spacing: 30
+                        Repeater {
+                            model: ventana.reversos
+                            delegate: Column {
+                                required property string modelData
+                                spacing: 8
+                                Row {
+                                    spacing: 16
+                                    Carta { width: 220; height: 220 / 0.75; reversoSkin: modelData }
+                                    Carta { width: 60; height: 60 / 0.75; reversoSkin: modelData }
+                                }
+                                Text {
+                                    text: modelData
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Tapetes de mesa ───────────────────────────────────────────
+            // Cada preset de Tapete.qml a un tamaño parecido al de la mesa
+            // real, sobre el fondo de la app (el tapete no se ve nunca sobre
+            // el color de panel). El primero ("") es el de siempre: sale del
+            // tema activo -- con --tema N se ve el resultado en cada paleta.
+            Tapete {
+                visible: ventana.tapeteGrande !== ""
+                width: 1400
+                height: 700
+                preset: ventana.tapeteGrande
+            }
+            Column {
+                width: parent.width
+                spacing: 14
+                visible: ventana.soloTapetes && ventana.tapeteGrande === ""
+                Text {
+                    text: "TAPETES DE MESA (el primero, sin preset, sigue al tema)"
+                    color: Tema.colorAccent
+                    font.pixelSize: 12
+                    font.letterSpacing: 1
+                }
+                Flow {
+                    width: parent.width
+                    spacing: 26
+                    Repeater {
+                        model: ventana.tapetes
+                        delegate: Column {
+                            required property string modelData
+                            spacing: 8
+                            Tapete {
+                                width: 420
+                                height: 220
+                                preset: modelData
+                            }
+                            Text {
+                                text: modelData === "" ? "(tema)" : modelData
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Acabado por material (fase 1, 2026-09-10) ────────────────
             // La misma decoración sobre los cinco marcos: cada una debería
             // salir en el metal de su marco (el oro, en el dorado de
@@ -109,6 +219,7 @@ ApplicationWindow {
             Column {
                 width: parent.width
                 spacing: 14
+                visible: !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "ACABADO POR MATERIAL (laurel arriba, cinta a los lados, 120px)"
                     color: Tema.colorAccent
@@ -151,6 +262,7 @@ ApplicationWindow {
             Column {
                 width: parent.width
                 spacing: 14
+                visible: !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "TEXTURAS (sobre marco de oro, 140px y 56px)"
                     color: Tema.colorAccent
@@ -192,6 +304,7 @@ ApplicationWindow {
             Column {
                 width: parent.width
                 spacing: 14
+                visible: !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "DECORACIONES LATERALES (las dos a la vez, 120px)"
                     color: Tema.colorAccent
@@ -237,6 +350,7 @@ ApplicationWindow {
             Column {
                 width: parent.width
                 spacing: 14
+                visible: !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "DECORACIONES SUPERIORES (120px)"
                     color: Tema.colorAccent
@@ -284,7 +398,7 @@ ApplicationWindow {
                 spacing: 14
                 // Un Column salta a sus hijos invisibles, así que con esto
                 // basta para dejar la ventana con solo la parte de Fase 5.
-                visible: !ventana.soloCosmeticos
+                visible: !ventana.soloCosmeticos && !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "TAMAÑO DE DETALLE (140px)"
                     color: Tema.colorAccent
@@ -324,7 +438,7 @@ ApplicationWindow {
                 spacing: 14
                 // Un Column salta a sus hijos invisibles, así que con esto
                 // basta para dejar la ventana con solo la parte de Fase 5.
-                visible: !ventana.soloCosmeticos
+                visible: !ventana.soloCosmeticos && !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "TAMAÑO REAL — ASIENTO (56px)"
                     color: Tema.colorAccent
@@ -382,7 +496,7 @@ ApplicationWindow {
                 spacing: 14
                 // Un Column salta a sus hijos invisibles, así que con esto
                 // basta para dejar la ventana con solo la parte de Fase 5.
-                visible: !ventana.soloCosmeticos
+                visible: !ventana.soloCosmeticos && !ventana.soloReversos && !ventana.soloTapetes
                 Text {
                     text: "TAMAÑO REAL — FILA DE RANKING (30px)"
                     color: Tema.colorAccent

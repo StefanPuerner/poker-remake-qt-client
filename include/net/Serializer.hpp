@@ -84,15 +84,21 @@ struct DatosJugadorMesa {
   std::string acabadoLateral1;
   std::string acabadoLateral2;
   std::string acabadoSuperior;
+  // Reverso de carta equipado (Fase 1 de "segunda ola de cosméticos",
+  // 2026-09-17) -- "" = ninguno, cae al dorso programático de siempre
+  // (ver Carta.qml). Va AL FINAL, mismo motivo que los tres acabados de
+  // arriba: un cliente que solo lea los 13 primeros campos sigue
+  // funcionando igual que antes.
+  std::string reversoCarta;
 };
 
 /// Formato: "nombre:saldo:apuesta:partidasGanadas:tieneMarco:textura:efecto:
-/// decoLat1:decoLat2:decoSup:acabLat1:acabLat2:acabSup;..." (un bloque de 13
-/// campos por jugador, jugadores separados por ';'). Ej: "Alice:580:200:25:1:
-/// pulido_bronce:brillo:hoja::corona:::plata;Bot1:420:150:0:0::::::::".
-/// Los tres acabados van AL FINAL a propósito: los clientes leen por
-/// posición, y uno ya instalado sigue encontrando los 10 primeros donde
-/// estaban.
+/// decoLat1:decoLat2:decoSup:acabLat1:acabLat2:acabSup:reversoCarta;..." (un
+/// bloque de 14 campos por jugador, jugadores separados por ';'). Ej:
+/// "Alice:580:200:25:1:pulido_bronce:brillo:hoja::corona:::plata:reverso_azul_real;
+/// Bot1:420:150:0:0:::::::::". Los tres acabados y reversoCarta van AL FINAL
+/// a propósito: los clientes leen por posición, y uno ya instalado sigue
+/// encontrando los primeros campos donde estaban.
 std::string jugadoresMesaToStr(const std::vector<DatosJugadorMesa>& jugadores);
 
 // ── Saldos (campo "jugadores" de SALDOS_UPDATE) ───────────────────────────────

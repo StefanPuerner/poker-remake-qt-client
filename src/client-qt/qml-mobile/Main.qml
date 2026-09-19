@@ -343,6 +343,7 @@ ApplicationWindow {
         // alias a un singleton (mismo aviso de "tema" un poco más abajo).
         property alias tokenGuardado: ventana.tokenSesion
         property alias sonido: ventana.sonidoActivado
+        property alias verMiTapetePersistido: ventana.verMiTapete
         // Torneos > Solitario -- ver el comentario de retosGanadosPendientesCsv.
         property alias retosGanadosPendientes: ventana.retosGanadosPendientesCsv
         property int temaGuardado: 0
@@ -492,7 +493,10 @@ ApplicationWindow {
     Timer {
         id: timerErrorConexion
         interval: 5000
-        onTriggered: mensajeErrorConexion = ""
+        onTriggered: {
+            mensajeErrorConexion = "";
+            interval = 5000;
+        }
     }
     // Reconexión automática (60s, mismo mecanismo que ncurses/escritorio)
     // — más importante aún en móvil, donde cambiar de wifi o mandar la
@@ -647,7 +651,7 @@ ApplicationWindow {
     function colorRareza(r) {
         return r === "oro" ? "#e3bb82" : r === "plata" ? "#9aa4ab" : r === "bronce" ? "#c98f5f" : "#7d848f";
     }
-    property int pestanaTiendaActual: 0  // 0 = Marco (textura/efecto/decoraciones), 1 = Perfil (títulos)
+    property int pestanaTiendaActual: 0  // 0 = Marco (textura/efecto/decoraciones), 1 = Mesa (reverso de cartas), 2 = Perfil (títulos)
     // Búsqueda en vivo del catálogo -- mismo criterio que escritorio,
     // filtra sobre tiendaCrudo sin pedir nada nuevo al servidor.
     property string busquedaTienda: ""
@@ -726,8 +730,13 @@ ApplicationWindow {
         // todas dentro del selector "+" (PopupSeleccionCarta).
         var filas = tiendaCrudo.filter(function(o) {
             if (esCartaBaraja(o)) return false;
+            // 0 = Marco (textura/efecto/decoraciones), 1 = Mesa (reverso de
+            // cartas -- Fase 1 de "segunda ola de cosméticos", 2026-09-17),
+            // 2 = Perfil (títulos).
             var pasaPestana = ventana.pestanaTiendaActual === 0
                    ? categoriasMarco.indexOf(o.categoria) >= 0
+                   : ventana.pestanaTiendaActual === 1
+                   ? (o.categoria === "reverso_carta" || o.categoria === "tapete")
                    : o.categoria === "titulo";
             var pasaBusqueda = busqueda === "" || o.nombre.toLowerCase().indexOf(busqueda) >= 0;
             return pasaPestana && pasaBusqueda;
@@ -764,7 +773,7 @@ ApplicationWindow {
     }
 
     // ── Cuenta > Personalizar (Fase M1 del port a móvil, 2026-09-01) ────
-    property int pestanaPersonalizarActual: 0  // 0=Texturas,1=Efectos,2=Decoraciones,3=Títulos
+    property int pestanaPersonalizarActual: 0  // 0=Texturas,1=Efectos,2=Decoraciones,3=Títulos,4=Reversos
     property string mensajeTienda: ""
     property string mensajeTorneos: ""
     // Categoría(s) de shop_items que corresponde a cada pestaña -- port
@@ -774,6 +783,10 @@ ApplicationWindow {
         if (indice === 1) return ["efecto"];
         if (indice === 2) return ["decoracion_lateral", "decoracion_superior"];
         if (indice === 3) return ["titulo"];
+        // Reverso de cartas -- Fase 1 de "segunda ola de cosméticos"
+        // (2026-09-17).
+        // Mesa: reverso de cartas + tapete (2026-09-19).
+        if (indice === 4) return ["reverso_carta", "tapete"];
         return [];
     }
     // Objetos YA POSEÍDOS de la pestaña activa -- Personalizar solo
@@ -808,7 +821,8 @@ ApplicationWindow {
         case "_baraja":
             return base + "carta_ace_picas.png";
         }
-        if (categoria === "decoracion_lateral" || categoria === "decoracion_superior") {
+        if (categoria === "decoracion_lateral" || categoria === "decoracion_superior" ||
+            categoria === "reverso_carta") {
             return base + codigo + ".png";
         }
         // Un símbolo genérico por categoría (no por objeto suelto, a
@@ -1090,6 +1104,17 @@ ApplicationWindow {
     property string dealerNombre: ""
     property string sbNombre: ""
     property string bbNombre: ""
+    // "solo_vs_bots" de GAME_STATE (Fase 1 de "segunda ola de
+    // cosméticos", 2026-09-17) -- mismo criterio que escritorio: true
+    // por defecto, más seguro que forzar el reverso ajeno por error si
+    // el campo no llegara. Mesa.qml lo usa en reversoActivo().
+    property bool soloVsBots: true
+    // Tapete de mesa (2026-09-19) -- ver el comentario gemelo en qml/Main.qml.
+    property string tapeteAnfitrion: ""
+    property bool verMiTapete: false
+    readonly property string miTapete: redcliente.loadoutMarco.tapete || ""
+    readonly property string tapeteMesaActivo: miTapete === "" ? tapeteAnfitrion
+        : ((verMiTapete || ventana.modoOfflineActivo) ? miTapete : tapeteAnfitrion)
     property int manoActual: 0
     property int ciegaActual: 0
     property var cartasMesa: []
@@ -1465,14 +1490,18 @@ ApplicationWindow {
             preguntarExtensionActual = preguntarExtension;
             soyHost = (host === nombreJugador);
         }
+        function onTapeteAnfitrionActualizado(tapete) {
+            tapeteAnfitrion = tapete;
+        }
         function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
-                                         dealer, sb, bb) {
+                                         dealer, sb, bb, soloVsBotsNuevo) {
             rondaActual = ronda;
             boteActual = bote;
             turnoNombre = turno;
             dealerNombre = dealer;
             sbNombre = sb;
             bbNombre = bb;
+            soloVsBots = soloVsBotsNuevo;
             if (turno !== nombreJugador) tuTurno = false;
             if (timeoutMs > 0) {
                 timeoutMsActual = timeoutMs;
@@ -1500,7 +1529,8 @@ ApplicationWindow {
                     decoracionSuperior: campos.length > 9 ? campos[9] : "",
                     acabadoLateral1: campos.length > 10 ? campos[10] : "",
                     acabadoLateral2: campos.length > 11 ? campos[11] : "",
-                    acabadoSuperior: campos.length > 12 ? campos[12] : ""
+                    acabadoSuperior: campos.length > 12 ? campos[12] : "",
+                    reversoCarta: campos.length > 13 ? campos[13] : ""
                 });
                 if (campos[0] === nombreJugador) {
                     // Mismo bug que en escritorio: miSaldoActual solo se
@@ -1976,6 +2006,10 @@ ApplicationWindow {
             pantalla = "Inicio";
             // Con motivo, el servidor dijo por qué (p. ej. la partida terminó
             // mientras estabas fuera); sin él, se agotó el minuto de reintentos.
+            // 20s y no los 5s de siempre: es el único aviso de por qué te
+            // sacó a Inicio (partida ya inexistente, minuto agotado), y en
+            // 5s pasaba sin que se llegara a leer (reportado 2026-09-18).
+            timerErrorConexion.interval = 20000;
             mensajeErrorConexion = motivo ? motivo : "error_conexion_perdida";
             if (tokenSesion !== "") redcliente.conectarPresencia(servidorHost, servidorPuerto);
         }
@@ -5374,7 +5408,7 @@ ApplicationWindow {
                         width: 76 * Tema.escala
                         spacing: 8 * Tema.escala
                         Repeater {
-                            model: [Idioma.t("tab_texturas"), Idioma.t("tab_efectos"), Idioma.t("tab_decoraciones"), Idioma.t("tab_titulos")]
+                            model: [Idioma.t("tab_texturas"), Idioma.t("tab_efectos"), Idioma.t("tab_decoraciones"), Idioma.t("tab_titulos"), Idioma.t("tab_mesa")]
                             // "Ficha de casino" (2026-09-02, diseño A elegido por
                             // el usuario tras el artifact "Tarjetas de Mesa
                             // Real") -- activo usa EL MISMO degradado metálico
@@ -5671,7 +5705,7 @@ ApplicationWindow {
                                     spacing: 4 * Tema.escala
                                     Image {
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        visible: source !== ""
+                                        visible: source.toString() !== ""
                                         width: visible ? 38 * Tema.escala : 0
                                         height: width
                                         fillMode: Image.PreserveAspectFit
@@ -5681,6 +5715,21 @@ ApplicationWindow {
                                         // comentario gemelo en qml/Main.qml.
                                         mipmap: true
                                         source: ventana.rutaIconoObjetoTienda(celdaPersonalizarMovil.codigo, celdaPersonalizarMovil.categoria)
+                                    }
+                                    // Hueco de tamaño FIJO para el tapete: con el ancho
+                                    // ligado a "visible" el Column calculaba mal su alto y
+                                    // la miniatura + el nombre se salían por abajo de la
+                                    // tarjeta (visto en el móvil, 2026-09-19).
+                                    Item {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        visible: celdaPersonalizarMovil.categoria === "tapete"
+                                        width: 64 * Tema.escala
+                                        height: 32 * Tema.escala
+                                        Tapete {
+                                            anchors.fill: parent
+                                            miniatura: true
+                                            preset: celdaPersonalizarMovil.categoria === "tapete" ? celdaPersonalizarMovil.codigo : ""
+                                        }
                                     }
                                     // Nombre normal (todo salvo títulos).
                                     Text {
@@ -5726,7 +5775,7 @@ ApplicationWindow {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: Idioma.t("titulo_tu_avatar")
+                        text: Idioma.t(ventana.pestanaPersonalizarActual === 4 ? "titulo_tu_mesa" : "titulo_tu_avatar")
                         color: Tema.colorTextoMuyTenue
                         font.pixelSize: 10 * Tema.escala
                         font.letterSpacing: 1
@@ -5734,8 +5783,16 @@ ApplicationWindow {
                     Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 80 * Tema.escala * 2.1
-                        height: 80 * Tema.escala + 50 * Tema.escala
+                        // En la pestaña Mesa hace falta más alto: tapete y carta
+                        // van uno debajo del otro, sin solaparse.
+                        height: (ventana.pestanaPersonalizarActual === 4 ? 150 : 130) * Tema.escala
+                        // Reverso de cartas -- en la pestaña "Reversos" el
+                        // avatar no pinta nada, se SUSTITUYE por la carta
+                        // entera (mismo criterio que escritorio, 2026-09-17).
+                        // Sin hover en móvil: muestra directamente el que ya
+                        // llevas puesto de verdad, sin valorPreview().
                         Avatar {
+                            visible: ventana.pestanaPersonalizarActual !== 4
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom
                             letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
@@ -5750,8 +5807,30 @@ ApplicationWindow {
                             acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
                             acabadoSuperior: redcliente.loadoutMarco.acabadoSuperior || ""
                         }
+                        // Mesa: tapete con la carta encima, lo que llevas equipado.
+                        Item {
+                            visible: ventana.pestanaPersonalizarActual === 4
+                            anchors.fill: parent
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 8 * Tema.escala
+                                Tapete {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 140 * Tema.escala
+                                    height: 70 * Tema.escala
+                                    preset: redcliente.loadoutMarco.tapete || ""
+                                }
+                                Carta {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 42 * Tema.escala
+                                    height: 56 * Tema.escala
+                                    reversoSkin: redcliente.loadoutMarco.reversoCarta || ""
+                                }
+                            }
+                        }
                     }
                     CajaTitulo {
+                        visible: ventana.pestanaPersonalizarActual !== 4
                         anchors.horizontalCenter: parent.horizontalCenter
                         readonly property var infoTituloPropioMovil: ventana.objetoTiendaPorCodigo(redcliente.loadoutMarco.titulo || "")
                         nombre: infoTituloPropioMovil ? infoTituloPropioMovil.nombre : ""
@@ -5844,7 +5923,7 @@ ApplicationWindow {
 
         SelectorSegmentado {
             width: parent.width - botonBusquedaTiendaMovil.width - parent.spacing
-            opciones: [Idioma.t("tab_marco"), Idioma.t("tab_perfil")]
+            opciones: [Idioma.t("tab_marco"), Idioma.t("tab_mesa"), Idioma.t("tab_perfil")]
             seleccionado: ventana.pestanaTiendaActual
             onElegido: (indice) => {
                 ventana.pestanaTiendaActual = indice;
@@ -6107,7 +6186,7 @@ ApplicationWindow {
                                     Image {
                                         id: miniaturaTiendaMovil
                                         anchors.verticalCenter: parent.verticalCenter
-                                        visible: source !== ""
+                                        visible: source.toString() !== ""
                                         width: visible ? 18 * Tema.escala : 0
                                         height: width
                                         fillMode: Image.PreserveAspectFit
@@ -6118,9 +6197,19 @@ ApplicationWindow {
                                         mipmap: true
                                         source: ventana.rutaIconoObjetoTienda(celdaTiendaMovil.codigo, celdaTiendaMovil.categoria)
                                     }
+                                    Tapete {
+                                        id: miniaturaTapeteTiendaMovil
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: celdaTiendaMovil.categoria === "tapete"
+                                        width: visible ? 36 * Tema.escala : 0
+                                        height: width * 0.5
+                                        miniatura: true
+                                        preset: celdaTiendaMovil.codigo
+                                    }
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - miniaturaTiendaMovil.width - (miniaturaTiendaMovil.visible ? parent.spacing : 0)
+                                        width: parent.width - miniaturaTiendaMovil.width - miniaturaTapeteTiendaMovil.width
+                                               - ((miniaturaTiendaMovil.visible || miniaturaTapeteTiendaMovil.visible) ? parent.spacing : 0)
                                                - (sufijoPrecioTiendaMovil.visible ? sufijoPrecioTiendaMovil.width + parent.spacing : 0)
                                         elide: Text.ElideRight
                                         text: celdaTiendaMovil.nombre + (celdaTiendaMovil.equipado === 1 ? Idioma.t("sufijo_equipado") : "")
@@ -6239,7 +6328,11 @@ ApplicationWindow {
                                     width: parent.width
                                     enabled: false
                                     opacity: 0.6
-                                    text: Idioma.t("boton_comprado")
+                                    // "Obtenido" para lo que vino de un logro (nunca
+                                    // se compró) -- mismo criterio que escritorio,
+                                    // pedido explícito 2026-09-17.
+                                    text: celdaTiendaMovil.esDeLogro === 1 ? Idioma.t("boton_obtenido")
+                                                                            : Idioma.t("boton_comprado")
                                 }
                             }
                         }
@@ -6273,8 +6366,11 @@ ApplicationWindow {
                     Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 80 * Tema.escala * 2.1
-                        height: 80 * Tema.escala + 50 * Tema.escala
+                        // En la pestaña Mesa hace falta más alto (tapete y carta,
+                        // uno debajo del otro, sin solaparse).
+                        height: (ventana.pestanaTiendaActual === 1 ? 150 : 130) * Tema.escala
                         Avatar {
+                            visible: ventana.pestanaTiendaActual !== 1
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom
                             letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
@@ -6289,10 +6385,34 @@ ApplicationWindow {
                             acabadoLateral2: redcliente.loadoutMarco.acabadoLateral2 || ""
                             acabadoSuperior: ventana.acabadoPreview("decoracion_superior", redcliente.loadoutMarco.decoracionSuperior, redcliente.loadoutMarco.acabadoSuperior)
                         }
+                        // Mesa: tapete con la carta encima; los dos se
+                        // previsualizan al tocar una tarjeta, como el resto.
+                        Item {
+                            visible: ventana.pestanaTiendaActual === 1
+                            anchors.fill: parent
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 8 * Tema.escala
+                                Tapete {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 140 * Tema.escala
+                                    height: 70 * Tema.escala
+                                    preset: ventana.valorPreview("tapete", redcliente.loadoutMarco.tapete || "")
+                                }
+                                Carta {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 42 * Tema.escala
+                                    height: 56 * Tema.escala
+                                    reversoSkin: ventana.valorPreview("reverso_carta", redcliente.loadoutMarco.reversoCarta || "")
+                                }
+                            }
+                        }
                     }
                     // Sin marco todavía: la vista previa usa Hierro (ver marcoPreview) y aquí
                     // se dice. Solo ocupa sitio si no tienes marco, y se enciende al
                     // previsualizar, así la columna no salta al pasar por los accesorios.
+                    // El reverso pide el mismo gate (ver AccountManager::
+                    // comprarObjeto), así que sigue siendo relevante en Mesa.
                     Text {
                         visible: ventana.sinMarcoPropio
                         opacity: ventana.previsualizandoConHierro ? 1 : 0
@@ -6304,6 +6424,7 @@ ApplicationWindow {
                         font.pixelSize: 10 * Tema.escala
                     }
                     CajaTitulo {
+                        visible: ventana.pestanaTiendaActual !== 1
                         anchors.horizontalCenter: parent.horizontalCenter
                         readonly property var infoTituloVistaTiendaMovil: ventana.objetoTiendaPorCodigo(ventana.valorPreview("titulo", redcliente.loadoutMarco.titulo || ""))
                         nombre: infoTituloVistaTiendaMovil ? infoTituloVistaTiendaMovil.nombre : ""
@@ -6963,6 +7084,11 @@ ApplicationWindow {
             dealerNombre: ventana.dealerNombre
             sbNombre: ventana.sbNombre
             bbNombre: ventana.bbNombre
+            soloVsBots: ventana.soloVsBots
+            miReversoSkin: redcliente.loadoutMarco.reversoCarta || ""
+            tapete: ventana.tapeteMesaActivo
+            miCarta1: ventana.miCarta1
+            miCarta2: ventana.miCarta2
         }
 
         // Cajón de pestañas al tercio restante — sustituye tanto la barra
@@ -7575,7 +7701,7 @@ ApplicationWindow {
                                     // AvatarTest (sin Idioma.qml registrado), así
                                     // que la traducción se hace aquí, por índice.
                                     text: Idioma.t(["tema_verde_clasico", "tema_azul_medianoche", "tema_burdeos",
-                                                    "tema_grafito", "tema_porcelana_dorada"][filaTemaMovil.index])
+                                                    "tema_grafito", "tema_porcelana_dorada", "tema_taberna_real"][filaTemaMovil.index])
                                     color: Tema.temaActual === filaTemaMovil.index ? Tema.colorTexto : Tema.colorTextoTenue
                                     font.bold: Tema.temaActual === filaTemaMovil.index
                                     font.pixelSize: 13 * Tema.escala
@@ -7691,6 +7817,27 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             activo: ventana.confirmarAllIn
                             onAlternado: ventana.confirmarAllIn = !ventana.confirmarAllIn
+                        }
+                    }
+                    // Tapete de mesa: el del anfitrión o el tuyo. Sin ninguno
+                    // equipado no hay elección -- desactivado y en "anfitrión".
+                    Row {
+                        width: parent.width
+                        opacity: ventana.miTapete === "" ? 0.5 : 1
+                        Text {
+                            width: parent.width - 46 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: ventana.miTapete === "" ? Idioma.t("texto_tapete_sin_equipado")
+                                  : Idioma.t("texto_ver_mi_tapete")
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        Interruptor {
+                            anchors.verticalCenter: parent.verticalCenter
+                            enabled: ventana.miTapete !== ""
+                            activo: ventana.miTapete !== "" && ventana.verMiTapete
+                            onAlternado: ventana.verMiTapete = !ventana.verMiTapete
                         }
                     }
                 }

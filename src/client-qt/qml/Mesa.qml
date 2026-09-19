@@ -26,6 +26,17 @@ Item {
     property string dealerNombre: ""
     property string sbNombre: ""
     property string bbNombre: ""
+    // Reverso de cartas -- Fase 1 de "segunda ola de cosméticos"
+    // (2026-09-17). "soloVsBots" viene de GAME_STATE (campo
+    // "solo_vs_bots", ver NetworkObserver::emitirGameState()); a
+    // diferencia de dealerNombre/sbNombre/bbNombre, el servidor NO manda
+    // qué reverso mostrar directamente -- esa decisión ("el del dealer",
+    // o "el propio si eres el único humano") es de este componente, ver
+    // reversoActivo() más abajo.
+    property bool soloVsBots: false
+    property string miReversoSkin: ""
+    // Tapete a pintar ("" = el del tema) -- lo resuelve Main.qml.
+    property string tapete: ""
 
     // Índice del propio jugador dentro de "jugadores" — se usa para
     // rotar todos los asientos de forma que el propio siempre caiga
@@ -38,6 +49,22 @@ Item {
             if (jugadores.get(i).nombre === miNombreJugador) return i;
         }
         return 0;
+    }
+
+    // Reverso de cartas activo -- el del dealer (a la vista de toda la
+    // mesa), salvo cuando eres el único humano sentado, en cuyo caso
+    // enseñas siempre el tuyo. Se usa tanto en el mazo comunitario (más
+    // abajo) como en las mini-cartas de los rivales en Asiento.qml. NO
+    // depende de "codigo" de ninguna carta -- es puramente "qué imagen de
+    // dorso toca", así que funciona igual estén las cartas reveladas o no
+    // (Carta.qml solo la pinta cuando además está boca abajo).
+    function reversoActivo() {
+        if (mesa.soloVsBots) return mesa.miReversoSkin;
+        for (var i = 0; i < mesa.jugadores.count; i++) {
+            var j = mesa.jugadores.get(i);
+            if (j.nombre === mesa.dealerNombre) return j.reversoCarta || "";
+        }
+        return "";
     }
 
     // Doble borde: un segundo anillo, más grande y sin relleno, alrededor
@@ -53,30 +80,12 @@ Item {
         border.width: 1
     }
 
-    // El tapete: forma de "pastilla" (extremos redondos, centro
-    // plano) — igual que en el boceto, no una elipse continua.
-    // "radius: height/2" con un ancho mayor que el alto da justo eso.
-    Rectangle {
+    // El tapete: forma de "pastilla" -- ver Tapete.qml. "tapete" es el
+    // código elegido (el del anfitrión o el propio, lo decide Main.qml);
+    // vacío = el de siempre, que sigue al tema.
+    Tapete {
         anchors.fill: parent
-        radius: height / 2
-        border.color: Tema.colorBorde
-        border.width: 3
-        // Degradado en vez de color plano — más claro arriba, como si
-        // cayera luz cenital sobre el tapete (ver "Sistema visual",
-        // sección 14). Una radial de verdad pediría QtQuick.Shapes o
-        // Qt5Compat.GraphicalEffects — este lineal ya da la sensación
-        // de profundidad sin añadir ningún import nuevo.
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorTapete, 1.22) }
-            GradientStop { position: 1.0; color: Tema.colorTapete }
-        }
-        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-        layer.enabled: true
-        layer.effect: ShaderEffect {
-            property variant source
-            property real amplitud: 30.0
-            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
-        }
+        preset: mesa.tapete
     }
 
     // Centro de la mesa: cartas comunitarias arriba, bote debajo.
@@ -94,6 +103,7 @@ Item {
                 delegate: Carta {
                     required property int index
                     codigo: index < mesa.cartasMesa.length ? mesa.cartasMesa[index] : ""
+                    reversoSkin: mesa.reversoActivo()
                 }
             }
         }
@@ -189,6 +199,8 @@ Item {
                 esDealer: posicionador.nombre === mesa.dealerNombre
                 esSb: posicionador.nombre === mesa.sbNombre
                 esBb: posicionador.nombre === mesa.bbNombre
+                esPropio: posicionador.nombre === mesa.miNombreJugador
+                reversoActivo: mesa.reversoActivo()
             }
         }
     }
