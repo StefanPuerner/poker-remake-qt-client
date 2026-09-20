@@ -54,13 +54,59 @@ Column {
     // -- ver el bloque de abajo.
     property string reversoActivo: ""
     property bool esPropio: false
-    opacity: retirado ? 0.45 : 1.0
+    // Cuántas mini-cartas del abanico se ven (0-2). 2 = siempre; Mesa.qml lo baja a 0
+    // durante el reparto y las va destapando según aterrizan las cartas voladoras.
+    property int cartasVisibles: 2
+    // Posición aproximada (coordenadas de "destino") del marcador de dealer ("D") o de ciega
+    // ("SB"/"BB") de este asiento, con el avatar en tamaño normal: origen y destino del marcador
+    // viajero que dibuja Mesa.qml cuando los botones rotan.
+    function centroMarcador(tipo, destino) {
+        var w = bloqueAvatar.width;
+        return bloqueAvatar.mapToItem(destino, tipo === "D" ? w - 8 * Tema.escala : w - 12 * Tema.escala,
+                                      8 * Tema.escala);
+    }
+    // ── Showdown sobre la misma mesa (ver docs/plan-animaciones-partida.md) ────────
+    // "muestra" = null: asiento normal. Con datos {cartas: ["AS","KH"], combo: "Pareja",
+    // ganador: bool}: este jugador enseña su mano -- el avatar se reduce al mínimo (solo
+    // para saber de quién son las cartas), las cartas crecen, se voltean y debajo va el
+    // nombre de la combinación. "resaltadas" son las cartas de la mano ganadora: las demás
+    // se atenúan. Lo rellena Mesa.qml.
+    property var muestra: null
+    // All-in: aro dorado pulsando en el avatar hasta el fin de la mano. Eliminado: avatar
+    // apagado. Van AQUÍ (no en Mesa) para seguir al avatar cuando se encoge en el showdown.
+    property bool allIn: false
+    property bool eliminado: false
+    property bool animando: false
+    property real velocidad: 1.0
+    property var resaltadas: []
+    readonly property bool modoMuestra: muestra !== null && muestra !== undefined
+    // En el showdown primero TODOS los que muestran se preparan a la vez (avatar pequeño, cartas
+    // grandes boca abajo) y luego se revelan uno por uno, en orden de apuesta. Quien enseña
+    // por decisión propia (retirado, ganador sin showdown) se revela nada más prepararse.
+    readonly property bool reveladaMuestra: modoMuestra && muestra.revelada === true
+    readonly property real medidaAvatar: modoMuestra ? Math.round(38 * Tema.escala) : Math.round(56 * Tema.escala) + 10
+    // Centro del avatar (aunque esté reducido), en las coordenadas de "destino": de ahí
+    // salen/llegan las fichas del bote.
+    function centroAvatar(destino) {
+        return bloqueAvatar.mapToItem(destino, bloqueAvatar.width / 2, bloqueAvatar.height / 2);
+    }
+    // Centro de la mini-carta "i" (0 o 1) en las coordenadas de "destino" (para que
+    // Mesa.qml sepa adónde mandar cada carta del reparto).
+    function centroMiniCarta(i, destino) {
+        return abanico.mapToItem(destino, abanico.width / 2 + (i - 0.5) * abanico.solapeX,
+                                 abanico.height - abanico.altoCarta / 2);
+    }
+    readonly property real anchoMiniCarta: abanico.anchoCarta
+    readonly property real altoMiniCarta: abanico.altoCarta
+    readonly property real giroMiniCarta: abanico.pasoAngulo
+    opacity: retirado && !modoMuestra ? 0.45 : 1.0
     onActivoChanged: anillo.requestPaint()
     onFraccionTiempoChanged: if (activo)
         anillo.requestPaint()
     spacing: 8 * Tema.escala
 
     Item {
+        id: bloqueAvatar
         // Column no centra los hijos de distinto ancho — cada uno se
         // queda pegado a la izquierda por defecto. Centramos a mano con
         // "x", que Column no toca (solo gestiona la posición vertical).
@@ -79,8 +125,9 @@ Column {
         // avatar que realmente se ve, dando un anillo visualmente
         // descentrado. Con los dos como enteros, la diferencia (10) es
         // exacta, sin resto.
-        width: Math.round(56 * Tema.escala) + 10
+        width: asiento.medidaAvatar
         height: width
+        Behavior on width { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutCubic } }
 
         // Halo del asiento activo: dos anillos concéntricos con
         // opacidad decreciente en vez de blur de verdad (ver "Sistema
@@ -140,6 +187,9 @@ Column {
 
         Avatar {
             anchors.centerIn: parent
+            // Reducido en el showdown: mismo Avatar, solo escalado (sin recalcular su interior).
+            scale: asiento.modoMuestra ? (38 * Tema.escala) / (56 * Tema.escala) : 1
+            Behavior on scale { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutCubic } }
             letra: nombre.charAt(0)
             tamano: 56 * Tema.escala
             // tieneMarcoBasico como 2º argumento -- bug real encontrado
@@ -162,6 +212,44 @@ Column {
             colorBorde: activo ? Tema.colorAccent : Tema.colorBorde
         }
 
+        Rectangle {
+            visible: asiento.allIn
+            anchors.centerIn: parent
+            width: parent.width + 8
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.width: 3 * Tema.escala
+            border.color: Tema.colorAccent
+            z: 5
+            SequentialAnimation on opacity {
+                loops: Animation.Infinite
+                running: asiento.allIn && asiento.animando
+                NumberAnimation { to: 0.35; duration: 650 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1.0; duration: 650 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutSine }
+            }
+        }
+        Rectangle {
+            id: discoApagado
+            visible: opacity > 0
+            opacity: asiento.eliminado ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 450 } }
+            anchors.centerIn: parent
+            width: parent.width - 2
+            height: width
+            radius: width / 2
+            color: Qt.rgba(0, 0, 0, 0.68)
+            z: 6
+            scale: asiento.eliminado ? 1 : 1.25
+            Behavior on scale { NumberAnimation { duration: 450; easing.type: Easing.OutBounce } }
+            Text {
+                anchors.centerIn: parent
+                text: "✕"
+                color: Qt.rgba(1, 1, 1, 0.75)
+                font.pixelSize: parent.width * 0.5
+            }
+        }
+
         // Marcadores de dealer/ciegas -- esquina superior derecha del
         // avatar, un poco montados sobre el borde (mismo sitio que usa
         // cualquier app de póker para el botón de dealer). En un Row para
@@ -172,14 +260,24 @@ Column {
         // no debe competir visualmente con de quién es el turno.
         Row {
             visible: esDealer || esSb || esBb
+            // Con el avatar reducido (showdown) los marcadores ocuparían casi todo el avatar y
+            // taparían sus decoraciones: se apartan hacia abajo a la derecha (esa esquina no
+            // lleva decoraciones: los laterales están a los lados y la superior arriba) y se
+            // hacen un poco más pequeños, así se ven el avatar y los marcadores.
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.rightMargin: -2 * Tema.escala
-            anchors.topMargin: -2 * Tema.escala
+            anchors.rightMargin: (asiento.modoMuestra ? -20 : -2) * Tema.escala
+            anchors.topMargin: asiento.modoMuestra ? parent.height * 0.55 : -2 * Tema.escala
+            Behavior on anchors.rightMargin { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad) } }
+            Behavior on anchors.topMargin { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad) } }
+            scale: asiento.modoMuestra ? 0.8 : 1
+            transformOrigin: Item.TopLeft
+            Behavior on scale { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad) } }
             spacing: 2 * Tema.escala
             z: 10
 
             Rectangle {
+                id: discoDealer
                 visible: esDealer
                 width: 20 * Tema.escala
                 height: 20 * Tema.escala
@@ -197,6 +295,7 @@ Column {
                 }
             }
             Rectangle {
+                id: pildoraCiega
                 visible: esSb || esBb
                 width: textoCiega.implicitWidth + 8 * Tema.escala
                 height: 18 * Tema.escala
@@ -232,7 +331,7 @@ Column {
         id: filaNombreYCartas
         x: (parent.width - width) / 2
         readonly property real espacioCartas: 4 * Tema.escala
-        readonly property bool mostrarCartas: !esPropio && !retirado
+        readonly property bool mostrarCartas: asiento.modoMuestra || (!esPropio && !retirado)
         width: placaNombre.width + (mostrarCartas ? espacioCartas + abanico.width : 0)
         height: Math.max(placaNombre.height, mostrarCartas ? abanico.height : 0)
 
@@ -243,7 +342,7 @@ Column {
             color: Tema.colorPanel
             opacity: 0.70
             border.width: 2
-            border.color: Tema.colorBorde
+            border.color: asiento.modoMuestra && asiento.muestra.ganador ? Tema.colorAccent : Tema.colorBorde
             width: infoAsiento.width * 1.2
             height: infoAsiento.height * 1.
             radius: width / 10
@@ -302,10 +401,14 @@ Column {
             anchors.left: placaNombre.right
             anchors.leftMargin: filaNombreYCartas.espacioCartas
             anchors.verticalCenter: placaNombre.verticalCenter
-            readonly property real anchoCarta: 24 * Tema.escala
-            readonly property real altoCarta: 32 * Tema.escala
-            readonly property real pasoAngulo: 24
-            readonly property real solapeX: 10 * Tema.escala
+            property real anchoCarta: (asiento.modoMuestra ? 42 : 24) * Tema.escala
+            property real altoCarta: (asiento.modoMuestra ? 58 : 32) * Tema.escala
+            property real pasoAngulo: asiento.modoMuestra ? 5 : 24
+            property real solapeX: (asiento.modoMuestra ? 34 : 10) * Tema.escala
+            Behavior on anchoCarta { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutCubic } }
+            Behavior on altoCarta { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutCubic } }
+            Behavior on pasoAngulo { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad) } }
+            Behavior on solapeX { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutCubic } }
             width: anchoCarta + solapeX
             height: altoCarta * 1.15
 
@@ -314,16 +417,75 @@ Column {
                 delegate: Carta {
                     id: cartaAbanico
                     required property int index
+                    // La cara solo se ve tras el volteo (Rotation por el eje Y, como las
+                    // comunitarias): boca abajo -> canto -> cara.
+                    property string mostrado: ""
+                    readonly property string objetivo: asiento.reveladaMuestra ? (asiento.muestra.cartas[index] || "") : ""
+                    // El modelo de jugadores se reconstruye en cada GAME_STATE, así que este asiento
+                    // puede nacer con la mano ya revelada: se ve directamente, sin volteo. "listo": los
+                    // valores iniciales de los bindings también disparan onObjetivoChanged y, sin él, la
+                    // mano se volteaba de nuevo con cada actualización de la mesa.
+                    property bool listo: false
+                    Component.onCompleted: { mostrado = objetivo; listo = true; }
+                    onObjetivoChanged: {
+                        if (!listo) return;
+                        if (objetivo !== "" && objetivo === mostrado) return;
+                        if (objetivo !== "") volteoMuestra.restart();
+                        else { volteoMuestra.stop(); giroMuestra.angle = 0; mostrado = ""; }
+                    }
+                    codigo: mostrado
+                    // Cara con degradado blanco -> gris claro: las dos del abanico se solapan y, blanco
+                    // sobre blanco, se fundían. La de atrás (index 0) va un tono más gris.
+                    degradadoCara: true
+                    tonoCara: index
                     width: abanico.anchoCarta
                     height: abanico.altoCarta
                     reversoSkin: asiento.reversoActivo
+                    visible: index < asiento.cartasVisibles
+                    // Solo se resaltan las cartas de la mano ganadora (aro dorado, abajo); las
+                    // demás no se atenúan.
                     transformOrigin: Item.Bottom
                     rotation: (index - 0.5) * abanico.pasoAngulo
                     x: abanico.width / 2 - width / 2 + (index - 0.5) * abanico.solapeX
                     y: abanico.height - height
-                    z: index
+                    z: asiento.modoMuestra && asiento.resaltadas.indexOf(mostrado) >= 0 ? 2 + index : index
+                    transform: Rotation {
+                        id: giroMuestra
+                        origin.x: cartaAbanico.width / 2
+                        origin.y: cartaAbanico.height / 2
+                        axis { x: 0; y: 1; z: 0 }
+                        angle: 0
+                    }
+                    SequentialAnimation {
+                        id: volteoMuestra
+                        PauseAnimation { duration: cartaAbanico.index * 140 / Math.max(0.05, asiento.velocidad) }
+                        NumberAnimation { target: giroMuestra; property: "angle"; to: 90; duration: 130 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InQuad }
+                        ScriptAction { script: cartaAbanico.mostrado = cartaAbanico.objetivo }
+                        NumberAnimation { target: giroMuestra; property: "angle"; to: 0; duration: 130 / Math.max(0.05, asiento.velocidad); easing.type: Easing.OutQuad }
+                    }
+                    // Cartas de la mano ganadora: filo dorado + halo que late (BrilloCarta.qml).
+                    BrilloCarta {
+                        anchors.fill: parent
+                        radio: parent.radius
+                        escalaHalo: 0.6
+                        filo: 2
+                        animando: asiento.animando
+                        velocidad: asiento.velocidad
+                        visible: asiento.modoMuestra && asiento.resaltadas.indexOf(cartaAbanico.mostrado) >= 0
+                    }
                 }
             }
         }
+    }
+
+    // Nombre de la combinación bajo las cartas reveladas.
+    Text {
+        visible: asiento.modoMuestra && asiento.muestra.combo !== ""
+        x: (parent.width - width) / 2
+        text: asiento.modoMuestra ? asiento.muestra.combo : ""
+        color: asiento.modoMuestra && asiento.muestra.ganador ? Tema.colorAccent : Tema.colorTextoTenue
+        font.bold: asiento.modoMuestra && asiento.muestra.ganador
+        font.pixelSize: 12 * Tema.escala
+        font.family: Tema.fuenteElegante
     }
 }

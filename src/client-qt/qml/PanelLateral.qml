@@ -1,30 +1,69 @@
-// PanelLateral.qml — panel lateral de la partida: historial + chat en una
-// sola caja, con pestañas integradas arriba (en vez del botón suelto + dos
-// cajas separadas que había antes) — como en el boceto. Extraído de
-// Main.qml.
+// PanelLateral.qml — panel lateral de la partida: historial + chat en una sola tarjeta.
+//
+// Estilo "ficha de casino" como el resto de la app (tarjetas de Salas, Social...): sombra corta,
+// degradado con dithering, doble bisel con hilo dorado interior y selector segmentado con punto
+// de aviso cuando llega un mensaje de chat estando en el historial. Extraído de Main.qml.
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 
-Rectangle {
+Item {
     id: panelLateral
     property var modeloHistorial
     property var modeloChat
     property string miNombre
     property bool mostrandoChat: false
-    radius: 6 * Tema.escala
-    border.width: 1
-    border.color: Qt.rgba(0, 0, 0, 0.3)
-    gradient: Gradient {
-        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
-        GradientStop { position: 1.0; color: Tema.colorPanel }
+    // Mensajes de chat llegados con la pestaña de historial abierta (punto de aviso en "Chat").
+    property int chatSinLeer: 0
+    property int _ultimoConteoChat: 0
+    onMostrandoChatChanged: if (mostrandoChat) chatSinLeer = 0
+    Connections {
+        target: panelLateral.modeloChat
+        function onCountChanged() {
+            var n = panelLateral.modeloChat.count;
+            if (n > panelLateral._ultimoConteoChat && !panelLateral.mostrandoChat) panelLateral.chatSinLeer += n - panelLateral._ultimoConteoChat;
+            panelLateral._ultimoConteoChat = n;
+        }
     }
-    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-    layer.enabled: true
-    layer.effect: ShaderEffect {
-        property variant source
-        property real amplitud: 30.0
-        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+
+    // Sombra desplazada (sin blur real): separa la tarjeta del tapete.
+    Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 3 * Tema.escala
+        anchors.leftMargin: 2 * Tema.escala
+        anchors.rightMargin: -2 * Tema.escala
+        anchors.bottomMargin: -3 * Tema.escala
+        radius: 10 * Tema.escala
+        color: "black"
+        opacity: 0.35
+    }
+    Rectangle {
+        id: tarjeta
+        anchors.fill: parent
+        radius: 10 * Tema.escala
+        border.width: 1.2
+        border.color: Qt.rgba(0, 0, 0, 0.4)
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+            GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+            GradientStop { position: 1.0; color: Tema.colorPanel }
+        }
+        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+        layer.enabled: true
+        layer.effect: ShaderEffect {
+            property variant source
+            property real amplitud: 30.0
+            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+        }
+        // Hilo dorado por dentro del bisel exterior -- el "doble bisel" de ficha de casino.
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2 * Tema.escala
+            radius: parent.radius - 2 * Tema.escala
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.16)
+        }
     }
 
     // El historial usa Text.RichText para colorear el punto y el nombre
@@ -61,109 +100,141 @@ Rectangle {
         return Tema.colorHex(jugador === miNombre ? Tema.colorAccent : Tema.colorNombreAjeno);
     }
 
-    Row {
+    SelectorSegmentado {
         id: pestanas
         anchors.top: parent.top
         anchors.left: parent.left
-        anchors.margins: 10 * Tema.escala
-        spacing: 8 * Tema.escala
-
-        Rectangle {
-            width: textoTabHistorial.implicitWidth + 24 * Tema.escala
-            height: 30 * Tema.escala
-            radius: height / 2
-            color: !panelLateral.mostrandoChat ? Tema.colorAccent : "transparent"
-            Text {
-                id: textoTabHistorial
-                anchors.centerIn: parent
-                text: Idioma.t("tab_historial")
-                color: !panelLateral.mostrandoChat ? Tema.colorPanel : Tema.colorTextoTenue
-                font.bold: !panelLateral.mostrandoChat
-                font.pixelSize: 12 * Tema.escala
-            }
-            MouseArea {
-                anchors.fill: parent
-                onClicked: panelLateral.mostrandoChat = false
-            }
-        }
-        Rectangle {
-            width: textoTabChat.implicitWidth + 24 * Tema.escala
-            height: 30 * Tema.escala
-            radius: height / 2
-            color: panelLateral.mostrandoChat ? Tema.colorAccent : "transparent"
-            Text {
-                id: textoTabChat
-                anchors.centerIn: parent
-                text: Idioma.t("tab_chat")
-                color: panelLateral.mostrandoChat ? Tema.colorPanel : Tema.colorTextoTenue
-                font.bold: panelLateral.mostrandoChat
-                font.pixelSize: 12 * Tema.escala
-            }
-            MouseArea {
-                anchors.fill: parent
-                onClicked: panelLateral.mostrandoChat = true
-            }
-        }
+        anchors.right: parent.right
+        anchors.margins: 12 * Tema.escala
+        height: 38 * Tema.escala
+        width: parent.width - 24 * Tema.escala
+        opciones: [Idioma.t("tab_historial"), Idioma.t("tab_chat")]
+        avisos: [false, panelLateral.chatSinLeer > 0]
+        seleccionado: panelLateral.mostrandoChat ? 1 : 0
+        onElegido: (indice) => panelLateral.mostrandoChat = indice === 1
     }
 
+    // ── Historial: una fila por evento, con una marca de color a la izquierda según su tipo; las
+    // cabeceras de mano ("── Mano 13 ──") van como separadores centrados.
     ListView {
+        id: listaHistorial
         visible: !panelLateral.mostrandoChat
         anchors.top: pestanas.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.margins: 10 * Tema.escala
+        anchors.margins: 12 * Tema.escala
         anchors.topMargin: 12 * Tema.escala
         clip: true
+        spacing: 2 * Tema.escala
         model: panelLateral.modeloHistorial
         onCountChanged: Qt.callLater(positionViewAtEnd)
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+            contentItem: Rectangle {
+                implicitWidth: 4 * Tema.escala
+                radius: width / 2
+                color: Tema.colorAccent
+                opacity: 0.45
+            }
+        }
         delegate: Item {
+            id: filaHistorial
             required property string linea
             required property string hora
             required property string tipo
             required property string jugador
-            width: ListView.view.width
-            height: Math.max(textoLinea.height, 16 * Tema.escala)
-            Text {
-                id: textoLinea
-                anchors.left: parent.left
-                anchors.right: textoHoraHistorial.left
-                anchors.rightMargin: 8 * Tema.escala
-                // El punto lleva color por categoría (colorTipoHistorial)
-                // y, si la línea tiene un protagonista, su nombre
-                // también lleva color aparte (colorNombreHistorial:
-                // dorado si eres tú, otro tono si es cualquier otro) —
-                // así los nombres destacan del resto del texto, que
-                // sigue en blanco normal.
-                textFormat: Text.RichText
-                font.pixelSize: 13 * Tema.escala
-                text: "<font color=\"" + panelLateral.colorTipoHistorial(tipo) + "\">●</font> " +
-                      (jugador.length > 0
-                           ? "<font color=\"" + panelLateral.colorNombreHistorial(jugador) +
-                                 "\"><b>" + panelLateral.escapeHtml(jugador) + "</b></font>"
-                           : "") +
-                      panelLateral.escapeHtml(linea)
-                color: Tema.colorTexto
-                wrapMode: Text.WordWrap
+            readonly property bool esSeparador: tipo === "separador"
+            readonly property bool esMio: jugador === panelLateral.miNombre && jugador.length > 0
+            width: ListView.view.width - 8 * Tema.escala
+            height: esSeparador ? 26 * Tema.escala : Math.max(textoLinea.implicitHeight + 8 * Tema.escala, 22 * Tema.escala)
+
+            // Separador de mano: línea — texto — línea.
+            Row {
+                visible: filaHistorial.esSeparador
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width
+                spacing: 8 * Tema.escala
+                Rectangle {
+                    width: (parent.width - textoSeparador.implicitWidth - 2 * parent.spacing) / 2
+                    height: 1
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.35)
+                }
+                Text {
+                    id: textoSeparador
+                    text: filaHistorial.linea.replace(/[─—-]/g, "").trim()
+                    color: Tema.colorAccent
+                    font.pixelSize: 11 * Tema.escala
+                    font.bold: true
+                    font.letterSpacing: 1
+                    font.family: Tema.fuenteElegante
+                }
+                Rectangle {
+                    width: (parent.width - textoSeparador.implicitWidth - 2 * parent.spacing) / 2
+                    height: 1
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.35)
+                }
             }
-            Text {
-                id: textoHoraHistorial
-                anchors.right: parent.right
-                anchors.verticalCenter: textoLinea.verticalCenter
-                text: hora
-                color: Tema.colorTextoMuyTenue
-                font.pixelSize: 10 * Tema.escala
+
+            // Fila normal.
+            Rectangle {
+                visible: !filaHistorial.esSeparador
+                anchors.fill: parent
+                radius: 6 * Tema.escala
+                color: filaHistorial.esMio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.09)
+                                            : Qt.rgba(1, 1, 1, 0.025)
+                Rectangle {   // marca de color del tipo de evento
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: 3 * Tema.escala
+                    anchors.bottomMargin: 3 * Tema.escala
+                    anchors.leftMargin: 3 * Tema.escala
+                    width: 3 * Tema.escala
+                    radius: width / 2
+                    color: panelLateral.colorTipoHistorial(filaHistorial.tipo)
+                }
+                Text {
+                    id: textoLinea
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12 * Tema.escala
+                    anchors.right: textoHoraHistorial.left
+                    anchors.rightMargin: 8 * Tema.escala
+                    anchors.verticalCenter: parent.verticalCenter
+                    // El nombre del protagonista lleva su color aparte (dorado si eres tú).
+                    textFormat: Text.RichText
+                    font.pixelSize: 13 * Tema.escala
+                    text: (filaHistorial.jugador.length > 0
+                               ? "<font color=\"" + panelLateral.colorNombreHistorial(filaHistorial.jugador)
+                                     + "\"><b>" + panelLateral.escapeHtml(filaHistorial.jugador) + "</b></font>"
+                               : "") + panelLateral.escapeHtml(filaHistorial.linea)
+                    color: Tema.colorTexto
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    id: textoHoraHistorial
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8 * Tema.escala
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: filaHistorial.hora
+                    color: Tema.colorTextoMuyTenue
+                    font.pixelSize: 10 * Tema.escala
+                }
             }
         }
     }
 
+    // ── Chat de la partida: burbujas (las propias a la derecha con filo dorado, las ajenas a la
+    // izquierda) y el campo de texto + enviar abajo.
     Column {
         visible: panelLateral.mostrandoChat
         anchors.top: pestanas.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.margins: 10 * Tema.escala
+        anchors.margins: 12 * Tema.escala
         anchors.topMargin: 12 * Tema.escala
         spacing: 8 * Tema.escala
 
@@ -171,32 +242,31 @@ Rectangle {
             id: listaChat
             width: parent.width
             height: parent.height - filaEntradaChat.height - parent.spacing
-            // Ver el comentario largo en el ListView de ChatBox: con
-            // append(), "BottomToTop" mete los mensajes nuevos arriba,
-            // no abajo — el orden normal + ir al final es lo correcto.
+            // Con append(), "BottomToTop" mete los mensajes nuevos arriba, no abajo: el orden
+            // normal + ir al final es lo correcto (ver ChatBox).
             clip: true
+            spacing: 4 * Tema.escala
             model: panelLateral.modeloChat
             onCountChanged: Qt.callLater(positionViewAtEnd)
-            // Mismo estilo de burbujas que ChatBox (chat de la sala):
-            // las propias a la derecha con tinte dorado, las ajenas a
-            // la izquierda en verde tapete — antes esto era una lista
-            // plana "autor: mensaje" sin distinguir quién escribió qué.
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+                contentItem: Rectangle {
+                    implicitWidth: 4 * Tema.escala
+                    radius: width / 2
+                    color: Tema.colorAccent
+                    opacity: 0.45
+                }
+            }
             delegate: Item {
                 required property string autor
                 required property string mensaje
                 required property string hora
                 property bool esPropio: autor === panelLateral.miNombre
-                width: ListView.view.width
+                width: ListView.view.width - 8 * Tema.escala
                 height: columnaBurbujaPartida.height
 
-                // Medidor invisible, sin wrap ni restricción de ancho --
-                // ver columnaBurbujaPartida.width. Mismo motivo que en
-                // ChatBox.qml: sin esto, el ancho de la burbuja salía del
-                // implicitWidth de un Text que a su vez tomaba su propio
-                // ancho DE la burbuja (vía anchors.fill) -- con wrap
-                // activo eso es una dependencia circular que Qt no
-                // siempre resuelve bien, y el texto se salía por fuera en
-                // mensajes largos/multilínea.
+                // Medidor invisible, sin wrap ni restricción de ancho (evita la dependencia circular
+                // ancho de burbuja <-> ancho del texto; ver ChatBox.qml).
                 Text {
                     id: medidorPartida
                     visible: false
@@ -207,21 +277,27 @@ Rectangle {
                 Column {
                     id: columnaBurbujaPartida
                     x: esPropio ? parent.width - width : 0
-                    width: Math.min(medidorPartida.implicitWidth + 24 * Tema.escala, parent.width * 0.8)
+                    width: Math.min(medidorPartida.implicitWidth + 26 * Tema.escala, parent.width * 0.82)
                     spacing: 2 * Tema.escala
 
                     Text {
+                        anchors.right: esPropio ? parent.right : undefined
                         text: (esPropio ? Idioma.t("yo_chat") : autor) + " · " + hora
-                        color: Tema.colorTextoMuyTenue
+                        color: esPropio ? Tema.colorAccent : Tema.colorTextoMuyTenue
                         font.pixelSize: 10 * Tema.escala
                     }
                     Rectangle {
                         width: parent.width
                         height: textoBurbujaPartida.implicitHeight + 16 * Tema.escala
                         radius: 12 * Tema.escala
-                        color: esPropio ? Qt.rgba(0.75, 0.56, 0.24, 0.18) : Tema.colorTapete
-                        border.width: esPropio ? 1 : 0
-                        border.color: Tema.colorAccent
+                        border.width: 1
+                        border.color: esPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.08)
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: esPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.26)
+                                                                            : Qt.lighter(Tema.colorTapete, 1.25) }
+                            GradientStop { position: 1.0; color: esPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.12)
+                                                                            : Tema.colorTapete }
+                        }
                         Text {
                             id: textoBurbujaPartida
                             anchors.fill: parent
@@ -246,21 +322,15 @@ Rectangle {
                 height: 44 * Tema.escala
                 color: Tema.colorTexto
                 font.pixelSize: 13 * Tema.escala
-                // Ver el comentario largo en "textoChat" (ChatBox):
-                // el placeholder de Material flota hacia arriba al
-                // enfocar y se solapa con nuestro borde dibujado a
-                // mano — más simple ocultarlo directamente.
+                // El placeholder de Material flota hacia arriba al enfocar y se solapa con nuestro
+                // borde dibujado a mano: más simple ocultarlo directamente.
                 placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_mensaje_chat")
                 placeholderTextColor: Tema.colorTextoTenue
-                // Antes sin "background": salía con el estilo por
-                // defecto de Qt Quick Controls (gris claro), fuera de
-                // sitio en este tema oscuro — mismo fondo que ChatBox.
                 background: MarcoHueco {
                     radius: 8 * Tema.escala
                     activo: campoChatPanel.activeFocus
                 }
-                // Antes había que Tab + Espacio hasta "Enviar" tras
-                // escribir — Enter manda el mensaje directamente.
+                // Enter manda el mensaje directamente.
                 onAccepted: botonEnviarPanel.clicked()
             }
             BotonRelleno {
@@ -268,8 +338,7 @@ Rectangle {
                 height: 44 * Tema.escala
                 text: Idioma.t("boton_enviar")
                 onClicked: {
-                    // Enter en el campo vacío ya no debe mandar un
-                    // mensaje en blanco (ver el comentario en ChatBox.qml).
+                    // Enter en el campo vacío no manda un mensaje en blanco (ver ChatBox.qml).
                     if (campoChatPanel.text.length === 0) return;
                     redcliente.enviarChat(campoChatPanel.text, "partida");
                     panelLateral.modeloChat.append({

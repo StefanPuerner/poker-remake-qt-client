@@ -105,6 +105,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         src/client-qt/main.cpp
         include/net-qt/NetworkClient.hpp
         include/net-qt/VersionChecker.hpp
+        include/net-qt/LectorRecursos.hpp
         # Modo offline (Fase 7, ver docs/plan-modo-offline.md) -- LocalGameObserver
         # y LocalGameClient son Q_OBJECT, tienen que listarse aquí explícitamente
         # o AUTOMOC no los mocea y el enlazado falla con "vtable sin definir" sin
@@ -145,6 +146,11 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         QT_QML_SINGLETON_TYPE TRUE
     )
 
+    # Sonidos de la mesa (assets/sonidos/mesa/*.wav + eventos.json): se listan por GLOB para que un
+    # sonido nuevo entre solo (tests/test_sonidos.cpp vigila que no sobre ni falte ninguno).
+    file(GLOB SONIDOS_MESA CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/sonidos/mesa/*.wav)
+    # Mezclas por evento para el móvil (las genera scripts/generar_mezclas_sonido.py).
+    file(GLOB SONIDOS_MEZCLAS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/sonidos/mezclas/*.wav)
     qt_add_qml_module(PokerClientQt
         URI PokerQuick
         VERSION 1.0
@@ -156,6 +162,10 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PaloIcono.qml
             src/client-qt/qml/Tapete.qml
             src/client-qt/qml/FichasVolando.qml
+            src/client-qt/qml/RepartoVolando.qml
+            src/client-qt/qml/CartaFlip.qml
+            src/client-qt/qml/BrilloCarta.qml
+            src/client-qt/qml/BancoSonidos.qml
             src/client-qt/qml/IconoFicha.qml
             src/client-qt/qml/IconoTrebol.qml
             src/client-qt/qml/IconoOjo.qml
@@ -202,6 +212,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             # Aviso de "tu turno" — dos tonos sintetizados (sin depender de
             # audio con licencia de terceros), ver assets/sonidos/.
             assets/sonidos/turno.wav
+            assets/sonidos/eventos.json
+            ${SONIDOS_MESA}
             # Nota: el dithering de degradados (BotonRelleno/SelectorSegmentado)
             # ya NO usa una textura -- ver assets/shaders/dither.frag y el
             # bloque qt_add_shaders() más abajo. Dos intentos con textura
@@ -367,21 +379,16 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     target_compile_definitions(PokerClientQt PRIVATE POKER_APP_VERSION="${POKER_APP_VERSION_STRING}"
                                                  POKER_TORNEOS=$<BOOL:${POKER_TORNEOS}>)
 
-    # Sonido de notificación ("tu turno") — Multimedia es un módulo
-    # ADICIONAL de Qt6 (no viene con Quick), y solo hace falta para
-    # PokerClientQt, nunca para PokerClientMobile. "if(NOT ANDROID)": al
-    # cross-compilar para Android este mismo fichero se procesa entero
-    # igualmente con el kit de Qt-para-Android como CMAKE_TOOLCHAIN (ver
-    # build-android-dev.yml) -- ese kit no tiene por qué traer Multimedia
-    # instalado, así que buscarlo ahí rompería el configure entero de una
-    # build que ni siquiera compila PokerClientQt. target_link_libraries
-    # usa "if(TARGET ...)" en vez de asumir que existe, por el mismo motivo.
-    if(NOT ANDROID)
-        find_package(Qt6 REQUIRED COMPONENTS Multimedia)
-    endif()
-    if(TARGET Qt6::Multimedia)
-        target_link_libraries(PokerClientQt PRIVATE Qt6::Multimedia)
-    endif()
+    # Sonido de la mesa y aviso de "tu turno" — Multimedia es un módulo ADICIONAL de Qt6 (no viene
+    # con Quick) y lo necesitan los DOS clientes (BancoSonidos.qml importa QtMultimedia; el móvil
+    # lo estrena en 2026-09, antes solo lo llevaba PokerClientQt). En Android el módulo tiene que
+    # estar instalado en el kit de Qt-para-Android (build-android-dev.yml: modules
+    # 'qtmultimedia'). Va en su propio find_package REQUIRED, DESPUÉS del de arriba y nunca dentro
+    # de él: un componente obligatorio que falta en aquel deja Qt6_FOUND en falso y el bloque
+    # entero desaparece en silencio (ver la nota de ShaderTools al principio); así, si falta, el
+    # configure dice qué módulo falta.
+    find_package(Qt6 REQUIRED COMPONENTS Multimedia)
+    target_link_libraries(PokerClientQt PRIVATE Qt6::Multimedia)
 
     message(STATUS "Qt6 Quick encontrado — PokerClientQt disponible")
 
@@ -397,6 +404,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         src/client-qt/main-mobile.cpp
         include/net-qt/NetworkClient.hpp
         include/net-qt/VersionChecker.hpp
+        include/net-qt/LectorRecursos.hpp
         # Ver el comentario gemelo en PokerClientQt más arriba.
         include/local-qt/LocalGameObserver.hpp
         include/local-qt/LocalGameClient.hpp
@@ -481,6 +489,10 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/PaloIcono.qml
             src/client-qt/qml-mobile/Tapete.qml
             src/client-qt/qml-mobile/FichasVolando.qml
+            # Reparto animado y sonidos de la mesa: espejo de los de escritorio (docs/plan-movil-animaciones.md).
+            src/client-qt/qml-mobile/RepartoVolando.qml
+            src/client-qt/qml-mobile/BrilloCarta.qml
+            src/client-qt/qml-mobile/BancoMezclas.qml
             src/client-qt/qml-mobile/IconoFicha.qml
             src/client-qt/qml-mobile/IconoTrebol.qml
             src/client-qt/qml-mobile/Avatar.qml
@@ -643,6 +655,11 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             # recoloreadas al dorado del tema.
             assets/iconos/textura_generica.png
             assets/iconos/efecto_generico.png
+            # Sonidos de la mesa del móvil: UNA pista por evento, ya mezclada (ver BancoMezclas.qml y
+            # scripts/generar_mezclas_sonido.py), y el aviso de "tu turno". No lleva mesa/*.wav.
+            assets/sonidos/turno.wav
+            assets/sonidos/mezclas.json
+            ${SONIDOS_MEZCLAS}
     )
 
     # Dithering de degradados en móvil -- mismo shader fuente que
@@ -682,6 +699,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     target_include_directories(PokerClientMobile PRIVATE include)
     # Ver el comentario gemelo en PokerClientQt más arriba.
     target_link_libraries(PokerClientMobile PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Network PokerNetClient PokerEngine)
+    # Sonidos de la mesa: ver la nota de Multimedia en PokerClientQt más arriba.
+    target_link_libraries(PokerClientMobile PRIVATE Qt6::Multimedia)
     target_compile_options(PokerClientMobile PRIVATE ${POKER_WARN_FLAGS})
     # POKER_CLIENTE_MOVIL: el enlace de descarga de Ajustes da siempre el APK
     # en este cliente, también en un PC -- ver VersionChecker::urlDescarga().
@@ -765,6 +784,61 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         endif()
         target_link_libraries(AvatarTest PRIVATE Qt6::Quick Qt6::QuickControls2)
         message(STATUS "AvatarTest disponible (banco de pruebas de marcos y cosméticos)")
+    endif()
+
+    # ── AnimTest -- banco de pruebas de sonidos y animaciones de la mesa
+    #  (ver docs/plan-animaciones-partida.md): se afinan AQUÍ, aislados de
+    #  la partida, antes de integrarlos. Solo escritorio, como AvatarTest.
+    if(NOT ANDROID)
+        set_source_files_properties(src/client-qt/qml/Tema.qml src/client-qt/qml/Idioma.qml PROPERTIES
+            QT_QML_SINGLETON_TYPE TRUE
+        )
+        qt_add_executable(AnimTest
+            src/client-qt/anim-test/main.cpp
+            src/client-qt/anim-test/Disco.hpp
+        )
+        set_target_properties(AnimTest PROPERTIES AUTOMOC ON)
+        qt_add_qml_module(AnimTest
+            URI PokerAnimTest
+            VERSION 1.0
+            QML_FILES
+                src/client-qt/anim-test/Main.qml
+                src/client-qt/anim-test/EscenaMesa.qml
+                src/client-qt/qml/BancoSonidos.qml
+                src/client-qt/qml/Tema.qml
+                src/client-qt/qml/Idioma.qml
+                # La mesa REAL (no una imitación): lo que se pule aquí es lo que se integra.
+                src/client-qt/qml/Mesa.qml
+                src/client-qt/qml/Asiento.qml
+                src/client-qt/qml/Avatar.qml
+                src/client-qt/qml/Carta.qml
+                src/client-qt/qml/PaloIcono.qml
+                src/client-qt/qml/Tapete.qml
+                src/client-qt/qml/IconoFicha.qml
+                src/client-qt/qml/FichasVolando.qml
+                src/client-qt/qml/RepartoVolando.qml
+                src/client-qt/qml/BrilloCarta.qml
+        )
+        # Mismos recursos que AvatarTest (Avatar/Carta/Tapete los piden por ruta
+        # absoluta bajo el prefijo del cliente real).
+        file(GLOB ICONOS_ANIM RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/iconos/*.png)
+        file(GLOB TAPETES_ANIM RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/tapetes/*.png)
+        qt_add_resources(AnimTest "animtest_iconos"
+            PREFIX "/qt/qml/PokerQuick"
+            FILES ${ICONOS_ANIM} ${TAPETES_ANIM}
+        )
+        if(TARGET Qt6::ShaderTools)
+            qt_add_shaders(AnimTest "animtest_shaders"
+                PREFIX "/qt/qml/PokerQuick"
+                FILES
+                    assets/shaders/dither.frag
+            )
+        endif()
+        target_link_libraries(AnimTest PRIVATE Qt6::Quick Qt6::QuickControls2)
+        if(TARGET Qt6::Multimedia)
+            target_link_libraries(AnimTest PRIVATE Qt6::Multimedia)
+        endif()
+        message(STATUS "AnimTest disponible (banco de sonidos y animaciones de mesa)")
     endif()
 
     # ── LocalOfflineSmokeTest — valida en vivo el modo offline (Fase 7, ver

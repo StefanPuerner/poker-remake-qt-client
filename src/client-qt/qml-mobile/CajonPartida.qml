@@ -1,17 +1,18 @@
 // CajonPartida.qml — sustituye a la barra de acciones inferior + el
 // IconoAjustes flotante durante la pantalla de Partida: un panel fijo a la
-// derecha de la mesa (1/3 del ancho, ver Main.qml) con pestañas propias en
-// vez de una franja de botones siempre visible. Decisión del usuario tras
+// derecha de la mesa (unos 2/7 del ancho, ver Main.qml) con pestañas propias
+// en vez de una franja de botones siempre visible. Decisión del usuario tras
 // ver el primer boceto de "bandas horizontales" (que sacrificaba la mesa
 // clásica) — aquí se mantiene la mesa/asientos tal cual, solo se le da un
-// contenedor más alto que ancho (2/3 en vez de casi toda la pantalla), lo
-// que ya evita el solape de raíz sin tocar Mesa.qml.
+// contenedor más alto que ancho, lo que ya evita el solape de raíz sin
+// tocar Mesa.qml.
 //
-// Pestañas: Turno (qué está pasando ahora, sin botones) / Cartas (las
-// tuyas, grandes) / Estim. (predicción actual/probable/máxima, ausente en
-// móvil hasta ahora) / Opciones (los botones de acción) / Historial (nuevo
-// en móvil) / Chat (nuevo en móvil, resuelve el pendiente "Chat/historial
-// en Partida móvil").
+// Pestañas: Turno (qué está pasando ahora; los botones de apuesta cuando te
+// toca y las decisiones de fin de mano) / Estim. (predicción actual/probable/
+// máxima) / Historial / Chat. La pestaña "Cartas" se quitó (2026-09-20): tus
+// cartas se ven, más grandes, en tu propio asiento de la mesa, y así el
+// cajón puede ser más estrecho y la mesa más ancha. Historial y chat
+// comparten el estilo de PanelLateral.qml de escritorio.
 pragma ComponentBehavior: Bound
 import QtQuick
 import PokerQuickMobile
@@ -30,8 +31,6 @@ Rectangle {
     property string comboActual: ""
     property string comboProbable: ""
     property string comboMaxima: ""
-    property string miCarta1: ""
-    property string miCarta2: ""
     property int miSaldoActual: 0
     property int aPagarParaIgualar: 0
     property int minSubidaActual: 0
@@ -57,11 +56,24 @@ Rectangle {
     // estas señales dejan que Main.qml actualice la fuente de verdad.
     signal decisionEnviada()
     signal recompraPedida()
+    // Decisiones de fin de mano (seguir / abandonar / guardar y "Mostrar cartas"): van en la pestaña
+    // Turno, en el hueco de los botones de apuesta (nunca a la vez que ellos).
+    property bool votoAbierto: false
+    property int votoRestanteSegundos: 60
+    property bool enRed: false
+    property bool soyHost: false
+    property bool contariaComoPerdida: false
+    property bool puedeMostrarCartas: false
+    signal mostrarCartasPedido()
+    signal votoCerrado()
 
     // Código estable (no el texto mostrado, que se traduce vía
     // nombrePestana()) -- ver el comentario largo junto a
     // tiraPestanas.codigosPestanas más abajo.
     property string pestanaActiva: "turno"
+    // Lo que hay que decidir salta a la vista: al empezar tu turno y al abrirse el voto de fin de mano.
+    onTuTurnoChanged: if (tuTurno) pestanaActiva = "turno"
+    onVotoAbiertoChanged: if (votoAbierto) pestanaActiva = "turno"
 
     // Llamado desde Main.qml (onEsMiTurno) al empezar un turno nuevo:
     // resetea el estado LOCAL de los controles de "Opciones" que
@@ -78,7 +90,6 @@ Rectangle {
     function nombrePestana(codigo) {
         switch (codigo) {
             case "turno": return Idioma.t("tab_turno");
-            case "cartas": return Idioma.t("tab_cartas");
             case "estimacion": return Idioma.t("tab_estimacion");
             case "historial": return Idioma.t("tab_historial");
             case "chat": return Idioma.t("tab_chat");
@@ -87,9 +98,47 @@ Rectangle {
     }
 
     radius: 10 * Tema.escala
-    color: Tema.colorPanel
+    color: "transparent"
     border.width: tuTurno ? 2 : 1
     border.color: tuTurno ? Tema.colorAccent : Tema.colorBorde
+    // Mensajes de chat llegados con otra pestaña abierta (punto de aviso en "Chat").
+    property int chatSinLeer: 0
+    property int _ultimoConteoChat: 0
+    onPestanaActivaChanged: if (pestanaActiva === "chat") chatSinLeer = 0
+    Connections {
+        target: cajon.modeloChat
+        function onCountChanged() {
+            var n = cajon.modeloChat.count;
+            if (n > cajon._ultimoConteoChat && cajon.pestanaActiva !== "chat") cajon.chatSinLeer += n - cajon._ultimoConteoChat;
+            cajon._ultimoConteoChat = n;
+        }
+    }
+    // Fondo "ficha de casino" como el resto de la app: degradado con dithering y un hilo dorado por
+    // dentro del borde (mismo aspecto que PanelLateral.qml de escritorio).
+    Rectangle {
+        anchors.fill: parent
+        radius: parent.radius
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.45) }
+            GradientStop { position: 0.16; color: Qt.lighter(Tema.colorPanel, 1.3) }
+            GradientStop { position: 1.0; color: Tema.colorPanel }
+        }
+        // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+        layer.enabled: true
+        layer.effect: ShaderEffect {
+            property variant source
+            property real amplitud: 30.0
+            fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+        }
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 2 * Tema.escala
+            radius: parent.radius - 2 * Tema.escala
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.16)
+        }
+    }
 
     // Resplandor de turno: mismo lenguaje visual que el aro del asiento
     // activo (Asiento.qml, dos anillos rgba estáticos, sin animación) —
@@ -188,7 +237,7 @@ Rectangle {
             // las comparaciones ("=== 'Turno'", etc.) y las hubiera dejado
             // dependiendo del idioma activo. nombrePestana() hace la
             // traducción solo en el texto que se pinta.
-            readonly property var codigosPestanas: ["turno", "cartas", "estimacion", "historial", "chat"]
+            readonly property var codigosPestanas: ["turno", "estimacion", "historial", "chat"]
 
             Repeater {
                 model: tiraPestanas.codigosPestanas
@@ -212,6 +261,17 @@ Rectangle {
                         color: pestana.activa ? Tema.colorAccent : Tema.colorTextoMuyTenue
                         font.pixelSize: 10 * Tema.escala
                         font.bold: pestana.activa
+                    }
+                    // Chat con mensajes sin leer.
+                    Rectangle {
+                        visible: pestana.modelData === "chat" && cajon.chatSinLeer > 0 && !pestana.activa
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.topMargin: 4 * Tema.escala
+                        width: 6 * Tema.escala
+                        height: 6 * Tema.escala
+                        radius: width / 2
+                        color: Tema.colorAccent
                     }
                     // Aviso de decisión pendiente: solo si es tu turno Y no
                     // estás ya mirando la pestaña que la resuelve.
@@ -244,25 +304,6 @@ Rectangle {
         Item {
             width: parent.width
             height: parent.height - y
-
-            // — Cartas —
-            Column {
-                visible: cajon.pestanaActiva === "cartas"
-                anchors.centerIn: parent
-                spacing: 10 * Tema.escala
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: Idioma.t("titulo_tus_cartas")
-                    color: Tema.colorTextoMuyTenue
-                    font.pixelSize: 10 * Tema.escala
-                }
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 10 * Tema.escala
-                    Carta { codigo: cajon.miCarta1; propia: true }
-                    Carta { codigo: cajon.miCarta2; propia: true }
-                }
-            }
 
             // — Estimación —
             Column {
@@ -322,7 +363,7 @@ Rectangle {
                 // Estado informativo: no es tu turno y no puedes recomprar
                 // -- lo que antes mostraba en solitario la pestaña "Turno".
                 Column {
-                    visible: !cajon.tuTurno && !cajon.puedoRecomprar
+                    visible: !cajon.tuTurno && !cajon.puedoRecomprar && !cajon.votoAbierto
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: parent.width
                     spacing: 10 * Tema.escala
@@ -408,6 +449,80 @@ Rectangle {
                     }
                 }
 
+                // ── Fin de la mano: tarjeta con el título (y la cuenta atrás del plazo, en red: el
+                // servidor sigue solo al vencer) y debajo las decisiones. Solo si no te toca jugar.
+                Column {
+                    visible: cajon.votoAbierto && !cajon.tuTurno
+                    width: parent.width
+                    spacing: 10 * Tema.escala
+                    Item {
+                        width: parent.width
+                        height: (cajon.enRed ? 54 : 40) * Tema.escala
+                        Rectangle {   // sombra corta
+                            anchors.fill: parent
+                            anchors.topMargin: 3 * Tema.escala
+                            anchors.leftMargin: 2 * Tema.escala
+                            radius: 10 * Tema.escala
+                            color: "black"
+                            opacity: 0.35
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 10 * Tema.escala
+                            border.width: 1.2
+                            border.color: Qt.rgba(0, 0, 0, 0.4)
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                GradientStop { position: 1.0; color: Tema.colorPanel }
+                            }
+                            // Hilo dorado interior: el "doble bisel" de ficha de casino.
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 2 * Tema.escala
+                                radius: parent.radius - 2 * Tema.escala
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.30)
+                            }
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 2 * Tema.escala
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.t("titulo_fin_mano")
+                                    color: Tema.colorAccent
+                                    font.family: Tema.fuenteElegante
+                                    font.pixelSize: 16 * Tema.escala
+                                    font.bold: true
+                                    font.letterSpacing: 2
+                                }
+                                Text {
+                                    visible: cajon.enRed
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.tf("voto_continua_solo", [cajon.votoRestanteSegundos])
+                                    color: Tema.colorTextoTenue
+                                    font.family: Tema.fuenteElegante
+                                    font.pixelSize: 10 * Tema.escala
+                                }
+                            }
+                        }
+                    }
+                    BotonContorno {
+                        width: parent.width
+                        visible: cajon.puedeMostrarCartas
+                        text: Idioma.t("boton_mostrar_cartas")
+                        onClicked: cajon.mostrarCartasPedido()
+                    }
+                    PanelVoto {
+                        width: parent.width
+                        soyHost: cajon.soyHost
+                        contariaComoPerdida: cajon.contariaComoPerdida
+                        onAbandonar: cajon.votoCerrado()
+                        onGuardarYSalir: cajon.votoCerrado()
+                    }
+                }
+
                 Column {
                     visible: cajon.tuTurno
                     width: parent.width
@@ -486,32 +601,101 @@ Rectangle {
             }
             }
 
-            // — Historial —
+            // — Historial — una fila por evento con una marca de color a la izquierda según su tipo;
+            // las cabeceras de mano ("── Mano 13 ──") van como separadores centrados. Mismo estilo
+            // que PanelLateral.qml de escritorio.
             ListView {
+                id: listaHistorialCajon
                 visible: cajon.pestanaActiva === "historial"
                 anchors.fill: parent
                 anchors.margins: 10 * Tema.escala
                 clip: true
+                spacing: 2 * Tema.escala
                 model: cajon.modeloHistorial
                 onCountChanged: Qt.callLater(positionViewAtEnd)
+                // Indicador fino (táctil: se desliza con el dedo, no hace falta una barra que agarrar).
+                ScrollIndicator.vertical: ScrollIndicator {
+                    contentItem: Rectangle {
+                        implicitWidth: 3 * Tema.escala
+                        radius: width / 2
+                        color: Tema.colorAccent
+                        opacity: 0.45
+                    }
+                }
                 delegate: Item {
+                    id: filaHistorialCajon
                     required property string linea
                     required property string tipo
                     required property string jugador
-                    width: ListView.view.width
-                    height: Math.max(textoLineaHist.height, 14 * Tema.escala)
-                    Text {
-                        id: textoLineaHist
+                    readonly property bool esSeparador: tipo === "separador"
+                    readonly property bool esMio: jugador === cajon.nombreJugador && jugador.length > 0
+                    width: ListView.view.width - 6 * Tema.escala
+                    height: esSeparador ? 24 * Tema.escala : Math.max(textoLineaHist.implicitHeight + 8 * Tema.escala, 20 * Tema.escala)
+
+                    // Separador de mano: línea — texto — línea.
+                    Row {
+                        visible: filaHistorialCajon.esSeparador
+                        anchors.verticalCenter: parent.verticalCenter
                         width: parent.width
-                        textFormat: Text.RichText
-                        wrapMode: Text.WordWrap
-                        font.pixelSize: 11 * Tema.escala
-                        color: Tema.colorTexto
-                        text: "<font color=\"" + colorTipoHistCajon(tipo) + "\">●</font> " +
-                              (jugador.length > 0
-                                   ? "<font color=\"" + colorNombreHistCajon(jugador) + "\"><b>" +
-                                     escapeHtmlCajon(jugador) + "</b></font> "
-                                   : "") + escapeHtmlCajon(linea)
+                        spacing: 6 * Tema.escala
+                        Rectangle {
+                            width: Math.max(0, (parent.width - textoSeparadorCajon.implicitWidth - 2 * parent.spacing) / 2)
+                            height: 1
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.35)
+                        }
+                        Text {
+                            id: textoSeparadorCajon
+                            text: filaHistorialCajon.linea.replace(/[─—-]/g, "").trim()
+                            color: Tema.colorAccent
+                            font.pixelSize: 10 * Tema.escala
+                            font.bold: true
+                            font.letterSpacing: 1
+                            font.family: Tema.fuenteElegante
+                        }
+                        Rectangle {
+                            width: Math.max(0, (parent.width - textoSeparadorCajon.implicitWidth - 2 * parent.spacing) / 2)
+                            height: 1
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.35)
+                        }
+                    }
+
+                    // Fila normal.
+                    Rectangle {
+                        visible: !filaHistorialCajon.esSeparador
+                        anchors.fill: parent
+                        radius: 6 * Tema.escala
+                        color: filaHistorialCajon.esMio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.09)
+                                                       : Qt.rgba(1, 1, 1, 0.025)
+                        Rectangle {   // marca de color del tipo de evento
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.topMargin: 3 * Tema.escala
+                            anchors.bottomMargin: 3 * Tema.escala
+                            anchors.leftMargin: 3 * Tema.escala
+                            width: 3 * Tema.escala
+                            radius: width / 2
+                            color: cajon.colorTipoHistCajon(filaHistorialCajon.tipo)
+                        }
+                        Text {
+                            id: textoLineaHist
+                            anchors.left: parent.left
+                            anchors.leftMargin: 11 * Tema.escala
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            // El nombre del protagonista lleva su color aparte (dorado si eres tú).
+                            textFormat: Text.RichText
+                            font.pixelSize: 11 * Tema.escala
+                            color: Tema.colorTexto
+                            wrapMode: Text.WordWrap
+                            text: (filaHistorialCajon.jugador.length > 0
+                                       ? "<font color=\"" + cajon.colorNombreHistCajon(filaHistorialCajon.jugador)
+                                             + "\"><b>" + cajon.escapeHtmlCajon(filaHistorialCajon.jugador) + "</b></font>"
+                                       : "") + cajon.escapeHtmlCajon(filaHistorialCajon.linea)
+                        }
                     }
                 }
             }
@@ -533,9 +717,18 @@ Rectangle {
                     spacing: 6 * Tema.escala
                     model: cajon.modeloChat
                     onCountChanged: Qt.callLater(positionViewAtEnd)
+                    ScrollIndicator.vertical: ScrollIndicator {
+                        contentItem: Rectangle {
+                            implicitWidth: 3 * Tema.escala
+                            radius: width / 2
+                            color: Tema.colorAccent
+                            opacity: 0.45
+                        }
+                    }
                     delegate: Item {
                         required property string autor
                         required property string mensaje
+                        required property string hora
                         readonly property bool esPropio: autor === cajon.nombreJugador
                         width: ListView.view.width
                         height: columnaBurbujaCajon.height
@@ -560,22 +753,31 @@ Rectangle {
                         Column {
                             id: columnaBurbujaCajon
                             x: esPropio ? parent.width - width : 0
-                            width: Math.min(medidorCajon.implicitWidth + 20, parent.width * 0.85)
-                            spacing: 1
+                            width: Math.min(medidorCajon.implicitWidth + 22 * Tema.escala, parent.width * 0.86)
+                            spacing: 2 * Tema.escala
                             Text {
-                                text: esPropio ? Idioma.t("yo_chat") : autor
-                                color: Tema.colorTextoMuyTenue
+                                anchors.right: esPropio ? parent.right : undefined
+                                text: (esPropio ? Idioma.t("yo_chat") : autor) + " · " + hora
+                                color: esPropio ? Tema.colorAccent : Tema.colorTextoMuyTenue
                                 font.pixelSize: 9 * Tema.escala
                             }
+                            // Las propias con filo dorado y tinte dorado; las ajenas con el tono del tapete.
                             Rectangle {
                                 width: parent.width
-                                height: textoBurbujaCajon.implicitHeight + 12 * Tema.escala
-                                radius: 8 * Tema.escala
-                                color: esPropio ? Qt.rgba(0.75, 0.56, 0.24, 0.18) : Tema.colorTapete
+                                height: textoBurbujaCajon.implicitHeight + 14 * Tema.escala
+                                radius: 10 * Tema.escala
+                                border.width: 1
+                                border.color: esPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.08)
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: esPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.26)
+                                                                                   : Qt.lighter(Tema.colorTapete, 1.25) }
+                                    GradientStop { position: 1.0; color: esPropio ? Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.12)
+                                                                                   : Tema.colorTapete }
+                                }
                                 Text {
                                     id: textoBurbujaCajon
                                     anchors.fill: parent
-                                    anchors.margins: 6 * Tema.escala
+                                    anchors.margins: 7 * Tema.escala
                                     text: mensaje
                                     color: Tema.colorTexto
                                     font.pixelSize: 11 * Tema.escala

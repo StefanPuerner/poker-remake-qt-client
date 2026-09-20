@@ -248,13 +248,13 @@ Rasgos rasgosDe(DificultadBots d) {
   switch (d) {
     case DificultadBots::FACIL:
       return {150, false, 0.55, -0.07, 0.07, 0.02, 0.66, 0.80, 0.30,
-              0.60, 0.45, 1.5, 0.15, 0.90, false, false, false};
+              0.50, 0.50, 1.6, 0.07, 0.90, false, false, false};
     case DificultadBots::NORMAL:
       return {350, true, 0.0, 0.02, 0.035, 0.09, 0.62, 0.74, 0.60,
-              0.90, 0.20, 1.1, 0.26, 0.75, false, false, true};
+              0.75, 0.30, 1.55, 0.13, 0.75, false, false, true};
     default:  // EXPERTO
       return {600, true, 0.0, 0.01, 0.02, 0.17, 0.58, 0.70, 0.55,
-              1.00, 0.06, 1.0, 0.32, 0.65, true, true, true};
+              0.80, 0.22, 1.50, 0.16, 0.65, true, true, true};
   }
 }
 
@@ -445,16 +445,23 @@ Accion subirA(const GameState& st, int saldo, int aPagar, int objetivoTotal) {
 
 /// Sube una fracción del bote (bote tras igualar = boteTotal + aPagar).
 Accion subirFraccion(const GameState& st, int saldo, int aPagar, double fraccion,
-                     double minimoSensato = 0.25) {
+                     double minimoSensato = 0.25, double equity = 1.0) {
   double baseBote = static_cast<double>(st.boteTotal + aPagar);
   int extraDeseado = static_cast<int>(std::lround(fraccion * baseBote));
   // Una subida de 1 ficha no es una jugada: aunque las reglas la permitan, el
   // bot no la hace (sí sabe responder a las de los demás).
   int extraMinimo = std::max(1, static_cast<int>(std::lround(minimoSensato * baseBote)));
   extraDeseado = std::max(extraDeseado, extraMinimo);
+  // Sin una mano muy fuerte no se apuesta (ni se sube) más del 60% del saldo: se deja
+  // margen en vez de comprometer la pila -- así una mano media no acaba en all-in.
+  if (equity < 0.85 && aPagar + extraDeseado >= static_cast<int>(0.6 * saldo)) {
+    extraDeseado = std::max(extraMinimo, static_cast<int>(0.4 * saldo) - aPagar);
+  }
   int objetivo = st.apuestaAIgualar + extraDeseado;
-  // Compromiso: si la apuesta se lleva más de ~60% del saldo, se va all-in.
-  if (aPagar + extraDeseado >= static_cast<int>(0.6 * saldo)) objetivo = st.apuestaAIgualar + saldo;
+  // Compromiso: si la apuesta se lleva casi todo el saldo (más de ~80%) se va all-in
+  // -- con el 60% de antes, dos apuestas normales en el mismo bote acababan en
+  // un all-in y eliminaban a alguien en la primera mano (reportado 2026-09-20).
+  if (aPagar + extraDeseado >= static_cast<int>(0.8 * saldo)) objetivo = st.apuestaAIgualar + saldo;
   return subirA(st, saldo, aPagar, objetivo);
 }
 
@@ -486,7 +493,7 @@ Accion decidirPreflop(const GameState& st, double ph, int saldo, const ContextoB
   const bool pilaCorta = stackBB <= 10.0;
 
   if (sinSubida) {
-    double base = N == 2 ? 0.82 : (N == 3 ? 0.46 : (N <= 5 ? 0.33 : 0.23));
+    double base = N == 2 ? 0.75 : (N == 3 ? 0.38 : (N <= 5 ? 0.27 : 0.19));
     double apertura = std::clamp(base * (0.75 + 0.5 * pos) * rg.aperturaMult * pers, 0.02, 0.97);
     int limpers = std::max(0, static_cast<int>(std::lround(static_cast<double>(st.boteTotal) / BB - 1.5)));
 
@@ -503,8 +510,10 @@ Accion decidirPreflop(const GameState& st, double ph, int saldo, const ContextoB
     if (pilaCorta && ph >= 1.0 - apertura * 0.9) return accion(TipoAccion::ALL_IN, saldo);
 
     if (superaUmbral(ph, 1.0 - apertura, rg.temp * 2.0)) {
-      double bb = 2.5 + limpers + (unif() < 0.35 ? 0.5 : 0.0);
-      if (!rg.ocultaValor) bb = 3.0 + limpers;  // FACIL: siempre igual
+      // Con pilas cortas (menos de ~40 ciegas) una apertura de 3 ciegas ya es una
+      // parte grande de la pila: se abre a 2-2.5 y se suma una ciega por cada igual.
+      double bb = (stackBB < 40.0 ? 2.2 : 2.5) + limpers + (unif() < 0.35 ? 0.5 : 0.0);
+      if (!rg.ocultaValor) bb = (stackBB < 40.0 ? 2.5 : 3.0) + limpers;  // FACIL: siempre igual
       return subirA(st, saldo, aPagar, static_cast<int>(bb * BB));
     }
     // Iguala (limp) manos jugables; el resto se retira. Completar la ciega
@@ -548,9 +557,9 @@ Accion decidirPreflop(const GameState& st, double ph, int saldo, const ContextoB
 
   // Sube (re-sube) por valor con la parte alta de su rango de continuación.
   double kSube = rg.k3bet * pers;
-  double umbralSube = 1.0 - std::clamp(rho * kSube, 0.02, 0.35);
+  double umbralSube = 1.0 - std::clamp(rho * kSube, 0.02, 0.15);
   bool puedeSubir = st.raisesRivalesEstaMano <= 2 && ctx.numRaisesMiosEnRonda < 1;
-  if (st.raisesRivalesEstaMano >= 2) umbralSube = std::max(umbralSube, 0.965);
+  if (st.raisesRivalesEstaMano >= 2) umbralSube = std::max(umbralSube, 0.985);
 
   if (pilaCorta) {
     if (ph >= 1.0 - std::clamp(fraccionCall * 0.9, 0.05, 0.9)) return accion(TipoAccion::ALL_IN, saldo);
@@ -558,14 +567,23 @@ Accion decidirPreflop(const GameState& st, double ph, int saldo, const ContextoB
   }
 
   if (puedeSubir && superaUmbral(ph, umbralSube, rg.temp * 2.0)) {
-    double mult = st.raisesRivalesEstaMano >= 2 ? 2.4 : (pos > 0.6 ? 3.0 : 3.5);
-    return subirA(st, saldo, aPagar, static_cast<int>(mult * st.apuestaAIgualar));
+    double mult = st.raisesRivalesEstaMano >= 2 ? 2.0 : (pos > 0.6 ? 2.4 : 2.7);
+    int objetivo = static_cast<int>(mult * st.apuestaAIgualar);
+    // Una re-subida que se lleva más de un tercio de la pila ya es casi ir all-in:
+    // con pilas cortas eso eliminaba a un bot en la primera mano. Solo con las
+    // mejores manos (AA/KK y poco más) se llega a eso; con el resto, se iguala.
+    const int pilaTotal = saldo + st.miApuestaEnRonda;
+    if (objetivo > pilaTotal / 3 && ph < 0.985) {
+      if (superaUmbral(ph, 1.0 - fraccionCall, rg.temp * 2.0)) return igualar(aPagar, saldo);
+      return accion(TipoAccion::FOLD);
+    }
+    return subirA(st, saldo, aPagar, objetivo);
   }
 
   // Re-subida de farol con manos justo por debajo del rango de valor.
-  if (puedeSubir && st.raisesRivalesEstaMano == 1 && rg.faroles > 0.05 && r <= 4.5 &&
+  if (puedeSubir && N == 2 && st.raisesRivalesEstaMano == 1 && rg.faroles > 0.05 && r <= 4.0 &&
       ph >= 1.0 - fraccionCall && ph < umbralSube) {
-    double prob = rg.faroles * 0.9 * pers;
+    double prob = rg.faroles * 0.35 * pers;
     if (unif() < prob) {
       return subirA(st, saldo, aPagar, static_cast<int>((pos > 0.6 ? 3.0 : 3.5) * st.apuestaAIgualar));
     }
@@ -677,7 +695,12 @@ Accion decidirPostflop(const GameState& st, const std::array<int, 2>& mias,
       valor = false;
     }
     if (valor && unif() < (rg.ocultaValor ? 0.88 : 0.93)) {
-      return subirFraccion(st, saldo, 0, fraccionApuestaValor(E, st.rondaActual, rg));
+      double f = fraccionApuestaValor(E, st.rondaActual, rg);
+      // Control del bote: con una mano que no es muy fuerte no se hace una apuesta que
+      // se lleve media pila -- sería la primera de dos que acaban en all-in (con pilas
+      // de ~25 ciegas eliminaba a alguien en la primera mano).
+      if (f * st.boteTotal >= 0.5 * saldo && E < 0.78) f = std::min(f, 0.33);
+      return subirFraccion(st, saldo, 0, f, 0.25, E);
     }
 
     // Apuesta de continuación: quien subió antes del flop sigue apostando.
@@ -706,7 +729,7 @@ Accion decidirPostflop(const GameState& st, const std::array<int, 2>& mias,
           f = 0.55;
         }
       }
-      return subirFraccion(st, saldo, 0, f);
+      return subirFraccion(st, saldo, 0, f, 0.25, E);
     }
     return accion(TipoAccion::CHECK);
   }
@@ -717,7 +740,9 @@ Accion decidirPostflop(const GameState& st, const std::array<int, 2>& mias,
   // Odds implícitas: con proyecto y fichas detrás se paga algo más.
   if (proyecto && !rio && static_cast<double>(saldo) > 3.0 * aPagar) requerida *= 0.88;
   double margen = rg.margenCall - (pers - 1.0) * 0.05;
-  if (aPagar >= saldo) margen += 0.03;  // jugarse todo tiene su varianza
+  // Jugarse media pila o toda la pila tiene su varianza: se exige más ventaja.
+  if (aPagar >= saldo) margen += 0.08;
+  else if (2 * aPagar >= saldo) margen += 0.04;
 
   const bool puedeSubirMas = ctx.numRaisesMiosEnRonda < 2 && st.raisesRivalesEstaMano < 4;
 
@@ -725,7 +750,7 @@ Accion decidirPostflop(const GameState& st, const std::array<int, 2>& mias,
   if (puedeSubirMas && aPagar < saldo) {
     double umbral = rg.umbralSubida + 0.05 * std::max(0, st.raisesRivalesEstaMano - 1) - (pers - 1.0) * 0.05;
     if (superaUmbral(E, umbral, rg.temp) && unif() < (rg.usaPerfiles ? 0.85 : 0.75)) {
-      return subirFraccion(st, saldo, aPagar, E >= 0.88 ? 0.85 : 0.65, 0.5);
+      return subirFraccion(st, saldo, aPagar, E >= 0.88 ? 0.75 : 0.55, 0.5, E);
     }
     // Subida de farol/semifarol: ante apuestas pequeñas (fáciles de mover) y
     // con proyecto o aire; nunca con mano que ya paga.
@@ -736,12 +761,22 @@ Accion decidirPostflop(const GameState& st, const std::array<int, 2>& mias,
       if (proyecto) p *= 1.6;
       if (rio) p *= (ev.fuerzaAhora < 0.3 ? 0.6 : 0.0);
       p *= presion;
-      if (unif() < std::clamp(p, 0.0, 0.5)) return subirFraccion(st, saldo, aPagar, 0.7, 0.5);
+      if (unif() < std::clamp(p, 0.0, 0.5)) return subirFraccion(st, saldo, aPagar, 0.6, 0.5, E);
     }
   }
 
   // Igualar o retirarse: la equity contra su rango frente al precio.
   double x = E - requerida - margen;
+  // Jugarse media pila o toda la pila exige una mano de verdad, aunque el precio
+  // del bote salga a cuenta: sin esto los bots se eliminaban unos a otros con manos
+  // medias en la primera mano (con ~25 ciegas de pila, reportado 2026-09-20).
+  {
+    const bool facil = rg.margenCall < 0.0;  // FACIL paga de más a propósito, pero también se frena
+    const double minimoTodo = facil ? 0.55 : 0.66;
+    const double minimoMedia = facil ? 0.48 : 0.60;
+    if (aPagar >= saldo) x = std::min(x, E - minimoTodo);
+    else if (2 * aPagar >= saldo) x = std::min(x, E - minimoMedia);
+  }
   // Contra apuestas pequeñas no se abandona todo el rango (defensa mínima).
   if (x < 0 && aPagar < saldo && b <= 0.8 && st.raisesRivalesEstaMano < 3) {
     double mdf = potPrevio / (potPrevio + aPagar);

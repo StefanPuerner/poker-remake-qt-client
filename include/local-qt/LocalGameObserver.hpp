@@ -188,9 +188,12 @@ class LocalGameObserver : public QObject, public IGameObserver {
   // Se ejecuta en el hilo del motor: dormir aquí no congela la interfaz. Ver
   // IGameObserver::onPausaAnimacionMesa().
   void onPausaAnimacionMesa(int ms) override {
-    if (ms <= 0) return;
+    if (ms <= 0 || !pausasActivas_.load()) return;
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
   }
+  /// Las pausas existen para que se vean las animaciones de la mesa. Con las animaciones
+  /// desactivadas en Ajustes (o en una prueba automática) no hay nada que esperar.
+  static void setPausasActivas(bool activas) { pausasActivas_.store(activas); }
 
   void onCobroCiegas(const std::string& jPequena, int montoPequena,
                      const std::string& jGrande, int montoGrande) override {
@@ -208,6 +211,13 @@ class LocalGameObserver : public QObject, public IGameObserver {
     dealerNombre_ = jDealer;
     sbNombre_ = jPequena;
     bbNombre_ = jGrande;
+    emit botonesAsignados(QString::fromStdString(jDealer), QString::fromStdString(jPequena),
+                          QString::fromStdString(jGrande));
+  }
+  void onDetalleBote(int numBote, const std::vector<std::pair<std::string, int>>& aportes) override {
+    QStringList l;
+    for (const auto& a : aportes) l << QString::fromStdString(a.first) + ":" + QString::number(a.second);
+    emit detalleBote(numBote, l.join(","));
   }
 
   void onRepartoCartasIniciales() override {
@@ -268,6 +278,43 @@ class LocalGameObserver : public QObject, public IGameObserver {
     }
   }
 
+  void onJugadorAllIn(const std::string& nombre, int cantidad, bool porCiega) override {
+    emit jugadorAllIn(QString::fromStdString(nombre), cantidad, porCiega);
+  }
+
+  void onPuedenMostrar(const std::vector<ManoOpcional>& manos) override {
+    std::lock_guard<std::mutex> lk(mutexMostrar_);
+    manoOpcionalHumano_.reset();
+    for (const ManoOpcional& m : manos) {
+      if (m.nombre != jugadorHumano_) continue;
+      manoOpcionalHumano_ = m;
+    }
+    if (manoOpcionalHumano_) emit puedesMostrar();
+  }
+  /// Desde la interfaz (hilo de la GUI): enseña la mano del humano por decisión propia.
+  void mostrarCartasOpcional() {
+    ManoOpcional m;
+    {
+      std::lock_guard<std::mutex> lk(mutexMostrar_);
+      if (!manoOpcionalHumano_) return;
+      m = *manoOpcionalHumano_;
+      manoOpcionalHumano_.reset();
+    }
+    emit manoRevelada(QString::fromStdString(m.nombre),
+                      QString::fromStdString(net::ser::cartasToStr(m.cartas)),
+                      QString::fromStdString(m.combo),
+                      QString::fromStdString(net::ser::cartasToStr(m.combinacion)), false);
+  }
+  void onOrdenShowdown(const std::vector<std::string>& orden) override {
+    QStringList l;
+    for (const std::string& n : orden) l << QString::fromStdString(n);
+    emit ordenShowdown(l.join(","));
+  }
+  void onManoRevelada(const std::string& nombre, const std::vector<Carta>& cartas) override {
+    emit manoRevelada(QString::fromStdString(nombre),
+                      QString::fromStdString(net::ser::cartasToStr(cartas)), QString(), QString(), true);
+  }
+
   void onCabeceraResumen() override {
     emit eventoJuego(
         "El resto de la mano la juegan los bots — no quedan humanos activos.",
@@ -319,6 +366,8 @@ class LocalGameObserver : public QObject, public IGameObserver {
     QString cartasStr = QString::fromStdString(net::ser::cartasToStr(cartas));
     QString comboQ = QString::fromStdString(combo);
     emit eventoJuego(": " + cartasStr + "  " + comboQ, "showdown", QString::fromStdString(nombre));
+    emit manoRevelada(QString::fromStdString(nombre), cartasStr, comboQ,
+                      QString::fromStdString(net::ser::cartasToStr(combinacion)), false);
     emit cartasMostradas(QString::fromStdString(nombre), cartasStr, comboQ);
   }
 
@@ -334,6 +383,7 @@ class LocalGameObserver : public QObject, public IGameObserver {
   void onJugadoresDerrotados(const std::vector<std::string>& eliminados) override {
     QString lista = QString::fromStdString(net::ser::unirStr(eliminados, ','));
     emit eventoJuego("☠ " + lista + " se ha quedado sin fichas", "error");
+    emit jugadoresEliminados(lista);
     // AVISO_RECOMPRA -- solo aplica si el humano es uno de los eliminados
     // (el único destinatario posible offline, a diferencia del unicast por
     // fd que hace NetworkObserver aquí mismo).
@@ -543,9 +593,17 @@ class LocalGameObserver : public QObject, public IGameObserver {
   void accionRealizada(QString jugador, QString accion);
   /// Fichas que acaban de irse al bote desde el asiento de @p jugador.
   void fichasApostadas(QString jugador, int cantidad);
+  /// Alguien se queda sin fichas (ver IGameObserver::onJugadorAllIn()).
+  void jugadorAllIn(QString jugador, int cantidad, bool porCiega);
   void showdownIniciado(QString cartasCsv);
   void boteEvaluado(int numBote, int cantidad, QString jugadoresCsv);
   void cartasMostradas(QString jugador, QString cartasCsv, QString combo);
+  void ordenShowdown(QString jugadoresCsv);
+  void botonesAsignados(QString dealer, QString sb, QString bb);
+  void detalleBote(int numBote, QString aportesCsv);
+  void jugadoresEliminados(QString jugadoresCsv);
+  void puedesMostrar();
+  void manoRevelada(QString jugador, QString cartasCsv, QString combo, QString mejoresCsv, bool temprana);
   void boteGanado(QString jugador, int premio, int numBote, QString combo);
   void ganadorSinShowdown(QString jugador, int bote);
   void avisoRecompra(bool puedeRecomprar);
@@ -753,4 +811,7 @@ class LocalGameObserver : public QObject, public IGameObserver {
   std::optional<int> manosExtraPendiente_;
 
   std::atomic<bool> recompraPedida_{false};
+  std::mutex mutexMostrar_;
+  std::optional<ManoOpcional> manoOpcionalHumano_;
+  static inline std::atomic<bool> pausasActivas_{true};
 };

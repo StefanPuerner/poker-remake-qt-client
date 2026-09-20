@@ -172,7 +172,11 @@ jobs:
           # Hace falta en LAS DOS instalaciones: aquí porque la herramienta qsb
           # corre en el runner, y en la de Android porque es donde CMake busca
           # Qt6::ShaderTools.
-          modules: 'qtshadertools'
+          #
+          # qtmultimedia (v0.13.0): los sonidos de la mesa del móvil usan SoundEffect
+          # (QtMultimedia) y CMake lo exige (find_package(Qt6 REQUIRED COMPONENTS
+          # Multimedia) en cmake/ClientesQt.cmake). Igual en la instalación de Android.
+          modules: 'qtmultimedia qtshadertools'
           dir: '${{ github.workspace }}/qt'
           set-env: false
 
@@ -186,8 +190,8 @@ jobs:
           host: 'linux'
           target: 'android'
           arch: 'android_arm64_v8a'
-          # qtshadertools: ver la nota del paso de arriba.
-          modules: 'qtshadertools'
+          # qtshadertools y qtmultimedia: ver la nota del paso de arriba.
+          modules: 'qtmultimedia qtshadertools'
           dir: '${{ github.workspace }}/qt'
 
       # Se usa la plantilla real de AndroidManifest.xml del propio kit de

@@ -39,6 +39,9 @@ class NetworkClient : public QObject {
   // propiedades normales, el mecanismo más maduro y probado de QML/Qt --
   // se fijan ANTES de emitir finDePartida, así que ya están listos para
   // cuando el handler de QML los lee.
+  // Plazo (ms) del voto entre manos que anuncia el servidor en ESPERAR_VOTO; 0 = sala sin
+  // temporizador. Se fija ANTES de emitir esperandoVoto, así que el handler de QML ya lo lee.
+  Q_PROPERTY(int plazoVotoMs READ plazoVotoMs NOTIFY plazoVotoCambiado)
   Q_PROPERTY(int manosDisputadasFinal READ manosDisputadasFinal NOTIFY estadisticasFinCambiaron)
   Q_PROPERTY(QString mejorManoFinal READ mejorManoFinal NOTIFY estadisticasFinCambiaron)
   Q_PROPERTY(QString mejorManoJugadorFinal READ mejorManoJugadorFinal NOTIFY estadisticasFinCambiaron)
@@ -87,6 +90,7 @@ class NetworkClient : public QObject {
     presenciaSocket_.setPeerVerifyMode(QSslSocket::VerifyNone);
   }
 
+  int plazoVotoMs() const { return plazoVotoMs_; }
   int manosDisputadasFinal() const { return manosDisputadasFinal_; }
   QString mejorManoFinal() const { return mejorManoFinal_; }
   QString mejorManoJugadorFinal() const { return mejorManoJugadorFinal_; }
@@ -120,7 +124,7 @@ class NetworkClient : public QObject {
                              int tipoLimite, bool aplicarMinRaise, int monteFijo,
                              int dificultadBots, bool permitirRecompra,
                              bool rellenarConBots, bool abiertaTrasInicio,
-                             bool preguntarExtension) {
+                             bool preguntarExtension, bool temporizadorVoto) {
     // El sala_id de verdad no se conoce hasta que llegue SALA_CREADA (más
     // abajo, en el bucle de readyRead) -- limpiar aquí lo de una sesión
     // anterior evita usarlo por error si la conexión se cae ANTES de esa
@@ -143,6 +147,7 @@ class NetworkClient : public QObject {
         {"rellenar_con_bots",  rellenarConBots ? "1" : "0"},
         {"abierta_tras_inicio", abiertaTrasInicio ? "1" : "0"},
         {"preguntar_extension", preguntarExtension ? "1" : "0"},
+        {"temporizador_voto",  temporizadorVoto ? "1" : "0"},
         {"token",              token_.toStdString()},
     }));
   }
@@ -423,6 +428,8 @@ class NetworkClient : public QObject {
   Q_INVOKABLE void iniciarPartidaLocal(const QString&, int, int, int, int, int, bool, int,
                                        int, bool, bool) {}
   Q_INVOKABLE void setAcumularXpOffline(bool) {}
+  /// Paridad con LocalGameClient: las pausas de animación las pone el servidor, no el cliente.
+  Q_INVOKABLE void setPausasAnimacion(bool) {}
   Q_INVOKABLE void setRetoEnCurso(const QString&) {}
   Q_INVOKABLE void continuarReto(const QString&, int) {}
 
@@ -1043,6 +1050,12 @@ class NetworkClient : public QObject {
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "RECOMPRA"}}));
   }
 
+  /// Enseñar la mano por decisión propia (solo si el servidor avisó con puedesMostrar()).
+  Q_INVOKABLE void mostrarCartas() {
+    if (reconectando_) return;
+    enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "MOSTRAR_CARTAS"}}));
+  }
+
   Q_INVOKABLE void votar() {
     if (reconectando_) return;  // sin conexión de verdad: el servidor no lo recibiría (o llegaría fuera de su momento)
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "VOTO"}}));
@@ -1153,6 +1166,8 @@ class NetworkClient : public QObject {
   /// Fichas que acaban de irse al bote desde el asiento de @p jugador
   /// (apuestas y ciegas) -- para la animación de la mesa.
   void fichasApostadas(QString jugador, int cantidad);
+  /// Alguien se queda sin fichas (evento ALL_IN; "porCiega": lo dejó a cero una ciega).
+  void jugadorAllIn(QString jugador, int cantidad, bool porCiega);
   void nuevaMano(int mano, int ciega);
   /// Cartas propias, justo al repartir — antes solo llegaban dentro de
   /// esMiTurno(), así que no se conocían hasta el primer turno propio.
@@ -1195,6 +1210,7 @@ class NetworkClient : public QObject {
   /// finDePartida, así que para cuando ese llega, estas propiedades ya
   /// tienen el valor de la partida que acaba de terminar.
   void estadisticasFinCambiaron();
+  void plazoVotoCambiado();
   void abandonaste(QString mensaje);
   /// Ack del servidor a votar() (fin de mano) -- QML cierra el panel de
   /// voto SOLO al recibir esto, no de forma optimista al pulsar el botón.
@@ -1303,6 +1319,21 @@ class NetworkClient : public QObject {
   /// ESTE bote en concreto, separados por comas — para mostrar de forma
   /// transparente quién puede ganarlo, no solo el monto.
   void boteEvaluado(int numBote, int cantidad, QString jugadoresCsv);
+  /// Quiénes enseñan por obligación y en qué orden (nombres separados por comas): la mesa los
+  /// prepara a todos a la vez (avatar pequeño, cartas grandes) y luego los revela de uno en uno.
+  void ordenShowdown(QString jugadoresCsv);
+  /// Dealer y ciegas de la mano que empieza (antes de las ciegas): los marcadores viajan a su asiento.
+  void botonesAsignados(QString dealer, QString sb, QString bb);
+  /// Cuánto puso cada uno en un bote ("Ana:200,Bot3:200"), justo antes de resolverlo.
+  void detalleBote(int numBote, QString aportesCsv);
+  /// Se han quedado sin fichas (nombres separados por comas).
+  void jugadoresEliminados(QString jugadoresCsv);
+  /// Al acabar la mano: puedes enseñar tu mano si quieres (te retiraste, o ganaste sin showdown).
+  void puedesMostrar();
+  /// Una mano se revela en la mesa. "temprana": runout (sin combinación aún); si no, showdown
+  /// (con la combinación y "mejoresCsv": las 5 cartas de la mejor mano, para resaltarlas).
+  void manoRevelada(QString jugador, QString cartasCsv, QString combo, QString mejoresCsv,
+                    bool temprana);
   /// Un jugador enseña su mano en el showdown (cartasCsv: "AS,KH").
   void cartasMostradas(QString jugador, QString cartasCsv, QString combo);
   /// Un jugador se lleva un bote (principal o side pot) en el showdown.
@@ -1597,6 +1628,14 @@ class NetworkClient : public QObject {
    * el servidor acepta aunque aún no se hubiera enterado de la caída.
    */
   void vigilarConexion() {
+    // Si el propio bucle de eventos estuvo parado (el hilo de la interfaz bloqueado por el audio, un
+    // tirón, el móvil suspendido...), el silencio que se mide es NUESTRO, no de la red: los mensajes
+    // llegaron pero aún no se han procesado. Este temporizador es de 5 s, así que si llega con mucho
+    // más retraso hubo un parón: se da otra ventana completa antes de dudar de la conexión (una
+    // conexión de verdad muerta se detecta igualmente 20 s después).
+    if (ultimaVigilancia_.isValid() && ultimaVigilancia_.elapsed() > 9000 && ultimaActividad_.isValid())
+      ultimaActividad_.restart();
+    ultimaVigilancia_.restart();
     if (!enPartida_ || reconectando_ || desconexionEsperada_ || !latidoVisto_) return;
     if (socket_.state() != QAbstractSocket::ConnectedState) return;
     if (!ultimaActividad_.isValid() || ultimaActividad_.elapsed() < 20000) return;
@@ -2138,6 +2177,7 @@ class NetworkClient : public QObject {
               QString jugadores =
                   QString::fromStdString(net::jsonGetStr(payload, "jugadores"));
               emit eventoJuego("☠ " + jugadores + " se ha quedado sin fichas", "error");
+              emit jugadoresEliminados(jugadores);
             } else if (evento == "ERROR_JUGADA") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
               emit eventoJuego("⚠ " + mensaje, "error");
@@ -2160,8 +2200,16 @@ class NetworkClient : public QObject {
               emit eventoJuego(linea, tipoAccion, jugador);
               emit accionRealizada(jugador, accion);
               if (cantidad > 0 && accion != "FOLD") emit fichasApostadas(jugador, cantidad);
+            } else if (evento == "ALL_IN") {
+              emit jugadorAllIn(QString::fromStdString(net::jsonGetStr(payload, "jugador")),
+                                net::jsonGetInt(payload, "cantidad"),
+                                net::jsonGetStr(payload, "ciega") == "1");
             } else if (evento == "ESPERAR_VOTO") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+              // Servidor sin actualizar: no manda el campo, y entonces siempre había plazo (60 s).
+              plazoVotoMs_ = net::jsonGetStr(payload, "plazo_ms").empty() ? 60000
+                                                                          : net::jsonGetInt(payload, "plazo_ms");
+              emit plazoVotoCambiado();
               emit esperandoVoto(mensaje);
             } else if (evento == "ESPERAR_VOTO_EXTENSION") {
               QString mensaje = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
@@ -2196,8 +2244,22 @@ class NetworkClient : public QObject {
                   QString::fromStdString(net::jsonGetStr(payload, "jugador"));
               QString combo = QString::fromStdString(net::jsonGetStr(payload, "combo"));
               QString cartas = QString::fromStdString(net::jsonGetStr(payload, "cartas"));
+              QString mejores = QString::fromStdString(net::jsonGetStr(payload, "mejores"));
+              bool temprana = net::jsonGetStr(payload, "temprana") == "1";
               emit eventoJuego(": " + cartas + "  " + combo, "showdown", jugador);
-              emit cartasMostradas(jugador, cartas, combo);
+              emit manoRevelada(jugador, cartas, combo, mejores, temprana);
+              if (!temprana) emit cartasMostradas(jugador, cartas, combo);
+            } else if (evento == "BOTONES") {
+              emit botonesAsignados(QString::fromStdString(net::jsonGetStr(payload, "dealer")),
+                                    QString::fromStdString(net::jsonGetStr(payload, "sb")),
+                                    QString::fromStdString(net::jsonGetStr(payload, "bb")));
+            } else if (evento == "DETALLE_BOTE") {
+              emit detalleBote(net::jsonGetInt(payload, "num_bote"),
+                               QString::fromStdString(net::jsonGetStr(payload, "aportes")));
+            } else if (evento == "PUEDES_MOSTRAR") {
+              emit puedesMostrar();
+            } else if (evento == "SHOWDOWN_ORDEN") {
+              emit ordenShowdown(QString::fromStdString(net::jsonGetStr(payload, "jugadores")));
             } else if (evento == "GANADOR_BOTE") {
               QString jugador =
                   QString::fromStdString(net::jsonGetStr(payload, "jugador"));
@@ -2392,12 +2454,14 @@ class NetworkClient : public QObject {
   QTimer timerReintento_;
   QTimer timerVigilancia_;             ///< Ver vigilarConexion().
   QElapsedTimer ultimaActividad_;      ///< Último mensaje recibido del servidor.
+  QElapsedTimer ultimaVigilancia_;     ///< Última vez que corrió vigilarConexion() (detecta paradas del bucle de eventos).
   bool latidoVisto_ = false;           ///< Esta conexión ya recibió algún LATIDO.
   QByteArray buffer_;
   bool esperandoHeader_ = true;
   uint32_t longitudEsperada_ = 0;
   QSslSocket socket_;
 
+  int plazoVotoMs_ = 0;
   int manosDisputadasFinal_ = 0;
   QString mejorManoFinal_;
   QString mejorManoJugadorFinal_;

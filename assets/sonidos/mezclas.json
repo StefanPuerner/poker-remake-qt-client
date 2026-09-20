@@ -1,0 +1,176 @@
+{
+ "eventos": {
+  "reparto": {
+   "clave": "n",
+   "variantes": [
+    {
+     "hasta": 9,
+     "mezcla": "reparto_pocas"
+    },
+    {
+     "hasta": 999,
+     "mezcla": "reparto_muchas"
+    }
+   ]
+  },
+  "comunitaria": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "comunitaria"
+    }
+   ]
+  },
+  "flop": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "flop"
+    }
+   ]
+  },
+  "fichas": {
+   "clave": "fichas",
+   "variantes": [
+    {
+     "hasta": 3,
+     "mezcla": "fichas_pocas"
+    },
+    {
+     "hasta": 5,
+     "mezcla": "fichas_medias"
+    },
+    {
+     "hasta": 8,
+     "mezcla": "fichas_muchas"
+    }
+   ]
+  },
+  "cobro": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "cobro"
+    }
+   ]
+  },
+  "allin": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "allin"
+    }
+   ]
+  },
+  "ganar": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "ganar"
+    }
+   ]
+  },
+  "perder": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "perder"
+    }
+   ]
+  },
+  "eliminado": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "eliminado"
+    }
+   ]
+  },
+  "fold": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "fold"
+    }
+   ]
+  },
+  "recogida": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "recogida"
+    }
+   ]
+  },
+  "barajar": {
+   "variantes": [
+    {
+     "hasta": 999,
+     "mezcla": "barajar"
+    }
+   ]
+  }
+ },
+ "mezclas": {
+  "reparto_pocas": {
+   "evento": "reparto",
+   "ms": 1780
+  },
+  "reparto_muchas": {
+   "evento": "reparto",
+   "ms": 1819
+  },
+  "comunitaria": {
+   "evento": "comunitaria",
+   "ms": 359
+  },
+  "flop": {
+   "evento": "flop",
+   "ms": 826
+  },
+  "fichas_pocas": {
+   "evento": "fichas",
+   "ms": 491
+  },
+  "fichas_medias": {
+   "evento": "fichas",
+   "ms": 589
+  },
+  "fichas_muchas": {
+   "evento": "fichas",
+   "ms": 682
+  },
+  "cobro": {
+   "evento": "cobro",
+   "ms": 1226
+  },
+  "allin": {
+   "evento": "allin",
+   "ms": 1544
+  },
+  "ganar": {
+   "evento": "ganar",
+   "ms": 2287
+  },
+  "perder": {
+   "evento": "perder",
+   "ms": 1542
+  },
+  "eliminado": {
+   "evento": "eliminado",
+   "ms": 2138
+  },
+  "fold": {
+   "evento": "fold",
+   "ms": 613
+  },
+  "recogida": {
+   "evento": "recogida",
+   "ms": 1521
+  },
+  "barajar": {
+   "evento": "barajar",
+   "ms": 2100
+  }
+ }
+}

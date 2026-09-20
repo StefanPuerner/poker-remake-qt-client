@@ -8,6 +8,10 @@
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QDir>
+#include <QTimer>
+#include <QQuickWindow>
+#include <QImage>
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QSslSocket>
@@ -19,6 +23,7 @@
 #include "../../include/local-qt/ModoJuegoCoordinador.hpp"
 #include "../../include/net-qt/NetworkClient.hpp"
 #include "../../include/net-qt/VersionChecker.hpp"
+#include "../../include/net-qt/LectorRecursos.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
 // Lo pone cmake/ClientesQt.cmake (POKER_TORNEOS); 0 si no llega.
@@ -119,9 +124,11 @@ int main(int argc, char* argv[]) {
   LocalGameClient clienteLocal;
   ModoJuegoCoordinador modoJuego(engine->rootContext(), &client, &clienteLocal);
   VersionChecker versionChecker;
+  LectorRecursos lectorRecursos;
   engine->rootContext()->setContextProperty("redcliente", &client);
   engine->rootContext()->setContextProperty("modoJuego", &modoJuego);
   engine->rootContext()->setContextProperty("versionChecker", &versionChecker);
+  engine->rootContext()->setContextProperty("recursos", &lectorRecursos);
   // Pestaña Torneos en desarrollo: apagada en los releases (ver
   // POKER_TORNEOS en cmake/ClientesQt.cmake).
   engine->rootContext()->setContextProperty("torneosHabilitados", POKER_TORNEOS != 0);
@@ -131,7 +138,74 @@ int main(int argc, char* argv[]) {
                                             QString::fromUtf8(net::SERVER_HOST));
   engine->rootContext()->setContextProperty("SERVER_PORT_DEFAULT",
                                             static_cast<int>(net::SERVER_PORT));
+  // Herramientas de desarrollo (no las usa el jugador): una partida local que se juega sola para
+  // comprobar la mesa con eventos reales del motor, y una captura de la ventana.
+  //   --demo-local             arranca sin conexión una partida contra 3 bots y la juega sola
+  //   --captura RUTA [--retraso-captura MS]   guarda un PNG de la ventana y sale
+  //   --serie DIR --cada MS --n N   guarda N capturas (una cada MS) en DIR y sale
+  //   --tam ANCHOxALTO         tamaño de la ventana (la de sin pantalla es pequeña)
+  bool demoLocal = false;
+  bool demoNoVota = false;
+  QString llamar;
+  QString rutaCaptura;
+  int retrasoCaptura = 5000;
+  QString dirSerie;
+  int cadaMs = 1000, nSerie = 10;
+  int anchoVentana = 0, altoVentana = 0;
+  const QStringList args = QCoreApplication::arguments();
+  for (int i = 1; i < args.size(); ++i) {
+    if (args[i] == "--demo-local") demoLocal = true;
+    else if (args[i] == "--llamar" && i + 1 < args.size()) llamar = args[++i];   // función de Main.qml
+    else if (args[i] == "--demo-sin-voto") demoNoVota = true;   // deja abierto el panel de decisiones
+    else if (args[i] == "--captura" && i + 1 < args.size()) rutaCaptura = args[++i];
+    else if (args[i] == "--retraso-captura" && i + 1 < args.size()) retrasoCaptura = args[++i].toInt();
+    else if (args[i] == "--serie" && i + 1 < args.size()) dirSerie = args[++i];
+    else if (args[i] == "--cada" && i + 1 < args.size()) cadaMs = args[++i].toInt();
+    else if (args[i] == "--n" && i + 1 < args.size()) nSerie = args[++i].toInt();
+    else if (args[i] == "--tam" && i + 1 < args.size()) {
+      const QStringList wh = args[++i].split('x');
+      if (wh.size() == 2) { anchoVentana = wh[0].toInt(); altoVentana = wh[1].toInt(); }
+    }
+  }
+  QVariantMap propsIniciales{{"demoAuto", demoLocal}, {"demoNoVota", demoNoVota}};
+  if (anchoVentana > 0 && altoVentana > 0) {
+    propsIniciales["width"] = anchoVentana;
+    propsIniciales["height"] = altoVentana;
+  }
+  engine->setInitialProperties(propsIniciales);
   engine->loadFromModule("PokerQuick", "Main");
+  if (demoLocal && !engine->rootObjects().isEmpty()) {
+    QObject* raiz = engine->rootObjects().first();
+    QTimer::singleShot(300, raiz, [raiz]() { QMetaObject::invokeMethod(raiz, "iniciarDemoLocal"); });
+  }
+  if (!llamar.isEmpty() && !engine->rootObjects().isEmpty()) {
+    QObject* raiz = engine->rootObjects().first();
+    QTimer::singleShot(300, raiz, [raiz, llamar]() { QMetaObject::invokeMethod(raiz, llamar.toUtf8().constData()); });
+  }
+  if (!rutaCaptura.isEmpty() && !engine->rootObjects().isEmpty()) {
+    auto* ventana = qobject_cast<QQuickWindow*>(engine->rootObjects().first());
+    if (ventana) {
+      QTimer::singleShot(retrasoCaptura, ventana, [ventana, rutaCaptura]() {
+        const QImage imagen = ventana->grabWindow();
+        if (imagen.isNull() || !imagen.save(rutaCaptura)) QCoreApplication::exit(1);
+        else QCoreApplication::quit();
+      });
+    }
+  }
+  if (!dirSerie.isEmpty() && !engine->rootObjects().isEmpty()) {
+    auto* ventana = qobject_cast<QQuickWindow*>(engine->rootObjects().first());
+    QDir().mkpath(dirSerie);
+    if (ventana) {
+      auto* reloj = new QTimer(ventana);
+      auto* contador = new int(0);
+      QObject::connect(reloj, &QTimer::timeout, ventana, [=]() {
+        const QImage img = ventana->grabWindow();
+        img.save(QString("%1/f_%03d.png").arg(dirSerie).arg(*contador));
+        if (++(*contador) >= nSerie) QCoreApplication::exit(0);
+      });
+      reloj->start(cadaMs);
+    }
+  }
   const int codigo = app.exec();
   // Primero la interfaz, luego lo que usa (ver la declaración de "engine").
   // modoJuego guarda el rootContext() de este motor, pero solo lo toca desde

@@ -17,6 +17,11 @@ Rectangle {
     // un símbolo Unicode de texto a partir de ella.
     property string letraPalo: codigo.slice(-1)
     property bool propia: false
+    // Cara con degradado blanco -> gris claro (para las cartas pequeñas reveladas de los asientos, que
+    // se solapan). tonoCara 0 = la de atrás (un poco más gris), 1 = la de delante.
+    property bool degradadoCara: false
+    property int tonoCara: 1
+    readonly property bool conDegradado: degradadoCara && !bocaAbajo
     // Reverso de carta equipado (Fase 1 de "segunda ola de cosméticos",
     // 2026-09-17) -- "" = dorso programático de siempre (el bloque de
     // abajo), cualquier otro valor cambia el dorso por la imagen de ese
@@ -46,6 +51,32 @@ Rectangle {
     readonly property bool dorsoConImagen: bocaAbajo && reversoSkin !== ""
     color: dorsoConImagen ? "transparent" : (bocaAbajo ? Tema.colorTapete : "#efe6d3")
     radius: 6 * Tema.escala
+    // Base del degradado: sin dithering (se ve a bandas), pero siempre visible. Encima va la capa con
+    // dithering, que la cubre entera; si el shader no se dibuja (o falla), esto es lo que queda.
+    gradient: conDegradado ? gradienteBase : null
+    Gradient {
+        id: gradienteBase
+        GradientStop { position: 0.0; color: carta.tonoCara === 0 ? "#F4F5F7" : "#FFFFFF" }
+        GradientStop { position: 1.0; color: carta.tonoCara === 0 ? "#CDD1D8" : "#DEE1E6" }
+    }
+    // El mismo degradado con la capa de dithering de la app (assets/shaders/dither.frag): un degradado tan
+    // corto se ve a bandas en 8 bits. Va en un hijo DECLARADO ANTES que el texto y los palos (se pinta
+    // debajo de ellos), para que ninguno se renderice dentro de la capa.
+    Rectangle {
+        visible: carta.conDegradado
+        anchors.fill: parent
+        radius: carta.radius
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: carta.tonoCara === 0 ? "#F4F5F7" : "#FFFFFF" }
+            GradientStop { position: 1.0; color: carta.tonoCara === 0 ? "#CDD1D8" : "#DEE1E6" }
+        }
+        layer.enabled: carta.conDegradado
+        layer.effect: ShaderEffect {
+            property variant source
+            property real amplitud: 30.0
+            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+        }
+    }
     border.width: bocaAbajo && !dorsoConImagen ? 2 : 0
     border.color: Tema.colorAccent
     width: (propia ? 80 : 60) * Tema.escala // medidas quasi aleatorias, habra que ver lo que sea ideal

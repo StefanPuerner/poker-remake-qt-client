@@ -8,7 +8,8 @@ import QtQuick
 import PokerQuickMobile
 import QtQuick.Controls
 
-Row {
+// En columna, a todo el ancho que le den: vive en el cajón de la partida, que es estrecho.
+Column {
     id: panelVoto
     required property bool soyHost
     // Ver el comentario largo en PanelVoto.qml de qml/: aproximación local
@@ -20,6 +21,7 @@ Row {
 
     spacing: 8 * Tema.escala
     BotonRelleno {
+        width: panelVoto.width
         text: Idioma.t("boton_continuar_siguiente_mano")
         // Ya NO cierra el panel al pulsar -- ver el comentario largo en
         // PanelVoto.qml de qml/: quien instancie esto cierra su propio
@@ -28,6 +30,7 @@ Row {
         onClicked: redcliente.votar();
     }
     BotonContorno {
+        width: panelVoto.width
         text: Idioma.t("boton_abandonar_partida")
         colorBorde: Tema.colorPeligro
         onClicked: {
@@ -40,6 +43,7 @@ Row {
         }
     }
     BotonContorno {
+        width: panelVoto.width
         visible: soyHost
         text: Idioma.t("boton_guardar_salir")
         onClicked: {

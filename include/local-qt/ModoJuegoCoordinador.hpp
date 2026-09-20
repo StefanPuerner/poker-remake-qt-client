@@ -10,6 +10,7 @@
 
 #include "../net-qt/NetworkClient.hpp"
 #include "LocalGameClient.hpp"
+#include "LocalGameObserver.hpp"
 
 /**
  * @brief Une los dos clientes: el de red y el local. Dos responsabilidades,
@@ -100,6 +101,10 @@ class ModoJuegoCoordinador : public QObject {
     connect(clienteLocal_, &LocalGameClient::boteSinShowdownPendienteOfflineCambio, this,
             &ModoJuegoCoordinador::boteSinShowdownPendienteOfflineCambio);
   }
+
+  /// Pausas del motor LOCAL para las animaciones de la mesa (Ajustes > Animaciones). Global: vale
+  /// para la partida local que arranque a continuación, antes de que `redcliente` sea el cliente local.
+  Q_INVOKABLE void setPausasAnimacion(bool activas) { LocalGameObserver::setPausasActivas(activas); }
 
   Q_INVOKABLE void activarModoLocal() {
     contexto_->setContextProperty("redcliente", clienteLocal_);

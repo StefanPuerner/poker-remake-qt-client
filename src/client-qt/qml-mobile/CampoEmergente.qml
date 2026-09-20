@@ -131,6 +131,12 @@ Popup {
                 // intermedio que se puede desincronizar.
                 inputMethodHints: (campoEmergente.soloNumerico ? Qt.ImhDigitsOnly : Qt.ImhNone) | Qt.ImhNoPredictiveText
                 maximumLength: campoEmergente.maxLongitud
+                // El IME de Android puede dejar los últimos caracteres "en composición" (texto sin
+                // confirmar): el campo solo dibuja lo confirmado, y en una contraseña se veían 6-7
+                // puntos aunque se hubieran tecleado más de 10 (reportado 2026-09-20; el login sí
+                // funcionaba porque confirmar() los confirma al aceptar). Se confirma cada carácter
+                // en cuanto aparece en la composición.
+                onPreeditTextChanged: if (preeditText.length > 0) Qt.callLater(Qt.inputMethod.commit)
                 font.pixelSize: 20 * Tema.escala
                 color: Tema.colorTexto
                 background: null

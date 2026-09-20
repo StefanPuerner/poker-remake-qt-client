@@ -49,6 +49,8 @@
  */
 class LocalGameClient : public QObject {
   Q_OBJECT
+  // Paridad con NetworkClient: en local no hay plazo de voto (un solo humano, sin espera).
+  Q_PROPERTY(int plazoVotoMs READ plazoVotoMs CONSTANT)
   Q_PROPERTY(int manosDisputadasFinal READ manosDisputadasFinal NOTIFY estadisticasFinCambiaron)
   Q_PROPERTY(QString mejorManoFinal READ mejorManoFinal NOTIFY estadisticasFinCambiaron)
   Q_PROPERTY(QString mejorManoJugadorFinal READ mejorManoJugadorFinal NOTIFY estadisticasFinCambiaron)
@@ -104,6 +106,7 @@ class LocalGameClient : public QObject {
     if (hiloMotor_.joinable()) hiloMotor_.join();
   }
 
+  int plazoVotoMs() const { return 0; }
   int manosDisputadasFinal() const { return manosDisputadasFinal_; }
   QString mejorManoFinal() const { return mejorManoFinal_; }
   QString mejorManoJugadorFinal() const { return mejorManoJugadorFinal_; }
@@ -204,6 +207,10 @@ class LocalGameClient : public QObject {
 
   /// ¿Debe esta sesión acumular XP? Solo con cuenta cacheada -- de invitado
   /// no hay a quién acreditárselo. Lo fija QML en entrarSinConexion().
+  /// Pausas del motor para las animaciones de la mesa (reparto, revelado, runout...). Con las
+  /// animaciones desactivadas en Ajustes hay que apagarlas: el motor no tiene nada que esperar.
+  Q_INVOKABLE void setPausasAnimacion(bool activas) { LocalGameObserver::setPausasActivas(activas); }
+
   Q_INVOKABLE void setAcumularXpOffline(bool acumular) { acumularXpOffline_ = acumular; }
 
   /**
@@ -540,6 +547,11 @@ class LocalGameClient : public QObject {
     if (observador_) observador_->marcarRecompraPedida();
   }
 
+  /// Enseñar tu mano por decisión propia (te retiraste, o ganaste sin showdown).
+  Q_INVOKABLE void mostrarCartas() {
+    if (observador_) observador_->mostrarCartasOpcional();
+  }
+
   Q_INVOKABLE void votar() {
     if (observador_) observador_->recibirDecisionMenu(1);
   }
@@ -589,9 +601,16 @@ class LocalGameClient : public QObject {
   void misCartasRepartidas(QString c1, QString c2);
   void accionRealizada(QString jugador, QString accion);
   void fichasApostadas(QString jugador, int cantidad);
+  void jugadorAllIn(QString jugador, int cantidad, bool porCiega);
   void showdownIniciado(QString cartasCsv);
   void boteEvaluado(int numBote, int cantidad, QString jugadoresCsv);
   void cartasMostradas(QString jugador, QString cartasCsv, QString combo);
+  void ordenShowdown(QString jugadoresCsv);
+  void botonesAsignados(QString dealer, QString sb, QString bb);
+  void detalleBote(int numBote, QString aportesCsv);
+  void jugadoresEliminados(QString jugadoresCsv);
+  void puedesMostrar();
+  void manoRevelada(QString jugador, QString cartasCsv, QString combo, QString mejoresCsv, bool temprana);
   void boteGanado(QString jugador, int premio, int numBote, QString combo);
   void ganadorSinShowdown(QString jugador, int bote);
   void avisoRecompra(bool puedeRecomprar);
@@ -652,6 +671,15 @@ class LocalGameClient : public QObject {
   void logroReclamado(QString codigo);
   void logroReclamarError(QString mensaje);
   void solicitudAmistadRecibida(int fromAccountId, QString fromUsername);
+  // Paridad con NetworkClient: el QML escucha estas tres a través de "redcliente", que
+  // durante una partida local ES este objeto. Sin declararlas, QML avisaba
+  // ("Detected function ... but no signal of the target matches") en cada arranque de
+  // partida local. Nunca se emiten aquí: el progreso offline y la administración
+  // pasan por la conexión real.
+  void adminBorrarPruebaOk(QString mensaje);
+  void adminBorrarPruebaError(QString mensaje);
+  void progresoOfflineSincronizado(bool marcoBasicoOtorgado, QStringList logrosDesbloqueados,
+                                   int boteSinShowdownAcreditado, QString mensaje);
   void retoReclamado(QString codigoReto, int treboles);
   void retoReclamarError(QString mensaje);
   void reautenticacionSinRespuesta();
@@ -889,9 +917,16 @@ class LocalGameClient : public QObject {
             &LocalGameClient::misCartasRepartidas);
     connect(observador_, &LocalGameObserver::accionRealizada, this, &LocalGameClient::accionRealizada);
     connect(observador_, &LocalGameObserver::fichasApostadas, this, &LocalGameClient::fichasApostadas);
+    connect(observador_, &LocalGameObserver::jugadorAllIn, this, &LocalGameClient::jugadorAllIn);
     connect(observador_, &LocalGameObserver::showdownIniciado, this, &LocalGameClient::showdownIniciado);
     connect(observador_, &LocalGameObserver::boteEvaluado, this, &LocalGameClient::boteEvaluado);
     connect(observador_, &LocalGameObserver::cartasMostradas, this, &LocalGameClient::cartasMostradas);
+    connect(observador_, &LocalGameObserver::ordenShowdown, this, &LocalGameClient::ordenShowdown);
+    connect(observador_, &LocalGameObserver::botonesAsignados, this, &LocalGameClient::botonesAsignados);
+    connect(observador_, &LocalGameObserver::detalleBote, this, &LocalGameClient::detalleBote);
+    connect(observador_, &LocalGameObserver::jugadoresEliminados, this, &LocalGameClient::jugadoresEliminados);
+    connect(observador_, &LocalGameObserver::puedesMostrar, this, &LocalGameClient::puedesMostrar);
+    connect(observador_, &LocalGameObserver::manoRevelada, this, &LocalGameClient::manoRevelada);
     connect(observador_, &LocalGameObserver::boteGanado, this, &LocalGameClient::boteGanado);
     connect(observador_, &LocalGameObserver::ganadorSinShowdown, this,
             &LocalGameClient::ganadorSinShowdown);

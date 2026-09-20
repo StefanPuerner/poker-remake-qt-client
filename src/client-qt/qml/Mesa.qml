@@ -8,6 +8,8 @@ import QtQuick
 
 Item {
     id: mesa
+    // Temblor de la mesa en un all-in grande (ver temblar()).
+    transform: Translate { id: temblor; x: 0 }
     // jugadores: se le pasa el ListModel jugadoresPartida tal cual
     // (con roles nombre/saldo). cartasMesa: array de códigos ("QH", "2C"...).
     property var jugadores
@@ -104,7 +106,7 @@ Item {
     function centroAsiento(nombre) {
         var i = indiceDe(nombre);
         var it = i < 0 ? null : asientos.itemAt(i);
-        return it ? it.mapToItem(mesa, it.width / 2, mesa.altoAvatar / 2) : null;
+        return it ? it.asiento.centroAvatar(mesa) : null;
     }
 
     function centroBote() {
@@ -131,7 +133,9 @@ Item {
         var origen = centroAsiento(nombre);
         if (!origen) return;
         var destino = centroBote();
-        fichas.lanzar(origen.x, origen.y, destino.x, destino.y, fichasPara(cantidad), 0);
+        var n = fichasPara(cantidad);
+        if (fichas.lanzar(origen.x, origen.y, destino.x, destino.y, n, 0))
+            fichasLanzadas(n, cantidad, fichas.duracionVuelo, fichas.escalonado * (n - 1));
     }
 
     // Cobro: del bote a cada ganador. ganadores = [{nombre, premio}].
@@ -141,14 +145,471 @@ Item {
         for (var i = 0; i < ganadores.length; i++) {
             var destino = centroAsiento(ganadores[i].nombre);
             if (!destino) continue;
-            if (fichas.lanzar(origen.x, origen.y, destino.x, destino.y,
-                              fichasPara(ganadores[i].premio), 0))
+            var nf = fichasPara(ganadores[i].premio);
+            if (fichas.lanzar(origen.x, origen.y, destino.x, destino.y, nf, 0)) {
                 alguno = true;
+                cobroLanzado(nf, ganadores[i].premio, fichas.duracionVuelo, fichas.escalonado * (nf - 1));
+            }
         }
         if (alguno) {
             cobrando = true;
             boteVisible = 0;
         }
+    }
+
+    // ── Reparto: mazo, cartas voladoras y comunitarias que salen del mazo ─────
+    // Ver docs/plan-animaciones-partida.md (Fase A). Con "animar" a false (por
+    // defecto) nada de esto se ve: todo es instantáneo como siempre. Main.qml lo
+    // activa solo para eventos NUEVOS (no al entrar en una mano en curso ni al
+    // reconectar). "velocidad" existe para el banco de pruebas (0.25 = cámara lenta).
+    property bool animar: false
+    property real velocidad: 1.0
+    // Huecos de la mano propia: [{x, y, w, h}, {x, y, w, h}] en coordenadas de la
+    // mesa. En escritorio viven en la barra inferior de Main.qml, fuera de la mesa.
+    // Sin ellos (null), las cartas propias van a las mini-cartas de la propia silla.
+    property var slotsPropios: null
+    property bool repartiendo: false
+    // Tras recoger la mano las mini-cartas de los asientos ya no están (hasta el próximo reparto).
+    property bool sinCartas: false
+    // Quiénes recibieron cartas en el último reparto (los eliminados no). Vacío = no se sabe
+    // (entrada en una mano en curso): se ven las mini-cartas de todos los asientos con fichas.
+    property var conCartas: []
+    // Dealer y ciegas TAL COMO SE VEN: siguen a dealerNombre/sbNombre/bbNombre, pero cuando
+    // cambian con "animar" el marcador viaja de un asiento al otro (moverMarcador) y solo al
+    // aterrizar aparece en el asiento nuevo.
+    property string dealerMostrado: ""
+    property string sbMostrado: ""
+    property string bbMostrado: ""
+    Component.onCompleted: {
+        dealerMostrado = dealerNombre;
+        sbMostrado = sbNombre;
+        bbMostrado = bbNombre;
+    }
+    onDealerNombreChanged: moverMarcador("D", dealerNombre)
+    onSbNombreChanged: moverMarcador("SB", sbNombre)
+    onBbNombreChanged: moverMarcador("BB", bbNombre)
+    property var repartidas: ({})      // nombre -> cartas ya aterrizadas
+    property int longitudPrevia: 0     // cartasMesa.length ANTES del último cambio
+
+    // Duración base del reparto de una mano y de cada vuelo, en ms a velocidad 1.
+    readonly property int duracionReparto: 900
+    readonly property int vueloCartaReparto: 320
+    readonly property int vueloComunitaria: 300
+    readonly property int escalonComunitarias: 110
+
+    // Para los sonidos (Main.qml / banco): qué va a pasar y cuándo.
+    signal repartoIniciado(int cartas, int duracionMs)
+    signal repartoTerminado()
+    signal cartaPropiaAterrizada(int indice)
+    signal comunitariasRepartidas(int cuantas, int inicioMs, int duracionMs)
+    signal fichasLanzadas(int fichas, int cantidad, int inicioMs, int duracionMs)
+    signal cartasRecogidas(int cartas, int duracionMs)
+    signal cobroLanzado(int fichas, int cantidad, int inicioMs, int duracionMs)
+
+    function ms(base) { return base / Math.max(0.05, mesa.velocidad); }
+
+    onCartasMesaChanged: {
+        var nuevas = cartasMesa.length - longitudPrevia;
+        if (animar && nuevas > 0 && cartasMesa.length <= 5) {
+            mostrarPilaDealer(ms(vueloComunitaria + escalonComunitarias * nuevas) + 200);
+            comunitariasRepartidas(nuevas, Math.round(ms(vueloComunitaria)),
+                                   Math.round(ms(escalonComunitarias) * (nuevas - 1)));
+        }
+        // Los huecos leen longitudPrevia al recibir su carta nueva (en este mismo
+        // cambio), así que se actualiza DESPUÉS.
+        Qt.callLater(function() { mesa.longitudPrevia = mesa.cartasMesa.length; });
+    }
+
+    // De dónde salen las cartas: false = del mazo (junto a las comunitarias, escritorio);
+    // true = del dealer (móvil, donde no cabe el mazo: las 5 comunitarias llenan la mesa).
+    // Con true, junto al avatar del dealer aparece un mini-mazo solo mientras reparte.
+    property bool origenEnDealer: false
+
+    function centroMazo() {
+        return mazo.mapToItem(mesa, mazo.width / 2, mazo.height / 2);
+    }
+    function centroOrigen() {
+        if (mesa.origenEnDealer) {
+            var p = centroAsiento(mesa.dealerMostrado !== "" ? mesa.dealerMostrado : mesa.dealerNombre);
+            if (p) return { x: p.x + 38 * Tema.escala, y: p.y + 6 * Tema.escala };
+        }
+        return centroMazo();
+    }
+    function mostrarPilaDealer(msVisible) {
+        if (!mesa.origenEnDealer) return;
+        var o = centroOrigen();
+        pilaDealer.x = o.x - pilaDealer.width / 2;
+        pilaDealer.y = o.y - pilaDealer.height / 2;
+        animPila.msVisible = msVisible;
+        animPila.restart();
+    }
+
+    // ── Fase B (avisos): retirarse, all-in, ganar/perder, eliminado ───────────
+    // Ver docs/plan-animaciones-partida.md. Las funciones dibujan y emiten la señal
+    // para que quien las llame pida el sonido (mismo esquema que el reparto).
+    property var allIns: []        // nombres marcados con el aro ALL-IN (esta mano)
+    property var eliminados: []    // nombres apagados (sin fichas)
+    signal foldLanzado(string nombre)
+    signal allInAnunciado(string nombre, int cantidad, bool grande)
+    signal ganadorAnunciado(string nombre, bool esPropio, int premio, bool participo)
+    signal eliminadoAnunciado(string nombre, bool esPropio)
+
+    function fijarMarcador(tipo, nombre) {
+        if (tipo === "D") dealerMostrado = nombre;
+        else if (tipo === "SB") sbMostrado = nombre;
+        else bbMostrado = nombre;
+    }
+    // El marcador de dealer/ciega VIAJA del asiento viejo al nuevo (con un pequeño salto), en
+    // vez de aparecer sin más. Mientras vuela, ningún asiento lo muestra.
+    function moverMarcador(tipo, nuevo) {
+        var viejo = tipo === "D" ? dealerMostrado : tipo === "SB" ? sbMostrado : bbMostrado;
+        var iv = indiceDe(viejo), inu = indiceDe(nuevo);
+        var itv = iv < 0 ? null : asientos.itemAt(iv);
+        var itn = inu < 0 ? null : asientos.itemAt(inu);
+        if (!animar || viejo === nuevo || !itv || !itn) {
+            fijarMarcador(tipo, nuevo);
+            return;
+        }
+        var o = itv.asiento.centroMarcador(tipo, mesa);
+        var d = itn.asiento.centroMarcador(tipo, mesa);
+        fijarMarcador(tipo, "");
+        var m = moldeMarcador.createObject(mesa, { tipo: tipo, x0: o.x, y0: o.y, x1: d.x, y1: d.y,
+                                                    duracion: ms(700) });
+        m.aterrizo.connect(function() { mesa.fijarMarcador(tipo, nuevo); });
+    }
+    Component {
+        id: moldeMarcador
+        Item {
+            id: mv
+            property string tipo: "D"
+            property real x0: 0
+            property real y0: 0
+            property real x1: 0
+            property real y1: 0
+            property real duracion: 700
+            property real progreso: 0
+            signal aterrizo()
+            z: 14
+            enabled: false
+            readonly property real arco: Math.min(50 * Tema.escala, Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) * 0.18)
+            width: tipo === "D" ? 20 * Tema.escala : textoMv.implicitWidth + 8 * Tema.escala
+            height: tipo === "D" ? 20 * Tema.escala : 18 * Tema.escala
+            x: x0 + (x1 - x0) * progreso - width / 2
+            y: y0 + (y1 - y0) * progreso - Math.sin(Math.PI * progreso) * arco - height / 2
+            scale: 1 + 0.45 * Math.sin(Math.PI * progreso)
+            NumberAnimation on progreso {
+                from: 0
+                to: 1
+                duration: mv.duracion
+                easing.type: Easing.InOutCubic
+                running: true
+                onFinished: { mv.aterrizo(); mv.destroy(); }
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: mv.tipo === "D" ? width / 2 : height / 2
+                color: mv.tipo === "D" ? Tema.colorAccent : Tema.colorPanel
+                border.width: mv.tipo === "D" ? 1.5 : 1
+                border.color: mv.tipo === "D" ? Tema.colorFondo : Tema.colorBorde
+                Text {
+                    id: textoMv
+                    anchors.centerIn: parent
+                    text: mv.tipo
+                    font.bold: true
+                    font.pixelSize: (mv.tipo === "D" ? 11 : 9) * Tema.escala
+                    font.family: Tema.fuenteElegante
+                    color: mv.tipo === "D" ? Tema.colorFondo : Tema.colorAccent
+                }
+            }
+        }
+    }
+
+    // Las dos cartas del asiento vuelan al mazo (o al dealer) y desaparecen.
+    function retirarse(nombre) {
+        var i = indiceDe(nombre);
+        var it = i < 0 ? null : asientos.itemAt(i);
+        if (!it) return;
+        var destino = centroOrigen();
+        var tam = cartaComunTam();
+        var propio = nombre === miNombreJugador && slotsPropios;
+        for (var k = 0; k < 2; k++) {
+            var slot = propio ? slotsPropios[k] : null;
+            var o = slot ? { x: slot.x + slot.w / 2, y: slot.y + slot.h / 2 }
+                         : it.asiento.centroMiniCarta(k, mesa);
+            var w0 = slot ? slot.w : it.asiento.anchoMiniCarta;
+            var h0 = slot ? slot.h : it.asiento.altoMiniCarta;
+            var g0 = slot ? 0 : (k - 0.5) * it.asiento.giroMiniCarta;
+            cartasReparto.lanzar(o.x, o.y, destino.x, destino.y, w0, h0, tam.w * 0.7, tam.h * 0.7,
+                                 -g0 + 90 * (k - 0.5), k * ms(60), ms(300), reversoActivo(),
+                                 "fold:" + nombre, k);
+        }
+        foldLanzado(nombre);
+    }
+
+    function marcarAllIn(nombre) {
+        if (mesa.allIns.indexOf(nombre) >= 0) return;
+        mesa.allIns = mesa.allIns.concat([nombre]);
+    }
+    function temblar() { animTemblor.restart(); }
+
+    // Cinta no bloqueante: entra deslizando, se queda un momento y se apaga. Sale POR ENCIMA de las
+    // comunitarias (no sobre tu asiento). Sus colores salen del tema: rojo con filo dorado para el
+    // all-in, dorado para ganar, sobria para perder y rojo oscuro para eliminado.
+    // tipo: "allin" | "ganar" | "perder" | "eliminado".
+    function mostrarBanda(texto, tipo) {
+        var acento = Tema.colorAccent;
+        if (tipo === "allin") {
+            banda.colorBase = Tema.colorPeligro;
+            banda.colorFilo = acento;
+            banda.colorHilo = Qt.lighter(acento, 1.35);
+        } else if (tipo === "ganar") {
+            banda.colorBase = acento;
+            banda.colorFilo = Qt.darker(acento, 1.7);
+            banda.colorHilo = Qt.lighter(acento, 1.6);
+        } else if (tipo === "eliminado") {
+            banda.colorBase = Qt.darker(Tema.colorPeligro, 1.7);
+            banda.colorFilo = acento;
+            banda.colorHilo = Qt.darker(acento, 1.25);
+        } else {
+            banda.colorBase = Tema.colorPanel;
+            banda.colorFilo = Tema.colorBorde;
+            banda.colorHilo = Tema.colorTextoTenue;
+        }
+        banda.texto = texto;
+        // Cuánto se queda a la vista: quién gana (o pierde) se tiene que poder leer aunque te despistes.
+        banda.retencionMs = (tipo === "ganar" || tipo === "perder") ? 4500 : tipo === "eliminado" ? 2600 : 1800;
+        // Justo encima de la fila de comunitarias (o lo más arriba posible sin salirse de la mesa).
+        var yCartas = filaComunitarias.mapToItem(mesa, 0, 0).y;
+        banda.y = Math.max(4 * Tema.escala, yCartas - banda.height - 6 * Tema.escala);
+        animBanda.restart();
+    }
+
+    // Un all-in: fichas al bote (todas las que da la escala), aro pulsante en el
+    // asiento, banda y, si es grande (>= la mitad del bote o de la pila media), temblor.
+    function anunciarAllIn(nombre, cantidad) {
+        lanzarFichas(nombre, cantidad);
+        avisarAllIn(nombre, cantidad, true);
+    }
+    // El aviso solo (aro, banda, temblor si es grande, señal para el sonido): en la partida real
+    // las fichas ya salieron con la ACCION, y una ciega que deja a cero solo marca el aro
+    // ("conBanda" false: no se anuncia un all-in que nadie ha elegido).
+    function avisarAllIn(nombre, cantidad, conBanda) {
+        var pila = fichasReferencia();
+        var grande = cantidad >= 0.5 * Math.max(mesa.bote, pila);
+        marcarAllIn(nombre);
+        if (!conBanda) return;
+        mostrarBanda(Idioma.tf("banda_allin", [nombre]), "allin");
+        if (grande) temblar();
+        allInAnunciado(nombre, cantidad, grande);
+    }
+    function fichasReferencia() {
+        var suma = 0;
+        var n = mesa.jugadores.count;
+        for (var i = 0; i < n; i++) {
+            var j = mesa.jugadores.get(i);
+            suma += (parseInt(j.saldo) || 0) + (parseInt(j.apuesta) || 0);
+        }
+        return n > 0 ? suma / n : 0;
+    }
+    // Fin de mano: el ganador cobra. "participo" = el jugador propio seguía en la mano
+    // (para decidir entre sonido de ganar y de perder).
+    function anunciarGanador(nombre, premio, participo, combo) {
+        var esPropio = nombre === mesa.miNombreJugador;
+        cobrarBote([{ nombre: nombre, premio: premio }]);
+        var extra = combo ? "   ·   " + combo : "";
+        mostrarBanda((esPropio ? Idioma.tf("banda_ganas", [premio]) : Idioma.tf("banda_gana_otro", [nombre, premio])) + extra,
+                     esPropio ? "ganar" : "perder");
+        ganadorAnunciado(nombre, esPropio, premio, participo);
+    }
+    // ── Showdown sobre la misma mesa ─────────────────────────────────────────────
+    // muestras: nombre -> {cartas: [c1, c2], combo: "Pareja", ganador: bool}. Quien está
+    // aquí enseña su mano (avatar mínimo + cartas grandes + combinación). "mejoresGanadora"
+    // son los códigos de las 5 cartas de la mano ganadora: en la mesa y en los asientos se
+    // resaltan y el resto se atenúa.
+    property var muestras: ({})
+    property var mejoresGanadora: []
+    // Botes del showdown, para las etiquetas compactas: [{numBote, cantidad,
+    // participantes: [{nombre, aporte}], ganador, premio}]. Al pulsar una se ven los detalles.
+    property var botesShowdown: []
+    property int botePulsado: -1
+
+    // Fase 1 del showdown (a la vez para todos los que muestran por obligación): el avatar se
+    // encoge y las cartas crecen, aún boca abajo.
+    function prepararShowdown(nombres) {
+        var m = Object.assign({}, mesa.muestras);
+        for (var i = 0; i < nombres.length; i++)
+            if (!m[nombres[i]]) m[nombres[i]] = { cartas: [], combo: "", ganador: false, revelada: false };
+        mesa.muestras = m;
+    }
+    // Fase 2: se revelan de uno en uno, en orden de apuesta (lo decide quien llama).
+    function revelarMano(nombre, cartas, combo) {
+        var m = Object.assign({}, mesa.muestras);
+        m[nombre] = Object.assign({ ganador: false }, m[nombre] || {}, { cartas: cartas, combo: combo || "", revelada: true });
+        mesa.muestras = m;
+    }
+    // Actualiza solo los nombres de combinación (p. ej. al salir el río en un runout).
+    function actualizarCombos(combos) {
+        var m = Object.assign({}, mesa.muestras);
+        for (var k in combos) if (m[k]) m[k] = Object.assign({}, m[k], { combo: combos[k] });
+        mesa.muestras = m;
+    }
+    // Quien enseña por decisión propia (retirado, ganador sin showdown): no influye en el
+    // resultado, así que se prepara y se revela sin esperar al orden del showdown.
+    function mostrarManos(lista) {
+        var m = Object.assign({}, mesa.muestras);
+        for (var i = 0; i < lista.length; i++) {
+            var e = lista[i];
+            m[e.nombre] = { cartas: e.cartas, combo: e.combo || "", ganador: !!e.ganador, revelada: true };
+        }
+        mesa.muestras = m;
+    }
+    function marcarGanador(nombre, mejores) {
+        var m = Object.assign({}, mesa.muestras);
+        for (var k in m) m[k] = Object.assign({}, m[k], { ganador: k === nombre });
+        mesa.muestras = m;
+        mesa.mejoresGanadora = mejores || [];
+    }
+    // Limpia el showdown y el estado de la mano SIN animar (mano nueva con las animaciones apagadas,
+    // o tras reconectar/resincronizar): los asientos vuelven a su aspecto normal de golpe.
+    function reiniciarSinAnimar() {
+        mesa.muestras = ({});
+        mesa.mejoresGanadora = [];
+        mesa.botesShowdown = [];
+        mesa.botePulsado = -1;
+        mesa.allIns = [];
+        mesa.sinCartas = false;
+        mesa.conCartas = [];
+        mesa.repartiendo = false;
+        mesa.repartidas = ({});
+        for (var h = 0; h < 5; h++) { var hc = huecosComunitarias.itemAt(h); if (hc) hc.vaciado = false; }
+    }
+
+    // Fin de mano: TODAS las cartas de los asientos (reveladas o no, y las propias) vuelven al
+    // dealer (o al mazo) y los asientos vuelven a la normalidad. Las comunitarias se voltean y
+    // vuelven solas cuando cartasMesa se vacía (ver los huecos). Después Main.qml/el banco rota los
+    // marcadores (dealerNombre/sbNombre/bbNombre) y empieza la mano siguiente.
+    function recogerCartas() {
+        var destino = centroOrigen();
+        var tam = cartaComunTam();
+        var hubo = false;
+        for (var i = 0; i < mesa.jugadores.count; i++) {
+            var nombre = mesa.jugadores.get(i).nombre;
+            var it = asientos.itemAt(i);
+            if (!it) continue;
+            var propio = nombre === miNombreJugador;
+            var conMiniCartas = !propio && retirados.indexOf(nombre) < 0 && eliminados.indexOf(nombre) < 0;
+            var conSlots = propio && slotsPropios;
+            if (!mesa.muestras[nombre] && !conMiniCartas && !conSlots) continue;
+            for (var k = 0; k < 2; k++) {
+                var slot = conSlots && !mesa.muestras[nombre] ? slotsPropios[k] : null;
+                var o = slot ? { x: slot.x + slot.w / 2, y: slot.y + slot.h / 2 }
+                             : it.asiento.centroMiniCarta(k, mesa);
+                var w0 = slot ? slot.w : it.asiento.anchoMiniCarta;
+                var h0 = slot ? slot.h : it.asiento.altoMiniCarta;
+                cartasReparto.lanzar(o.x, o.y, destino.x, destino.y, w0, h0, tam.w * 0.7, tam.h * 0.7,
+                                     90 * (k - 0.5), k * ms(50), ms(340), reversoActivo(),
+                                     "recoge:" + nombre, k);
+                hubo = true;
+            }
+        }
+        mesa.muestras = ({});
+        mesa.mejoresGanadora = [];
+        mesa.botesShowdown = [];
+        mesa.botePulsado = -1;
+        mesa.sinCartas = true;
+        // Para el sonido: las de los asientos vuelan ya y las comunitarias (que primero se voltean)
+        // un poco después; un solo evento que abarca las dos.
+        var comunes = 0;
+        for (var h = 0; h < 5; h++) { var hc = huecosComunitarias.itemAt(h); if (hc && hc.mostrado !== "") comunes++; }
+        var total = (hubo ? 2 * Math.max(1, Math.round(mesa.jugadores.count / 2)) : 0) + comunes;
+        if (hubo || comunes > 0) cartasRecogidas(Math.max(1, total), Math.round(ms(760)));
+        return hubo;
+    }
+
+    function anunciarEliminado(nombre) {
+        if (mesa.eliminados.indexOf(nombre) < 0) mesa.eliminados = mesa.eliminados.concat([nombre]);
+        mostrarBanda(Idioma.tf("banda_eliminado", [nombre]), "eliminado");
+        eliminadoAnunciado(nombre, nombre === mesa.miNombreJugador);
+    }
+
+    // Reparte la mano: "orden" son los nombres en el orden real (empezando por la
+    // ciega pequeña), dos vueltas. Las mini-cartas de cada asiento se destapan según
+    // aterriza cada carta voladora.
+    function repartirMano(orden) {
+        if (repartiendo) return false;
+        // Sin reparto animado (no se sabe quién juega, o no hay animación), los asientos NO pueden
+        // quedarse sin mini-cartas (sinCartas lo deja la recogida de la mano anterior): se ven todas.
+        if (!animar || orden.length === 0) {
+            sinCartas = false;
+            conCartas = [];
+            return false;
+        }
+        var total = orden.length * 2;
+        var duracion = ms(duracionReparto);
+        var vuelo = ms(vueloCartaReparto);
+        var paso = total > 1 ? Math.max(0, (duracion - vuelo) / (total - 1)) : 0;
+        var origen = centroOrigen();
+        var tamComun = cartaComunTam();
+        mostrarPilaDealer(duracion + vuelo);
+        repartidas = ({});
+        allIns = [];
+        sinCartas = false;
+        conCartas = orden.slice();
+        for (var h = 0; h < 5; h++) { var hc = huecosComunitarias.itemAt(h); if (hc) hc.vaciado = true; }
+        repartiendo = true;
+        var lanzadas = 0;
+        for (var ronda = 0; ronda < 2; ronda++) {
+            for (var k = 0; k < orden.length; k++) {
+                var nombre = orden[k];
+                var i = indiceDe(nombre);
+                var it = i < 0 ? null : asientos.itemAt(i);
+                if (!it) continue;
+                var slot = nombre === miNombreJugador && slotsPropios ? slotsPropios[ronda] : null;
+                var propio = slot !== null;
+                var destino = propio
+                    ? { x: slot.x + slot.w / 2, y: slot.y + slot.h / 2 }
+                    : it.asiento.centroMiniCarta(ronda, mesa);
+                var w1 = propio ? slot.w : it.asiento.anchoMiniCarta;
+                var h1 = propio ? slot.h : it.asiento.altoMiniCarta;
+                var giro = propio ? 0 : (ronda - 0.5) * it.asiento.giroMiniCarta;
+                if (cartasReparto.lanzar(origen.x, origen.y, destino.x, destino.y,
+                                         tamComun.w, tamComun.h, w1, h1, giro,
+                                         (ronda * orden.length + k) * paso, vuelo,
+                                         reversoActivo(), nombre, ronda))
+                    lanzadas++;
+            }
+        }
+        if (lanzadas === 0) {
+            repartiendo = false;
+            sinCartas = false;
+            conCartas = [];
+            return false;
+        }
+        repartoIniciado(lanzadas, Math.round(duracion));
+        // Red de seguridad: si por lo que sea alguna carta no aterriza, los asientos
+        // NO se quedan sin mini-cartas.
+        seguridadReparto.interval = Math.round(duracion + vuelo + 1200);
+        seguridadReparto.restart();
+        return true;
+    }
+
+    // Tamaño de una carta comunitaria (el de Carta.qml por defecto): una Carta
+    // invisible que sirve de medida, para que el mazo y las voladoras midan igual.
+    Carta { id: medidaCarta; visible: false }
+    function huecoAt(i) { return huecosComunitarias.itemAt(i); }
+    function cartaComunTam() {
+        return { w: medidaCarta.width, h: medidaCarta.height };
+    }
+
+    function terminarReparto() {
+        seguridadReparto.stop();
+        repartiendo = false;
+        repartoTerminado();
+    }
+
+    Timer {
+        id: seguridadReparto
+        onTriggered: if (mesa.repartiendo) mesa.terminarReparto()
     }
 
     // Doble borde: un segundo anillo, más grande y sin relleno, alrededor
@@ -176,8 +637,34 @@ Item {
     Column {
         anchors.centerIn: parent
         spacing: 10 * Tema.escala
-        Row {
+        Item {
             anchors.horizontalCenter: parent.horizontalCenter
+            width: filaComunitarias.width
+            height: filaComunitarias.height
+            // El mazo: siempre a la vista, a la izquierda de las comunitarias. De él
+            // salen las cartas del reparto y las del flop/turn/river.
+            Item {
+                id: mazo
+                visible: !mesa.origenEnDealer
+                anchors.right: filaComunitarias.left
+                anchors.rightMargin: 30 * Tema.escala
+                anchors.verticalCenter: filaComunitarias.verticalCenter
+                width: medidaCarta.width
+                height: medidaCarta.height
+                Repeater {
+                    model: 3
+                    delegate: Carta {
+                        required property int index
+                        width: mazo.width
+                        height: mazo.height
+                        x: index * 1.5 * Tema.escala
+                        y: -index * 1.5 * Tema.escala
+                        reversoSkin: mesa.reversoActivo()
+                    }
+                }
+            }
+        Row {
+            id: filaComunitarias
             spacing: 6 * Tema.escala
             // Siempre 5 posiciones desde el preflop, no solo cuando ya
             // hay cartas reveladas — las que faltan se ven boca abajo
@@ -188,26 +675,97 @@ Item {
             // terminan de girar, escalonadas. Cualquier otro cambio (sale el
             // flop, etc.) es instantáneo, como siempre.
             Repeater {
+                id: huecosComunitarias
                 model: 5
                 delegate: Item {
                     id: hueco
                     required property int index
                     readonly property string objetivo: index < mesa.cartasMesa.length ? mesa.cartasMesa[index] : ""
                     property string mostrado: ""
+                    // La carta ya volvió al dealer/mazo: el hueco queda como un sitio vacío.
+                    property bool vaciado: false
+                    // El halo de una ganadora no debe quedar tapado por la carta vecina.
+                    z: enGanadora ? 1 : 0
                     width: cartaHueco.width
                     height: cartaHueco.height
                     Component.onCompleted: mostrado = objetivo
                     onObjetivoChanged: {
                         if (objetivo === "" && mostrado !== "") {
+                            llegada.stop();
+                            volar.visible = false;
                             volteo.restart();
-                        } else {
+                        } else if (objetivo !== "" && mostrado === "" && mesa.animar) {
+                            // Carta nueva: sale del origen, aterriza boca abajo y se voltea. El hueco
+                            // sigue vacío (contorno) mientras la carta vuela: se rellena al aterrizar.
                             volteo.stop();
                             giro.angle = 0;
+                            llegada.restart();
+                        } else {
+                            llegada.stop();
+                            volar.visible = false;
+                            volteo.stop();
+                            giro.angle = 0;
+                            if (objetivo !== "") vaciado = false;
                             mostrado = objetivo;
                         }
                     }
+                    // Carta boca abajo que viaja del mazo a este hueco (hija del hueco:
+                    // puede dibujarse fuera de él).
+                    Carta {
+                        id: volar
+                        visible: false
+                        z: 5
+                        width: cartaHueco.width
+                        height: cartaHueco.height
+                        reversoSkin: mesa.reversoActivo()
+                    }
+                    SequentialAnimation {
+                        id: llegada
+                        // Orden dentro del reparto de esta calle: 0 para la primera nueva.
+                        PauseAnimation { duration: Math.max(0, hueco.index - mesa.longitudPrevia) * mesa.ms(mesa.escalonComunitarias) }
+                        ScriptAction {
+                            script: {
+                                var o = mesa.centroOrigen();
+                                var p = hueco.mapFromItem(mesa, o.x, o.y);
+                                volar.x = p.x - volar.width / 2;
+                                volar.y = p.y - volar.height / 2;
+                                volar.rotation = -14;
+                                volar.visible = true;
+                            }
+                        }
+                        ParallelAnimation {
+                            NumberAnimation { target: volar; property: "x"; to: 0; duration: mesa.ms(mesa.vueloComunitaria); easing.type: Easing.OutCubic }
+                            NumberAnimation { target: volar; property: "y"; to: 0; duration: mesa.ms(mesa.vueloComunitaria); easing.type: Easing.OutCubic }
+                            NumberAnimation { target: volar; property: "rotation"; to: 0; duration: mesa.ms(mesa.vueloComunitaria); easing.type: Easing.OutCubic }
+                        }
+                        ScriptAction { script: { volar.visible = false; hueco.vaciado = false; } }
+                        // Se voltea para enseñar la cara.
+                        NumberAnimation { target: giro; property: "angle"; to: 90; duration: mesa.ms(110); easing.type: Easing.InQuad }
+                        ScriptAction { script: hueco.mostrado = hueco.objetivo }
+                        NumberAnimation { target: giro; property: "angle"; to: 0; duration: mesa.ms(110); easing.type: Easing.OutQuad }
+                    }
+                    readonly property bool enGanadora: hueco.mostrado !== "" && mesa.mejoresGanadora.indexOf(hueco.mostrado) >= 0
+                    // Sitio vacío (la carta volvió al origen): solo un contorno suave.
+                    Rectangle {
+                        anchors.fill: cartaHueco
+                        radius: cartaHueco.radius
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.16)
+                        visible: hueco.vaciado
+                    }
+                    function volverAlOrigen() {
+                        if (!mesa.animar) return;
+                        var c = hueco.mapToItem(mesa, hueco.width / 2, hueco.height / 2);
+                        var o = mesa.centroOrigen();
+                        var t = mesa.cartaComunTam();
+                        cartasReparto.lanzar(c.x, c.y, o.x, o.y, t.w, t.h, t.w * 0.7, t.h * 0.7, 0,
+                                             0, mesa.ms(340), mesa.reversoActivo(), "mesa:" + hueco.index, hueco.index);
+                        hueco.vaciado = true;
+                    }
                     Carta {
                         id: cartaHueco
+                        visible: !hueco.vaciado
                         codigo: hueco.mostrado
                         reversoSkin: mesa.reversoActivo()
                         transform: Rotation {
@@ -218,12 +776,62 @@ Item {
                             angle: 0
                         }
                     }
+                    // Carta de la mano ganadora: filo dorado + halo que late (BrilloCarta.qml).
+                    BrilloCarta {
+                        anchors.fill: cartaHueco
+                        radio: cartaHueco.radius
+                        visible: hueco.enGanadora
+                        animando: mesa.animar
+                        velocidad: mesa.velocidad
+                    }
                     SequentialAnimation {
                         id: volteo
                         PauseAnimation { duration: hueco.index * 70 }
                         NumberAnimation { target: giro; property: "angle"; to: 90; duration: 130; easing.type: Easing.InQuad }
                         ScriptAction { script: hueco.mostrado = "" }
                         NumberAnimation { target: giro; property: "angle"; to: 0; duration: 130; easing.type: Easing.OutQuad }
+                        // Ya boca abajo: la carta vuelve al dealer (o al mazo).
+                        ScriptAction { script: hueco.volverAlOrigen() }
+                    }
+                }
+            }
+        }
+        }
+        // Botes del showdown (principal y side pots): etiquetas compactas. No se muestran
+        // siempre para no gastar espacio: al pulsar una salen sus detalles (quién entró,
+        // cuánto puso y quién ganó).
+        Row {
+            id: filaEtiquetasBotes
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 6 * Tema.escala
+            visible: mesa.botesShowdown.length > 1
+            height: visible ? implicitHeight : 0
+            Repeater {
+                model: mesa.botesShowdown
+                delegate: Rectangle {
+                    id: etiquetaBote
+                    required property var modelData
+                    required property int index
+                    width: textoEtiqueta.implicitWidth + 14 * Tema.escala
+                    height: 22 * Tema.escala
+                    radius: height / 2
+                    color: mesa.botePulsado === index ? Tema.colorAccent : Tema.colorPanel
+                    border.width: 1
+                    border.color: Tema.colorAccent
+                    Text {
+                        id: textoEtiqueta
+                        anchors.centerIn: parent
+                        text: etiquetaBote.modelData.numBote === 0
+                              ? Idioma.tf("bote_etiqueta_principal", [etiquetaBote.modelData.cantidad])
+                              : Idioma.tf("bote_etiqueta_side", [etiquetaBote.modelData.numBote, etiquetaBote.modelData.cantidad])
+                        color: mesa.botePulsado === etiquetaBote.index ? Tema.colorFondo : Tema.colorAccent
+                        font.pixelSize: 11 * Tema.escala
+                        font.bold: true
+                        font.family: Tema.fuenteElegante
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: mesa.botePulsado = mesa.botePulsado === etiquetaBote.index ? -1 : etiquetaBote.index
                     }
                 }
             }
@@ -296,6 +904,8 @@ Item {
             y: mesa.height / 2 + (mesa.height / 2 - 40) * Math.sin(angulo) - height / 2
             width: asientoReal.width
             height: asientoReal.height
+            property alias asiento: asientoReal
+            readonly property var muestra: mesa.muestras[nombre] !== undefined ? mesa.muestras[nombre] : null
 
             Asiento {
                 id: asientoReal
@@ -319,20 +929,235 @@ Item {
                 // asiento activo anima su cuenta atrás real.
                 fraccionTiempo: posicionador.nombre === mesa.turnoNombre ? mesa.fraccionTiempo : 1.0
                 retirado: mesa.retirados.indexOf(posicionador.nombre) !== -1
-                esDealer: posicionador.nombre === mesa.dealerNombre
-                esSb: posicionador.nombre === mesa.sbNombre
-                esBb: posicionador.nombre === mesa.bbNombre
+                esDealer: posicionador.nombre === mesa.dealerMostrado
+                esSb: posicionador.nombre === mesa.sbMostrado
+                esBb: posicionador.nombre === mesa.bbMostrado
                 esPropio: posicionador.nombre === mesa.miNombreJugador
                 reversoActivo: mesa.reversoActivo()
+                muestra: posicionador.muestra
+                allIn: mesa.allIns.indexOf(posicionador.nombre) >= 0
+                eliminado: mesa.eliminados.indexOf(posicionador.nombre) >= 0
+                animando: mesa.animar
+                resaltadas: mesa.mejoresGanadora
+                velocidad: mesa.velocidad
+                cartasVisibles: mesa.repartiendo ? (mesa.repartidas[posicionador.nombre] || 0)
+                                : (mesa.sinCartas || mesa.eliminados.indexOf(posicionador.nombre) >= 0 ? 0
+                                   : (mesa.conCartas.length === 0 || mesa.conCartas.indexOf(posicionador.nombre) >= 0 ? 2 : 0))
             }
         }
     }
 
     // Fichas en vuelo: la última hija, por encima de los asientos.
+    // ── Capa de avisos (Fase B): mini-mazo del dealer, aros de all-in, eliminados y banda.
+    // Ninguna acepta ratón ni tapa los botones; z entre los asientos y las cartas/fichas
+    // en vuelo.
+    Item {
+        id: pilaDealer
+        z: 9
+        enabled: false
+        opacity: 0
+        visible: opacity > 0
+        width: medidaCarta.width * 0.62
+        height: medidaCarta.height * 0.62
+        Repeater {
+            model: 3
+            delegate: Carta {
+                required property int index
+                width: pilaDealer.width
+                height: pilaDealer.height
+                x: index * 1.5 * Tema.escala
+                y: -index * 1.5 * Tema.escala
+                reversoSkin: mesa.reversoActivo()
+            }
+        }
+        SequentialAnimation {
+            id: animPila
+            property real msVisible: 800
+            NumberAnimation { target: pilaDealer; property: "opacity"; to: 1; duration: mesa.ms(120) }
+            PauseAnimation { duration: animPila.msVisible }
+            NumberAnimation { target: pilaDealer; property: "opacity"; to: 0; duration: mesa.ms(220) }
+        }
+    }
+
+    // Detalle del bote pulsado: participantes, lo que puso cada uno y el ganador.
+    Rectangle {
+        id: detalleBote
+        readonly property var bote: mesa.botePulsado >= 0 && mesa.botePulsado < mesa.botesShowdown.length
+                                    ? mesa.botesShowdown[mesa.botePulsado] : null
+        visible: bote !== null
+        z: 16
+        width: 250 * Tema.escala
+        height: contenidoDetalle.implicitHeight + 20 * Tema.escala
+        radius: 8 * Tema.escala
+        color: Tema.colorPanel
+        border.width: 1
+        border.color: Tema.colorAccent
+        // Centrado en la mesa (no bajo las etiquetas): así nunca se sale por el borde inferior. Si
+        // alguna vez fuera más alto que la mesa, se ancla arriba para no perder el título.
+        x: Math.max(4, (mesa.width - width) / 2)
+        y: Math.max(4 * Tema.escala, (mesa.height - height) / 2)
+        Column {
+            id: contenidoDetalle
+            anchors.centerIn: parent
+            width: parent.width - 20 * Tema.escala
+            spacing: 4 * Tema.escala
+            Text {
+                text: !detalleBote.bote ? ""
+                      : detalleBote.bote.numBote === 0 ? Idioma.tf("bote_detalle_principal", [detalleBote.bote.cantidad])
+                      : Idioma.tf("bote_detalle_side", [detalleBote.bote.numBote, detalleBote.bote.cantidad])
+                color: Tema.colorAccent
+                font.bold: true
+                font.pixelSize: 13 * Tema.escala
+                font.family: Tema.fuenteElegante
+            }
+            Repeater {
+                model: detalleBote.bote ? detalleBote.bote.participantes : []
+                delegate: Row {
+                    id: filaPart
+                    required property var modelData
+                    width: contenidoDetalle.width
+                    Text {
+                        width: parent.width * 0.5
+                        text: (filaPart.modelData.nombre === (detalleBote.bote ? detalleBote.bote.ganador : "") ? "★ " : "") + filaPart.modelData.nombre
+                        color: filaPart.modelData.nombre === (detalleBote.bote ? detalleBote.bote.ganador : "") ? Tema.colorAccent : Tema.colorTexto
+                        font.pixelSize: 12 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        width: parent.width * 0.5
+                        horizontalAlignment: Text.AlignRight
+                        text: Idioma.tf("bote_puso", [filaPart.modelData.aporte])
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                    }
+                }
+            }
+            Text {
+                text: detalleBote.bote && detalleBote.bote.ganador !== "" ? Idioma.tf("bote_gana", [detalleBote.bote.ganador, detalleBote.bote.premio]) : ""
+                color: Tema.colorAccent
+                font.pixelSize: 12 * Tema.escala
+                font.bold: true
+                font.family: Tema.fuenteElegante
+            }
+        }
+        MouseArea { anchors.fill: parent; onClicked: mesa.botePulsado = -1 }
+    }
+
+    // La cinta del aviso (ALL-IN, gana, pierde, eliminado), al estilo "ficha de casino" de la app:
+    // sombra corta, metal de tres paradas, doble bisel (filo + hilo interior) y rombos en los extremos.
+    Item {
+        id: banda
+        property string texto: ""
+        property real retencionMs: 1800
+        property color colorBase: Tema.colorAccent
+        property color colorFilo: Tema.colorBorde
+        property color colorHilo: Tema.colorAccent
+        // Texto legible sobre el metal, sea claro u oscuro el tema.
+        readonly property color colorTextoBanda: (0.299 * colorBase.r + 0.587 * colorBase.g + 0.114 * colorBase.b) > 0.55
+                                                 ? "#1B1408" : "#FFFFFF"
+        z: 20
+        enabled: false
+        opacity: 0
+        visible: opacity > 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(mesa.width * 0.9, textoBanda.implicitWidth + 96 * Tema.escala)
+        height: 44 * Tema.escala
+        transform: Translate { id: deslizaBanda; x: 0 }
+
+        Rectangle {   // sombra
+            anchors.fill: parent
+            anchors.topMargin: 3 * Tema.escala
+            anchors.leftMargin: 2 * Tema.escala
+            radius: height / 2
+            color: Qt.rgba(0, 0, 0, 0.38)
+        }
+        Rectangle {   // cuerpo metálico + filo exterior
+            id: cuerpoBanda
+            anchors.fill: parent
+            radius: height / 2
+            border.width: 2
+            border.color: banda.colorFilo
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: Qt.lighter(banda.colorBase, 1.3) }
+                GradientStop { position: 0.55; color: banda.colorBase }
+                GradientStop { position: 1.0; color: Qt.darker(banda.colorBase, 1.25) }
+            }
+        }
+        Rectangle {   // hilo interior
+            anchors.fill: parent
+            anchors.margins: 4 * Tema.escala
+            radius: height / 2
+            color: "transparent"
+            border.width: 1
+            border.color: banda.colorHilo
+            opacity: 0.85
+        }
+        // Rombos ornamentales a los lados (dibujados, sin depender de ningún glifo).
+        Repeater {
+            model: 2
+            delegate: Rectangle {
+                required property int index
+                width: 8 * Tema.escala
+                height: width
+                rotation: 45
+                color: banda.colorHilo
+                anchors.verticalCenter: parent.verticalCenter
+                x: index === 0 ? 20 * Tema.escala : parent.width - 20 * Tema.escala - width
+            }
+        }
+        Text {
+            id: textoBanda
+            anchors.centerIn: parent
+            text: banda.texto
+            color: banda.colorTextoBanda
+            font.bold: true
+            font.pixelSize: 18 * Tema.escala
+            font.letterSpacing: 1.5
+            font.family: Tema.fuenteElegante
+        }
+        SequentialAnimation {
+            id: animBanda
+            ScriptAction { script: { banda.opacity = 0; deslizaBanda.x = -90 * Tema.escala; } }
+            ParallelAnimation {
+                NumberAnimation { target: banda; property: "opacity"; to: 1; duration: mesa.ms(150) }
+                NumberAnimation { target: deslizaBanda; property: "x"; to: 0; duration: mesa.ms(240); easing.type: Easing.OutBack }
+            }
+            PauseAnimation { duration: mesa.ms(banda.retencionMs) }
+            NumberAnimation { target: banda; property: "opacity"; to: 0; duration: mesa.ms(400) }
+        }
+    }
+
+    SequentialAnimation {
+        id: animTemblor
+        NumberAnimation { target: temblor; property: "x"; to: 5 * Tema.escala; duration: mesa.ms(35) }
+        NumberAnimation { target: temblor; property: "x"; to: -5 * Tema.escala; duration: mesa.ms(50) }
+        NumberAnimation { target: temblor; property: "x"; to: 3 * Tema.escala; duration: mesa.ms(45) }
+        NumberAnimation { target: temblor; property: "x"; to: -2 * Tema.escala; duration: mesa.ms(40) }
+        NumberAnimation { target: temblor; property: "x"; to: 0; duration: mesa.ms(40) }
+    }
+
+    RepartoVolando {
+        id: cartasReparto
+        anchors.fill: parent
+        z: 10
+        onAterrizo: function(nombre, indice) {
+            var r = Object.assign({}, mesa.repartidas);
+            r[nombre] = (r[nombre] || 0) + 1;
+            mesa.repartidas = r;
+            if (nombre === mesa.miNombreJugador) mesa.cartaPropiaAterrizada(indice);
+        }
+        onTodasAterrizaron: if (mesa.repartiendo) mesa.terminarReparto()
+    }
+
     FichasVolando {
         id: fichas
         anchors.fill: parent
         z: 10
+        duracionVuelo: Math.round(mesa.ms(460))
+        escalonado: Math.round(mesa.ms(50))
         onAterrizaron: {
             if (!mesa.cobrando) mesa.boteVisible = mesa.bote;
         }

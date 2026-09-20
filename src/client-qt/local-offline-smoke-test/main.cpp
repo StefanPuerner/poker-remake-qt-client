@@ -24,6 +24,7 @@
 
 #include "../../../include/Bot.hpp"
 #include "../../../include/local-qt/LocalGameClient.hpp"
+#include "../../../include/local-qt/LocalGameObserver.hpp"
 
 namespace {
 int manosVistas = 0;
@@ -48,6 +49,8 @@ int main(int argc, char* argv[]) {
     // no se sienta instantáneo en la UI real). Sin desactivarlo, un puñado
     // de manos ya se acerca al watchdog. Mismo patrón que BotBenchmark.
     Bot::setDelaySimuladoActivo(false);
+    // Y sin las pausas de animación de la mesa (revelado, reparto...): aquí no las mira nadie.
+    LocalGameObserver::setPausasActivas(false);
 
     LocalGameClient cliente;
     // XP sin conexión activado: al terminar debe haber bolsa pendiente.

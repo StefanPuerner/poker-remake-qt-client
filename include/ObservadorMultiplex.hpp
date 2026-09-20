@@ -78,6 +78,26 @@ class ObservadorMultiplex : public IGameObserver {
   }
 
   // ── Acciones ─────────────────────────────────────────────────────────────
+  void onDetalleBote(int numBote, const std::vector<std::pair<std::string, int>>& aportes) override {
+    principal_->onDetalleBote(numBote, aportes);
+    if (secundario_) secundario_->onDetalleBote(numBote, aportes);
+  }
+  void onPuedenMostrar(const std::vector<ManoOpcional>& manos) override {
+    principal_->onPuedenMostrar(manos);
+    if (secundario_) secundario_->onPuedenMostrar(manos);
+  }
+  void onOrdenShowdown(const std::vector<std::string>& orden) override {
+    principal_->onOrdenShowdown(orden);
+    if (secundario_) secundario_->onOrdenShowdown(orden);
+  }
+  void onManoRevelada(const std::string& nombre, const std::vector<Carta>& cartas) override {
+    principal_->onManoRevelada(nombre, cartas);
+    if (secundario_) secundario_->onManoRevelada(nombre, cartas);
+  }
+  void onJugadorAllIn(const std::string& nombre, int cantidad, bool porCiega) override {
+    principal_->onJugadorAllIn(nombre, cantidad, porCiega);
+    if (secundario_) secundario_->onJugadorAllIn(nombre, cantidad, porCiega);
+  }
   void onAccionJugador(const std::string& nombre, TipoAccion accion, int cantidad) override {
     principal_->onAccionJugador(nombre, accion, cantidad);
     if (secundario_) secundario_->onAccionJugador(nombre, accion, cantidad);

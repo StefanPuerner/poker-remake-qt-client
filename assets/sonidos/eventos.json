@@ -1,0 +1,253 @@
+{
+ "reparto": {
+  "A": {
+   "sonidos": [
+    "card-place-3",
+    "card-slide-5"
+   ],
+   "retraso": 10,
+   "n": 14,
+   "gap": 161,
+   "jit": 44,
+   "vol": 88,
+   "volJit": 28
+  },
+  "B": {
+   "sonidos": [],
+   "retraso": 0,
+   "n": 1,
+   "gap": 0,
+   "jit": 20,
+   "vol": 100,
+   "volJit": 15
+  }
+ },
+ "comunitaria": {
+  "A": {
+   "sonidos": [
+    "card-place-2"
+   ],
+   "retraso": 0,
+   "n": 1,
+   "gap": 0,
+   "jit": 20,
+   "vol": 100,
+   "volJit": 15
+  }
+ },
+ "fichas": {
+  "A": {
+   "sonidos": [
+    "chips-handle-6",
+    "chip-lay-1"
+   ],
+   "retraso": 0,
+   "n": 12,
+   "gap": 56,
+   "jit": 48,
+   "vol": 100,
+   "volJit": 15
+  },
+  "B": {
+   "sonidos": [
+    "chips-collide-3"
+   ],
+   "retraso": 80,
+   "n": 6,
+   "gap": 60,
+   "jit": 20,
+   "vol": 71,
+   "volJit": 11
+  }
+ },
+ "allin": {
+  "B": {
+   "sonidos": [
+    "jingles_HIT11"
+   ],
+   "retraso": 600,
+   "n": 1,
+   "gap": 0,
+   "jit": 20,
+   "vol": 100,
+   "volJit": 14
+  },
+  "A": {
+   "sonidos": [
+    "impactWood_heavy_001",
+    "impactWood_heavy_002",
+    "impactWood_heavy_003"
+   ],
+   "retraso": 0,
+   "n": 10,
+   "gap": 125,
+   "jit": 23,
+   "vol": 100,
+   "volJit": 17
+  }
+ },
+ "cobro": {
+  "B": {
+   "sonidos": [
+    "chips-stack-2",
+    "chips-stack-3",
+    "chip-lay-3"
+   ],
+   "retraso": 600,
+   "n": 12,
+   "gap": 55,
+   "jit": 42,
+   "vol": 100,
+   "volJit": 40
+  },
+  "A": {
+   "sonidos": [
+    "chips-handle-6",
+    "chips-handle-4"
+   ],
+   "retraso": 0,
+   "n": 12,
+   "gap": 68,
+   "jit": 54,
+   "vol": 100,
+   "volJit": 15
+  }
+ },
+ "ganar": {
+  "B": {
+   "sonidos": [
+    "jingles_STEEL02"
+   ],
+   "retraso": 600,
+   "n": 2,
+   "gap": 300,
+   "jit": 0,
+   "vol": 100,
+   "volJit": 15
+  },
+  "A": {
+   "sonidos": [
+    "jingles_STEEL02",
+    "jingles_STEEL08"
+   ],
+   "retraso": 0,
+   "n": 3,
+   "gap": 0,
+   "jit": 6,
+   "vol": 100,
+   "volJit": 11
+  }
+ },
+ "eliminado": {
+  "A": {
+   "sonidos": [
+    "impactWood_heavy_000"
+   ],
+   "retraso": 0,
+   "n": 6,
+   "gap": 102,
+   "jit": 20,
+   "vol": 100,
+   "volJit": 15
+  },
+  "B": {
+   "sonidos": [
+    "jingles_SAX07"
+   ],
+   "retraso": 382,
+   "n": 1,
+   "gap": 0,
+   "jit": 20,
+   "vol": 100,
+   "volJit": 15
+  }
+ },
+ "perder": {
+  "A": {
+   "sonidos": [
+    "jingles_SAX03"
+   ],
+   "retraso": 0,
+   "n": 1,
+   "gap": 0,
+   "jit": 0,
+   "vol": 100,
+   "volJit": 15
+  },
+  "B": {
+   "sonidos": [
+    "jingles_SAX03"
+   ],
+   "retraso": 461,
+   "n": 1,
+   "gap": 0,
+   "jit": 0,
+   "vol": 100,
+   "volJit": 15
+  }
+ },
+ "fold": {
+  "A": {
+   "sonidos": [
+    "card-slide-6"
+   ],
+   "retraso": 0,
+   "n": 1,
+   "gap": 0,
+   "jit": 15,
+   "vol": 70,
+   "volJit": 15
+  },
+  "B": {
+   "sonidos": [
+    "card-place-2"
+   ],
+   "retraso": 140,
+   "n": 1,
+   "gap": 0,
+   "jit": 15,
+   "vol": 32,
+   "volJit": 15
+  }
+ },
+ "flop": {
+  "A": {
+   "sonidos": [
+    "card-slide-5"
+   ],
+   "retraso": 0,
+   "n": 3,
+   "gap": 200,
+   "jit": 27,
+   "vol": 92,
+   "volJit": 15
+  }
+ },
+ "recogida": {
+  "A": {
+   "sonidos": [
+    "card-shove-1",
+    "card-shove-3"
+   ],
+   "retraso": 0,
+   "n": 8,
+   "gap": 55,
+   "jit": 25,
+   "vol": 70,
+   "volJit": 25
+  }
+ },
+ "barajar": {
+  "A": {
+   "sonidos": [
+    "card-shuffle"
+   ],
+   "retraso": 0,
+   "n": 1,
+   "gap": 0,
+   "jit": 0,
+   "vol": 85,
+   "volJit": 0
+  }
+ }
+}

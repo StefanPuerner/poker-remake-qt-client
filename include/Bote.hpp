@@ -8,6 +8,7 @@
 #include <climits>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "style.hpp"
@@ -47,6 +48,13 @@ class Bote {
   /// @return Lista de jugadores con derecho a competir por este bote.
   [[nodiscard]] const std::vector<Player*>& getParticipantes() const;
 
+  /// Anota cuánto puso @p jugador en ESTE bote (también quien se retiró: dinero muerto). Solo
+  /// informativo: lo usa la interfaz para explicar quién entró en cada bote.
+  void agregarAportacion(Player* jugador, int cantidad);
+
+  /// @return Quién aportó a este bote y cuánto (en el orden en que se registró).
+  [[nodiscard]] const std::vector<std::pair<Player*, int>>& getAportaciones() const;
+
   /// Resetea saldo y participantes (reutilización entre manos).
   void limpiar();
 
@@ -54,4 +62,5 @@ class Bote {
   int limite_;                       ///< Contribución máxima por jugador (side pot).
   int saldo_;                        ///< Dinero acumulado en este bote.
   std::vector<Player*> participantes_; ///< Jugadores elegibles (punteros no poseídos).
+  std::vector<std::pair<Player*, int>> aportaciones_;  ///< Lo que puso cada uno (informativo).
 };

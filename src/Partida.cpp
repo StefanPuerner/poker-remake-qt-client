@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <map>
 #include <utility>
 
 #include "../include/Bot.hpp"
@@ -495,12 +496,20 @@ void Partida::ejecutarMano() {
 
   cobrarCiegas();
   repartirCartasIniciales();  // Virtual puro
+  // Hueco para que las cartas vuelen del dealer/mazo a los asientos (también en la 1ª mano).
+  observer_->onPausaAnimacionMesa(PAUSA_REPARTO_MS);
 
   faseActual_ = Rondas::PREFLOP;
   gestionarRondaDeApuestas();
 
   // Fases Comunitarias (Flop, Turn, River)
   while (!manoTerminada() && contarJugadoresActivos() > 1) {
+    // Runout: si nadie puede apostar más, primero se enseñan las manos y cada calle que falta sale
+    // con su pausa (suspense) en vez de todas de golpe.
+    if (contarJugadoresQuePuedenApostar() <= 1) {
+      revelarManosRunout();
+      observer_->onPausaAnimacionMesa(PAUSA_RUNOUT_CALLE_MS);
+    }
     ejecutarFaseComunitaria();  // Virtual puro
 
     if (faseActual_ == Rondas::PREFLOP)
@@ -524,6 +533,7 @@ void Partida::ejecutarMano() {
   } else {
     repartirBotes();
   }
+  anunciarManosOpcionales();
 
   // Cambiar Personalidades BOTS
   int saldoTotalActivos = 0;
@@ -556,22 +566,44 @@ void Partida::ejecutarMano() {
 
 // MOTOR DE APUESTAS
 
-void Partida::cobrarCiegas() {
-  int sbIndex = obtenerSiguienteJugadorActivo(dealerIndex_);
-  int bbIndex = obtenerSiguienteJugadorActivo(sbIndex);
+void Partida::calcularIndicesCiegas(int& sbIdx, int& bbIdx) const {
+  if (contarJugadoresActivos() == 2) {
+    // Heads-up: el dealer pone la ciega pequeña.
+    sbIdx = dealerIndex_;
+    bbIdx = obtenerSiguienteJugadorActivo(dealerIndex_);
+    return;
+  }
+  sbIdx = obtenerSiguienteJugadorActivo(dealerIndex_);
+  bbIdx = obtenerSiguienteJugadorActivo(sbIdx);
+}
 
-  observer_->onCobroCiegas(jugadores_[sbIndex]->getNombre(), ciegaPequena_,
-                           jugadores_[bbIndex]->getNombre(), ciegaGrande_);
+void Partida::cobrarCiegas() {
+  int sbIndex = 0, bbIndex = 0;
+  calcularIndicesCiegas(sbIndex, bbIndex);
+
+  // Primero los marcadores (D/SB/BB) viajan a sus asientos, luego se ponen las ciegas: así la
+  // interfaz cuenta la apertura de la mano en orden (rotación -> ciegas -> reparto).
   observer_->onDealerYCiegasAsignados(jugadores_[dealerIndex_]->getNombre(),
                                       jugadores_[sbIndex]->getNombre(),
                                       jugadores_[bbIndex]->getNombre());
+  if (hayManoPrevia_) observer_->onPausaAnimacionMesa(PAUSA_ROTACION_MS);
+  observer_->onCobroCiegas(jugadores_[sbIndex]->getNombre(), ciegaPequena_,
+                           jugadores_[bbIndex]->getNombre(), ciegaGrande_);
 
   // Aplicar descuentos y gestionar botes
   Accion accionSB = {TipoAccion::CALL, ciegaPequena_, true, ""};
+  const int saldoSbAntes = jugadores_[sbIndex]->getSaldo();
   procesarAccion(jugadores_[sbIndex], accionSB);
+  if (saldoSbAntes > 0 && jugadores_[sbIndex]->getSaldo() == 0) {
+    observer_->onJugadorAllIn(jugadores_[sbIndex]->getNombre(), saldoSbAntes, true);
+  }
 
   Accion accionBB = {TipoAccion::CALL, ciegaGrande_, true, ""};
+  const int saldoBbAntes = jugadores_[bbIndex]->getSaldo();
   procesarAccion(jugadores_[bbIndex], accionBB);
+  if (saldoBbAntes > 0 && jugadores_[bbIndex]->getSaldo() == 0) {
+    observer_->onJugadorAllIn(jugadores_[bbIndex]->getNombre(), saldoBbAntes, true);
+  }
 
   apuestaMaximaRonda_ = ciegaGrande_;
 
@@ -585,6 +617,8 @@ void Partida::cobrarCiegas() {
                                    mesa_.getCartasComunitarias(),
                                    faseActual_, apuestaMaximaRonda_);
   }
+  // Que las fichas de las ciegas lleguen al bote antes de repartir.
+  observer_->onPausaAnimacionMesa(PAUSA_CIEGAS_MS);
 }
 
 void Partida::gestionarRondaDeApuestas() {
@@ -592,15 +626,17 @@ void Partida::gestionarRondaDeApuestas() {
 
   // Determinar quién habla primero
   if (faseActual_ == Rondas::PREFLOP) {
-    int sbIdx = obtenerSiguienteJugadorActivo(dealerIndex_);
-    int bbIdx = obtenerSiguienteJugadorActivo(sbIdx);
-    idxActual = obtenerSiguienteJugadorActivo(bbIdx);  // UTG (Under The Gun)
+    int sbIdx = 0, bbIdx = 0;
+    calcularIndicesCiegas(sbIdx, bbIdx);
+    idxActual = obtenerSiguienteJugadorActivo(bbIdx);  // UTG (Under The Gun); heads-up: el dealer
   } else {
     idxActual =
-        obtenerSiguienteJugadorActivo(dealerIndex_);  // La ciega pequeña
+        obtenerSiguienteJugadorActivo(dealerIndex_);  // Primero tras el dealer (heads-up: la ciega grande)
   }
 
   int jugadoresPendientesDeHablar = contarJugadoresActivos();
+  agresorRondaActual_.clear();
+  huboAccionEnRonda_ = false;
   // Resetear rastreadores de ronda (los raises de mano se acumulan entre
   // rondas)
   ultimaAccionRonda_ = TipoAccion::CHECK;
@@ -726,7 +762,13 @@ void Partida::gestionarRondaDeApuestas() {
 
       // 3. Procesar el impacto de la acción
       int maxApuestaPrevia = apuestaMaximaRonda_;
+      const int saldoAntes = p->getSaldo();
       procesarAccion(p, a);
+      // Quedarse a cero (iguale, suba o vaya all-in a secas) es un all-in, lo diga o no la acción.
+      if (a.tipo != TipoAccion::FOLD && a.tipo != TipoAccion::CHECK && saldoAntes > 0 &&
+          p->getSaldo() == 0) {
+        observer_->onJugadorAllIn(p->getNombre(), saldoAntes, false);
+      }
 
       // Refrescar bote/saldos en el resto de clientes ya mismo — sin esto
       // se quedan con los valores de ANTES de esta acción hasta que
@@ -740,6 +782,9 @@ void Partida::gestionarRondaDeApuestas() {
                                        mesa_.getCartasComunitarias(),
                                        faseActual_, apuestaMaximaRonda_);
       }
+
+      huboAccionEnRonda_ = true;
+      if (apuestaMaximaRonda_ > maxApuestaPrevia) agresorRondaActual_ = p->getNombre();
 
       // Rastrear raises para range modeling y última acción para river
       if (a.tipo == TipoAccion::RAISE || a.tipo == TipoAccion::ALL_IN) {
@@ -775,7 +820,12 @@ void Partida::gestionarRondaDeApuestas() {
         }
         if (!quedanHumanosActivos) {
           observer_->onCabeceraResumen();
-          observer_->onAccionJugador(p->getNombre(), a.tipo, a.cantidad);
+          // Solo la Persona de terminal necesita ver su acción repetida bajo la
+          // cabecera; el resto (JugadorLocalQt, NetworkPlayer) ya la emitió arriba,
+          // y repetirla duplicaba el FOLD en el log y las fichas volando al bote.
+          if (dynamic_cast<Persona*>(p)) {
+            observer_->onAccionJugador(p->getNombre(), a.tipo, a.cantidad);
+          }
         }
       }
 
@@ -788,6 +838,9 @@ void Partida::gestionarRondaDeApuestas() {
     jugadoresPendientesDeHablar--;
     idxActual = obtenerSiguienteJugadorActivo(idxActual);
   }
+
+  // Una ronda sin ninguna acción (todos all-in) no cambia quién enseña primero.
+  if (huboAccionEnRonda_) agresorRevelado_ = agresorRondaActual_;
 
   // Limpieza de contadores al acabar la fase
   apuestaMaximaRonda_ = 0;
@@ -885,6 +938,7 @@ void Partida::gestionarSidePots(Player* p, int cantidad) {
         int aportacion = std::min(aux.restante, nivelCorte);
 
         nuevoBote.agregarSaldo(aportacion);
+        nuevoBote.agregarAportacion(aux.player, aportacion);
         aux.restante -= aportacion;
 
         // Si el jugador aportó dinero a este nivel, no ha foldeado y no está
@@ -905,12 +959,98 @@ void Partida::gestionarSidePots(Player* p, int cantidad) {
 
 // --- SHOWDOWN Y LIMPIEZA ---
 
+std::vector<Player*> Partida::ordenRevelado() const {
+  std::vector<Player*> vivos;
+  const int n = static_cast<int>(jugadores_.size());
+  if (n == 0) return vivos;
+  // Punto de partida: quien subió en la última ronda con apuestas (si sigue con derecho a bote);
+  // si nadie, el primero tras el dealer.
+  int inicio = -1;
+  if (!agresorRevelado_.empty()) {
+    for (int i = 0; i < n; ++i) {
+      if (jugadores_[i]->getNombre() == agresorRevelado_ &&
+          jugadores_[i]->getEstado() != PlayerState::FOLD &&
+          jugadores_[i]->getEstado() != PlayerState::ELIMINADO) {
+        inicio = i;
+        break;
+      }
+    }
+  }
+  if (inicio < 0) inicio = obtenerSiguienteJugadorActivo(dealerIndex_);
+  for (int k = 0; k < n; ++k) {
+    Player* p = jugadores_[(inicio + k) % n];
+    if (p->getEstado() != PlayerState::FOLD && p->getEstado() != PlayerState::ELIMINADO)
+      vivos.push_back(p);
+  }
+  return vivos;
+}
+
+void Partida::revelarManosRunout() {
+  if (runoutRevelado_ || contarJugadoresActivos() < 2) return;
+  runoutRevelado_ = true;
+  const auto orden = ordenRevelado();
+  std::vector<std::string> nombres;
+  for (Player* p : orden) nombres.push_back(p->getNombre());
+  observer_->onOrdenShowdown(nombres);
+  for (Player* p : orden) {
+    observer_->onManoRevelada(p->getNombre(), p->getCartasPropias());
+    observer_->onPausaAnimacionMesa(PAUSA_REVELAR_MANO_MS);
+  }
+}
+
+void Partida::anunciarManosOpcionales() {
+  const bool mesaCompleta = mesa_.getCartasComunitarias().size() >= 5;
+  const bool sinShowdown = contarJugadoresActivos() <= 1;
+  std::vector<ManoOpcional> manos;
+  for (Player* p : jugadores_) {
+    if (p->getCartasPropias().size() != 2) continue;
+    const bool retirado = p->getEstado() == PlayerState::FOLD;
+    // Sin showdown, el único que queda (el ganador) también puede enseñar.
+    const bool ganadorSinShowdown =
+        sinShowdown && p->getEstado() != PlayerState::FOLD && p->getEstado() != PlayerState::ELIMINADO;
+    if (!retirado && !ganadorSinShowdown) continue;
+    ManoOpcional m;
+    m.nombre = p->getNombre();
+    m.cartas = p->getCartasPropias();
+    if (mesaCompleta) {
+      HandResult hr = Analyzer::evaluarMano(p->getCartas(), mesa_.getCartasComunitarias());
+      m.combo = hr.handName;
+      m.combinacion = hr.combination;
+    }
+    manos.push_back(std::move(m));
+  }
+  observer_->onPuedenMostrar(manos);
+}
+
 void Partida::showdown() {
   observer_->onInicioShowdown(mesa_.getCartasComunitarias());
   faseActual_ = Rondas::SHOWDOWN;
 
-  // Resolver cada bote de forma independiente, de más viejo (principal) a más
-  // nuevo (side pots)
+  // 1) Cada jugador con derecho a bote enseña su mano UNA vez (aunque compita por varios botes), en
+  // orden de apuesta. Si ya se enseñaron en el runout, aquí solo se completa con la combinación
+  // (y las estadísticas) sin volver a esperar entre manos.
+  const auto orden = ordenRevelado();
+  if (!runoutRevelado_) {
+    std::vector<std::string> nombres;
+    for (Player* p : orden) nombres.push_back(p->getNombre());
+    observer_->onOrdenShowdown(nombres);
+  }
+  std::map<Player*, HandResult> manos;
+  for (Player* p : orden) {
+    HandResult hr = Analyzer::evaluarMano(p->getCartas(), mesa_.getCartasComunitarias());
+    manos[p] = hr;
+
+    observer_->onMuestraCartas(p->getNombre(), hr.handName, p->getCartasPropias(), hr.combination);
+
+    // Comprobar si es la mejor mano histórica de la partida
+    if (hr.score > mejorManoPartida_.score) {
+      mejorManoPartida_ = hr;
+      jugadorMejorMano_ = p->getNombre();
+    }
+    if (!runoutRevelado_) observer_->onPausaAnimacionMesa(PAUSA_REVELAR_MANO_MS);
+  }
+
+  // 2) Resolver cada bote de forma independiente, de más viejo (principal) a más nuevo (side pots)
   for (size_t b = 0; b < botes_.size(); ++b) {
     Bote& bote = botes_[b];
     const auto& elegibles = bote.getParticipantes();
@@ -933,23 +1073,20 @@ void Partida::showdown() {
 
     std::vector<std::string> nombresElegibles;
     for (Player* p : elegiblesVivos) nombresElegibles.push_back(p->getNombre());
+    {
+      std::vector<std::pair<std::string, int>> aportes;
+      for (const auto& a : bote.getAportaciones()) aportes.emplace_back(a.first->getNombre(), a.second);
+      observer_->onDetalleBote(static_cast<int>(b), aportes);
+    }
     observer_->onEvaluandoBote(b, bote.getSaldo(), nombresElegibles);
 
     std::vector<std::pair<Player*, HandResult>> competidores;
     for (Player* p : elegiblesVivos) {
-      HandResult hr =
-          Analyzer::evaluarMano(p->getCartas(), mesa_.getCartasComunitarias());
+      auto it = manos.find(p);
+      HandResult hr = it != manos.end()
+                          ? it->second
+                          : Analyzer::evaluarMano(p->getCartas(), mesa_.getCartasComunitarias());
       competidores.push_back({p, hr});
-
-      // Siempre mostrar cartas en showdown, aunque sea el único elegible.
-      observer_->onMuestraCartas(p->getNombre(), hr.handName,
-                                 p->getCartasPropias(), hr.combination);
-
-      // Comprobar si es la mejor mano histórica de la partida
-      if (hr.score > mejorManoPartida_.score) {
-        mejorManoPartida_ = hr;
-        jugadorMejorMano_ = p->getNombre();
-      }
     }
 
     if (competidores.empty()) continue;
@@ -1001,6 +1138,8 @@ void Partida::showdown() {
                                      mesa_.getCartasComunitarias(),
                                      faseActual_, 0);
     }
+    // Tiempo para ver la banda del ganador y las fichas viajando antes del siguiente bote.
+    observer_->onPausaAnimacionMesa(PAUSA_BOTE_MS);
   }
   std::vector<std::string> listaArruinados;
   for (Player* p : jugadores_) {
@@ -1062,6 +1201,10 @@ void Partida::limpiarEstadosMano() {
   raisesEnEstaMano_ = 0;
   ultimaAccionRonda_ = TipoAccion::CHECK;
   ultimoAgresorNombre_.clear();
+  agresorRondaActual_.clear();
+  agresorRevelado_.clear();
+  huboAccionEnRonda_ = false;
+  runoutRevelado_ = false;
 
   // Todos los jugadores que tengan dinero vuelven a estar activos
   for (Player* p : jugadores_) {

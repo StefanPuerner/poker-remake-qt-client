@@ -17,6 +17,9 @@ import QtCore
 // aquí sí compensa: son como mucho 4 botones en pantalla a la vez, no
 // una rejilla de decenas de tarjetas.
 import QtQuick.Effects
+// SoundEffect: sonidos de la mesa (BancoMezclas) y el aviso de "tu turno". Necesita el módulo
+// qtmultimedia también en el kit de Android (ver cmake/ClientesQt.cmake).
+import QtMultimedia
 
 ApplicationWindow {
     id: ventana
@@ -228,6 +231,122 @@ ApplicationWindow {
             reto.dificultadBots, /*permitirRecompra=*/false,
             /*preguntarExtension=*/false);
     }
+    // Herramientas de desarrollo (main-mobile.cpp: --demo-local, --demo-sin-voto): la partida local
+    // se juega sola, para comprobar la mesa con eventos reales del motor sin servidor.
+    property bool demoAuto: false
+    property bool demoNoVota: false
+    function iniciarDemoLocal() {
+        ventana.entrarSinConexion(false);
+        ventana.modoOfflineActivo = true;
+        redcliente.iniciarPartidaLocal(ventana.nombreJugador, 3, 30, 20, 500, 0, false, 0, 0, false, false);
+    }
+    // Vigilante de la demo: cada 5 s escribe el estado (console.warn sí sale en release) para
+    // detectar partidas que se quedan paradas.
+    Timer {
+        running: ventana.demoAuto
+        interval: 5000
+        repeat: true
+        onTriggered: console.warn("DEMO mano=" + ventana.manoActual + " ronda=" + ventana.rondaActual
+                                  + " cartasMesa=" + ventana.cartasMesa.length + " tuTurno=" + ventana.tuTurno
+                                  + " turno=" + ventana.turnoNombre + " voto=" + ventana.votoAbierto
+                                  + " pantalla=" + ventana.pantalla)
+    }
+    // El jugador automático de la demo: pasa o iguala, se retira si no puede, y siempre sigue.
+    Connections {
+        target: redcliente
+        enabled: ventana.demoAuto
+        function onEsMiTurno(bote, igualar, miSaldo, miApuesta) {
+            var aPagar = igualar - miApuesta;
+            Qt.callLater(function() {
+                if (aPagar <= 0) redcliente.enviarAccion("CHECK", 0);
+                else if (aPagar < miSaldo) redcliente.enviarAccion("CALL", 0);
+                else redcliente.enviarAccion("FOLD", 0);
+            });
+        }
+        function onEsperandoVoto(mensaje) { if (!ventana.demoNoVota) Qt.callLater(function() { redcliente.votar(); }); }
+        function onEsperandoVotoExtension(mensaje) { Qt.callLater(function() { redcliente.votarExtension(false); }); }
+    }
+    // ── Sonidos y animaciones de la mesa (docs/plan-movil-animaciones.md) ─────────────────────
+    property real volumenSonidos: 0.8
+    // Grupos apagados en Ajustes (CSV): cartas, fichas, allin, resultado, retirarse, turno.
+    property string sonidosSilenciados: ""
+    // 0 = desactivadas, 1 = reducidas (solo fichas y avisos), 2 = completas.
+    property int nivelAnimaciones: 2
+    // Las animaciones de la mesa solo se hacen con eventos NUEVOS: se activan con la primera mano
+    // nueva de la sesión y se apagan al reconectar/resincronizar (no se anima el estado que llega
+    // de golpe al entrar a media mano).
+    property bool animacionesMesaActivas: false
+    // Configuración de sonidos por evento (assets/sonidos/eventos.json) y a qué grupo de Ajustes
+    // pertenece cada evento.
+    property var configSonidos: ({})
+    readonly property var grupoDeEvento: ({
+        "reparto": "cartas", "comunitaria": "cartas", "flop": "cartas", "recogida": "cartas", "barajar": "cartas", "fold": "retirarse",
+        "fichas": "fichas", "cobro": "fichas", "allin": "allin",
+        "ganar": "resultado", "perder": "resultado", "eliminado": "resultado", "turno": "turno"
+    })
+    function grupoSilenciado(grupo) {
+        return ventana.sonidosSilenciados.split(",").indexOf(grupo) >= 0;
+    }
+    function alternarGrupoSonido(grupo) {
+        var l = ventana.sonidosSilenciados === "" ? [] : ventana.sonidosSilenciados.split(",");
+        var i = l.indexOf(grupo);
+        if (i >= 0) l.splice(i, 1); else l.push(grupo);
+        ventana.sonidosSilenciados = l.join(",");
+    }
+    // Con la app en segundo plano (o el móvil bloqueado) no suena nada.
+    function sonar(evento, opciones) {
+        if (!ventana.sonidoActivado || Qt.application.state !== Qt.ApplicationActive
+            || ventana.grupoSilenciado(ventana.grupoDeEvento[evento])) return;
+        bancoSonidos.reproducir(evento, opciones);
+    }
+    // Carga mezclas.json (recurso: qué mezcla suena para cada evento) y crea las voces del banco.
+    // XMLHttpRequest no puede leer "qrc:", de ahí "recursos" (LectorRecursos, C++).
+    function cargarConfigSonidos() {
+        try {
+            var cfg = JSON.parse(recursos.leerTexto("qrc:/qt/qml/PokerQuickMobile/assets/sonidos/mezclas.json"));
+            ventana.configSonidos = cfg;
+            bancoSonidos.carpeta = "qrc:/qt/qml/PokerQuickMobile/assets/sonidos/mezclas/";
+            bancoSonidos.configurar(cfg);
+        } catch (e) {
+            ventana.configSonidos = ({});
+        }
+    }
+    // Herramientas de desarrollo (--llamar verHistorial / verChat): abren esa pestaña del cajón de la
+    // partida (el chat con unos mensajes de muestra) para comprobar su aspecto sin servidor.
+    function verHistorial() { cajonPartidaMovil.pestanaActiva = "historial"; }
+    function verChat() {
+        mensajesChatPartida.append({ autor: "Bot1", mensaje: "Buena mano, suerte en la siguiente", hora: "21:04" });
+        mensajesChatPartida.append({ autor: ventana.nombreJugador, mensaje: "gracias!", hora: "21:04" });
+        mensajesChatPartida.append({ autor: "Bot2", mensaje: "Yo voy all-in a la próxima aunque no tenga nada, que quede claro", hora: "21:05" });
+        cajonPartidaMovil.pestanaActiva = "chat";
+    }
+    // Herramienta de desarrollo (--llamar diagnosticoSonidos): ¿se cargaron mezclas.json y los WAV?
+    function diagnosticoSonidos() {
+        console.warn("SONIDOS mezclas=" + Object.keys(ventana.configSonidos.mezclas || {}).length + " listos=" + bancoSonidos.listos
+                     + " errores=" + bancoSonidos.errores);
+    }
+    // Una pista ya mezclada por evento (ver BancoMezclas.qml): pocos objetos de audio y un play() por evento.
+    BancoMezclas {
+        id: bancoSonidos
+        activo: ventana.sonidoActivado
+        volumen: ventana.volumenSonidos
+    }
+    // Aviso de "tu turno" (dos tonos, ver assets/sonidos/).
+    SoundEffect {
+        id: sonidoTurno
+        source: "qrc:/qt/qml/PokerQuickMobile/assets/sonidos/turno.wav"
+        volume: ventana.volumenSonidos
+    }
+    // Ver el comentario gemelo en qml/Main.qml: el audio se para y se suelta ANTES de que el motor
+    // QML destruya el árbol (crash de PipeWire al cerrar en escritorio).
+    Connections {
+        target: Qt.application
+        function onAboutToQuit() {
+            bancoSonidos.liberar();
+            sonidoTurno.stop();
+            sonidoTurno.source = "";
+        }
+    }
     property bool offlineConCuenta: false
     // "¿Hay cuenta detrás de esta sesión?" para decidir qué PINTAR -- ver
     // el comentario gemelo en qml/Main.qml (escritorio). No sustituye a
@@ -378,6 +497,10 @@ ApplicationWindow {
         // alias a un singleton (mismo aviso de "tema" un poco más abajo).
         property alias tokenGuardado: ventana.tokenSesion
         property alias sonido: ventana.sonidoActivado
+        // Sonidos de la mesa (Ajustes > Sonidos): volumen, grupos silenciados y nivel de animaciones.
+        property alias volumenSonidosPersistido: ventana.volumenSonidos
+        property alias sonidosSilenciadosPersistido: ventana.sonidosSilenciados
+        property alias nivelAnimacionesPersistido: ventana.nivelAnimaciones
         // "Confirmar all-in" se recuerda entre sesiones (antes había que volver a activarlo
         // cada vez que se abría la app).
         property alias confirmarAllInPersistido: ventana.confirmarAllIn
@@ -391,6 +514,8 @@ ApplicationWindow {
         property string idiomaGuardado: ""
     }
     Component.onCompleted: {
+        ventana.cargarConfigSonidos();
+        modoJuego.setPausasAnimacion(ventana.nivelAnimaciones > 0);
         Tema.temaActual = ajustesPersistentesMovil.temaGuardado;
         Idioma.actual = ajustesPersistentesMovil.idiomaGuardado !== ""
             ? ajustesPersistentesMovil.idiomaGuardado : Idioma.idiomaDelSistema();
@@ -742,6 +867,8 @@ ApplicationWindow {
     // hierro solo cabe el hierro); quitar (codigo "") nunca pregunta. Para
     // cambiarle el metal a una que ya llevas: quitarla y volver a equiparla.
     readonly property string marcoPropio: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
+    // Loadout propio (para pintar tu asiento en partidas locales, ver onEstadoMesaActualizado).
+    readonly property var miLoadoutLocal: redcliente.loadoutMarco || ({})
     // Sin marco todavía (ninguna partida ganada), los accesorios se
     // previsualizan con Hierro -- el marco de la primera victoria -- y un
     // aviso bajo el avatar lo dice (decisión del usuario, 2026-09-10). Antes
@@ -924,7 +1051,7 @@ ApplicationWindow {
         // Reactiva el "pin" de contentY=0 (ver el comentario grande junto
         // a listaRankingMovil.anclarArriba) para este reordenamiento.
         listaRankingMovil.anclarArriba = true;
-        Qt.callLater(() => { listaRankingMovil.contentY = 0; });
+        Qt.callLater(() => { listaRankingMovil.contentY = listaRankingMovil.originY; });
     }
     // ── Social -- mismo criterio que escritorio (ver Main.qml de qml/) ──
     ListModel { id: modeloAmigos }
@@ -1215,6 +1342,54 @@ ApplicationWindow {
     property bool showdownAbierto: false
     property var revealsShowdown: []
     property var resumenBotes: []
+    // ── Showdown sobre la misma mesa ─────────────────────────────────────────────────────────
+    // Las 5 cartas de la mejor mano de cada jugador que ha enseñado (para resaltar la ganadora).
+    property var mejoresPorJugador: ({})
+    // Lo que puso cada uno en cada bote (llega antes de resolverlo): numBote -> [{nombre, aporte}].
+    property var detallesBotes: ({})
+    // "Mostrar cartas" disponible (te retiraste, o ganaste sin showdown). Se apaga al pulsarlo.
+    property bool puedeMostrarMisCartas: false
+    // Cola de eliminados por anunciar (una banda cada vez).
+    property var colaEliminados: []
+    // Quiénes reciben cartas y en qué orden: empieza la ciega pequeña y sigue por los asientos; los
+    // eliminados (0 fichas y nada puesto) no reciben.
+    function ordenRepartoActual() {
+        var n = jugadoresPartida.count;
+        var sb = -1;
+        for (var i = 0; i < n; i++) if (jugadoresPartida.get(i).nombre === ventana.sbNombre) sb = i;
+        if (sb < 0) return [];
+        var r = [];
+        for (var k = 0; k < n; k++) {
+            var j = jugadoresPartida.get((sb + k) % n);
+            if ((parseInt(j.saldo) || 0) > 0 || (parseInt(j.apuesta) || 0) > 0) r.push(j.nombre);
+        }
+        return r;
+    }
+    // ¿Se animan las cosas de la mesa ahora mismo? (nivel completo, evento nuevo, con conexión)
+    readonly property bool animarMesa: ventana.nivelAnimaciones >= 2 && ventana.animacionesMesaActivas && !ventana.reconectandoAhora
+    function anunciarSiguienteEliminado() {
+        if (ventana.colaEliminados.length === 0) return;
+        var n = ventana.colaEliminados[0];
+        ventana.colaEliminados = ventana.colaEliminados.slice(1);
+        mesaJuegoMovil.anunciarEliminado(n);
+        if (ventana.colaEliminados.length > 0) temporizadorEliminados.restart();
+    }
+    Timer {
+        id: temporizadorEliminados
+        interval: 1500
+        onTriggered: ventana.anunciarSiguienteEliminado()
+    }
+    // El servidor sigue adelante si nadie vota en VOTO_TIMEOUT_MS (GameTypes.hpp: mantener en sync).
+    // Lo manda el servidor en cada ESPERAR_VOTO (0 = sala sin temporizador, no hay cuenta atrás).
+    property int votoPlazoSegundos: 60
+    property double votoInicioMs: 0
+    property int votoRestanteSegundos: 60
+    Timer {
+        interval: 1000
+        repeat: true
+        running: ventana.votoAbierto && !ventana.modoOfflineActivo && ventana.votoPlazoSegundos > 0
+        onTriggered: ventana.votoRestanteSegundos = Math.max(0, ventana.votoPlazoSegundos - Math.floor((Date.now() - ventana.votoInicioMs) / 1000))
+    }
     property bool votoAbierto: false
     property string mensajeVoto: ""
     property bool votoExtensionAbierto: false
@@ -1590,7 +1765,61 @@ ApplicationWindow {
         }
         // Animación de apuesta: fichas del avatar al bote (Mesa.qml).
         function onFichasApostadas(jugador, cantidad) {
-            mesaJuegoMovil.lanzarFichas(jugador, cantidad);
+            if (ventana.nivelAnimaciones >= 1) mesaJuegoMovil.lanzarFichas(jugador, cantidad);
+        }
+        // Dealer y ciegas de la mano que empieza, ANTES de las ciegas: los marcadores viajan al
+        // asiento nuevo (Mesa.moverMarcador). El GAME_STATE siguiente los repite.
+        function onBotonesAsignados(dealer, sb, bb) {
+            // El mazo se baraja mientras los botones viajan, antes de repartir (no en la primera mano).
+            if (ventana.animarMesa && dealerNombre !== "") ventana.sonar("barajar", {});
+            dealerNombre = dealer;
+            sbNombre = sb;
+            bbNombre = bb;
+        }
+        // Alguien se queda sin fichas: aro dorado en su asiento y, si no fue por una ciega, banda.
+        function onJugadorAllIn(jugador, cantidad, porCiega) {
+            if (ventana.nivelAnimaciones >= 1) mesaJuegoMovil.avisarAllIn(jugador, cantidad, !porCiega);
+        }
+        // Eliminados: asiento apagado y aviso (uno cada vez si son varios).
+        function onJugadoresEliminados(jugadoresCsv) {
+            var nombres = jugadoresCsv.length > 0 ? jugadoresCsv.split(",") : [];
+            if (ventana.nivelAnimaciones < 1) {
+                mesaJuegoMovil.eliminados = mesaJuegoMovil.eliminados.concat(nombres);
+                return;
+            }
+            ventana.colaEliminados = ventana.colaEliminados.concat(nombres);
+            if (!temporizadorEliminados.running) ventana.anunciarSiguienteEliminado();
+        }
+        // Te retiraste, o ganaste sin showdown: puedes enseñar tu mano si quieres.
+        function onPuedesMostrar() {
+            ventana.puedeMostrarMisCartas = true;
+        }
+        // Showdown sobre la mesa: primero todos los obligados se preparan a la vez (avatar pequeño,
+        // cartas grandes) y luego se revelan de uno en uno en orden de apuesta.
+        function onOrdenShowdown(jugadoresCsv) {
+            // Ya no hay más turnos: fuera los botones de apuesta y el aro de tiempo.
+            tuTurno = false;
+            turnoNombre = "";
+            mesaJuegoMovil.prepararShowdown(jugadoresCsv.length > 0 ? jugadoresCsv.split(",") : []);
+        }
+        function onManoRevelada(jugador, cartasCsv, combo, mejoresCsv, temprana) {
+            // Si es la tuya (obligada o por decisión), ya no hay nada que ofrecer enseñar.
+            if (jugador === nombreJugador) ventana.puedeMostrarMisCartas = false;
+            mesaJuegoMovil.revelarMano(jugador, cartasCsv.split(","), comboLocalizado(combo));
+            if (mejoresCsv.length > 0) {
+                var m = Object.assign({}, ventana.mejoresPorJugador);
+                m[jugador] = mejoresCsv.split(",");
+                ventana.mejoresPorJugador = m;
+            }
+        }
+        function onDetalleBote(numBote, aportesCsv) {
+            var lista = aportesCsv.length > 0 ? aportesCsv.split(",").map(function(x) {
+                var p = x.split(":");
+                return { nombre: p[0], aporte: parseInt(p[1]) || 0 };
+            }) : [];
+            var det = Object.assign({}, ventana.detallesBotes);
+            det[numBote] = lista;
+            ventana.detallesBotes = det;
         }
         function onTapeteAnfitrionActualizado(tapete) {
             tapeteAnfitrion = tapete;
@@ -1599,7 +1828,12 @@ ApplicationWindow {
                                          dealer, sb, bb, soloVsBotsNuevo) {
             rondaActual = ronda;
             boteActual = bote;
-            turnoNombre = turno;
+            // En el showdown ya no hay turno (el servidor repite el del último en actuar): sin aro de turno.
+            // Tras cada acción el servidor manda un estado con el turno del que acaba de actuar: un
+            // retirado no puede tenerlo (se le encendía el aro de turno y el reloj tras retirarse).
+            turnoNombre = (ronda === "SHOWDOWN" || retirados.indexOf(turno) >= 0) ? "" : turno;
+            // Vigilante de desarrollo: alguien marcado como retirado que recibe el turno es un fallo
+            // (del cliente, que lo marcó mal, o del motor).
             dealerNombre = dealer;
             sbNombre = sb;
             bbNombre = bb;
@@ -1618,20 +1852,24 @@ ApplicationWindow {
                 // (2026-09-01, ver memoria qt_progression_review_2026_09_01,
                 // portado el mismo día a móvil) -- loadout completo de
                 // cada jugador sentado, no solo partidasGanadas.
+                                // En una partida LOCAL (retos, modo sin conexión) el motor no conoce las cuentas y
+                // manda a todos los asientos con el avatar por defecto: el propio se rellena aquí
+                // con tu marco y tu loadout reales (ya cacheados en el cliente).
+                var esYoLocal = ventana.modoOfflineActivo && campos[0] === nombreJugador;
                 jugadoresPartida.append({
                     nombre: campos[0],
                     saldo: campos[1],
                     apuesta: campos[2],
-                    partidasGanadas: campos.length > 3 ? parseInt(campos[3]) : 0,
-                    tieneMarcoBasico: campos.length > 4 ? campos[4] === "1" : false,
-                    textura: campos.length > 5 ? campos[5] : "",
-                    efecto: campos.length > 6 ? campos[6] : "",
-                    decoracionLateral1: campos.length > 7 ? campos[7] : "",
-                    decoracionLateral2: campos.length > 8 ? campos[8] : "",
-                    decoracionSuperior: campos.length > 9 ? campos[9] : "",
-                    acabadoLateral1: campos.length > 10 ? campos[10] : "",
-                    acabadoLateral2: campos.length > 11 ? campos[11] : "",
-                    acabadoSuperior: campos.length > 12 ? campos[12] : "",
+                    partidasGanadas: esYoLocal ? (ventana.statsPartidasGanadas) : campos.length > 3 ? parseInt(campos[3]) : 0,
+                    tieneMarcoBasico: esYoLocal ? (ventana.statsTieneMarcoBasico) : campos.length > 4 ? campos[4] === "1" : false,
+                    textura: esYoLocal ? (ventana.miLoadoutLocal.textura || "") : campos.length > 5 ? campos[5] : "",
+                    efecto: esYoLocal ? (ventana.miLoadoutLocal.efecto || "") : campos.length > 6 ? campos[6] : "",
+                    decoracionLateral1: esYoLocal ? (ventana.miLoadoutLocal.decoracionLateral1 || "") : campos.length > 7 ? campos[7] : "",
+                    decoracionLateral2: esYoLocal ? (ventana.miLoadoutLocal.decoracionLateral2 || "") : campos.length > 8 ? campos[8] : "",
+                    decoracionSuperior: esYoLocal ? (ventana.miLoadoutLocal.decoracionSuperior || "") : campos.length > 9 ? campos[9] : "",
+                    acabadoLateral1: esYoLocal ? (ventana.miLoadoutLocal.acabadoLateral1 || "") : campos.length > 10 ? campos[10] : "",
+                    acabadoLateral2: esYoLocal ? (ventana.miLoadoutLocal.acabadoLateral2 || "") : campos.length > 11 ? campos[11] : "",
+                    acabadoSuperior: esYoLocal ? (ventana.miLoadoutLocal.acabadoSuperior || "") : campos.length > 12 ? campos[12] : "",
                     reversoCarta: campos.length > 13 ? campos[13] : ""
                 });
                 if (campos[0] === nombreJugador) {
@@ -1649,6 +1887,17 @@ ApplicationWindow {
                     }
                 }
             }
+            // Quien vuelve a tener fichas (recompra) deja de estar apagado.
+            if (mesaJuegoMovil.eliminados.length > 0) {
+                var apagados = [];
+                for (var e = 0; e < mesaJuegoMovil.eliminados.length; e++) {
+                    for (var q = 0; q < jugadoresPartida.count; q++) {
+                        var jq = jugadoresPartida.get(q);
+                        if (jq.nombre === mesaJuegoMovil.eliminados[e] && (parseInt(jq.saldo) || 0) === 0) apagados.push(jq.nombre);
+                    }
+                }
+                if (apagados.length !== mesaJuegoMovil.eliminados.length) mesaJuegoMovil.eliminados = apagados;
+            }
         }
         function onEventoJuego(evento, tipo, jugador) {
             historialMovil.append({
@@ -1661,37 +1910,56 @@ ApplicationWindow {
         function onNuevaMano(mano, ciega) {
             manoActual = mano;
             ciegaActual = ciega;
-            // Cobro del bote: el showdown que se cierra ya trae los premios; las
-            // fichas van del bote a cada ganador antes de vaciar nada, y se
-            // limpia para no cobrar dos veces.
-            var ganadores = revealsShowdown.filter(function(r) { return r.premio > 0; });
-            if (ganadores.length > 0) mesaJuegoMovil.cobrarBote(ganadores);
+            ventana.puedeMostrarMisCartas = false;
+            ventana.colaEliminados = [];
+            // La mano nueva cierra cualquier decisión de fin de mano que siguiera abierta (el servidor
+            // sigue adelante si vence el plazo del voto).
+            votoAbierto = false;
+            votoExtensionAbierto = false;
+            // Fin de la mano anterior: TODAS las cartas vuelven al dealer (las de los asientos, las
+            // tuyas y las comunitarias, que primero se voltean). Sin animaciones, simplemente se
+            // limpia la mesa.
+            if (ventana.animarMesa) mesaJuegoMovil.recogerCartas();
+            else mesaJuegoMovil.reiniciarSinAnimar();
             revealsShowdown = [];
+            resumenBotes = [];
+            mejoresPorJugador = ({});
+            detallesBotes = ({});
             retirados = [];
             cartasMesa = [];
             miCarta1 = "";
             miCarta2 = "";
-            // Red de seguridad: si por lo que sea no llegó ESPERAR_VOTO (p.
-            // ej. nadie tenía que votar), que el showdown no se quede
-            // abierto para siempre tapando la mesa de la mano nueva.
             showdownAbierto = false;
+            // A partir de aquí lo que llega son eventos NUEVOS de esta sesión: se pueden animar.
+            ventana.animacionesMesaActivas = true;
         }
         function onMesaActualizada(cartasCsv) {
             cartasMesa = cartasCsv.length > 0 ? cartasCsv.split(",") : [];
         }
         function onMisCartasRepartidas(c1, c2) {
+            // Llega justo al repartir, antes de cualquier turno. Con animaciones, primero arranca el
+            // reparto (tus cartas esperan a que aterrice cada carta voladora: tu asiento las ve
+            // boca abajo y las voltea) y después se guardan.
+            if (ventana.animarMesa) mesaJuegoMovil.repartirMano(ventana.ordenRepartoActual());
             miCarta1 = c1;
             miCarta2 = c2;
         }
         function onAccionRealizada(jugador, accion) {
             if (accion === "FOLD") {
+                // Las cartas de los demás vuelan al dealer al retirarse. Las TUYAS se quedan: la
+                // estimación de combinaciones sigue actualizándose y te interesa ver qué habrías tenido.
+                if (ventana.animarMesa && jugador !== nombreJugador) mesaJuegoMovil.retirarse(jugador);
                 retirados = retirados.concat([jugador]);
             }
         }
         function onEsMiTurno(bote, igualar, miSaldo, miApuesta, timeoutMs, minSubida, maxSubida, c1, c2, comboA, comboP, comboM) {
+            // Si te toca jugar, el voto de la mano anterior ya pasó (ver onNuevaMano).
+            votoAbierto = false;
+            votoExtensionAbierto = false;
             miCarta1 = c1;
             miCarta2 = c2;
             tuTurno = true;
+            if (sonidoActivado && !grupoSilenciado("turno") && Qt.application.state === Qt.ApplicationActive) sonidoTurno.play();
             igualarActual = igualar;
             miApuestaActual = miApuesta;
             miSaldoActual = miSaldo;
@@ -1729,61 +1997,53 @@ ApplicationWindow {
             }
         }
         function onShowdownIniciado(cartasCsv) {
+            tuTurno = false;
+            turnoNombre = "";
             cartasMesa = cartasCsv.length > 0 ? cartasCsv.split(",") : [];
-            revealsShowdown = [];
-            resumenBotes = [];
-            showdownAbierto = true;
+            mesaJuegoMovil.botesShowdown = [];
+            mesaJuegoMovil.botePulsado = -1;
         }
         function onCartasMostradas(jugador, cartasCsv, combo) {
-            // Un jugador elegible para varios botes (principal + side
-            // pots) recibe un MUESTRA_CARTAS por CADA bote en el que
-            // compite (Partida::showdown(), un bucle por bote) -- sin
-            // este filtro, se le creaba una tarjeta nueva cada vez (vista
-            // en real: "Stefan" duplicado, una con el total correcto y
-            // otra suelta solo con el premio del side pot). El dinero
-            // real del jugador no se veía afectado (eso lo gestiona el
-            // servidor aparte), pero la tarjeta fantasma sí. La entrada ya
-            // existente sigue sumando cada premio con normalidad
-            // (onBoteGanado más abajo).
-            if (revealsShowdown.some(function(r) { return r.nombre === jugador; })) return;
-            revealsShowdown = revealsShowdown.concat([{
-                nombre: jugador,
-                cartas: cartasCsv.split(","),
-                combo: combo,
-                esGanador: false,
-                premio: 0
-            }]);
+            // (Sustituido por onManoRevelada: el showdown ya no abre un overlay.)
         }
         function onBoteEvaluado(numBote, cantidad, jugadoresCsv) {
-            resumenBotes = resumenBotes.concat([{
+            var competidores = jugadoresCsv.length > 0 ? jugadoresCsv.split(",") : [];
+            var participantes = detallesBotes[numBote] || competidores.map(function(n) { return { nombre: n, aporte: 0 }; });
+            mesaJuegoMovil.botesShowdown = mesaJuegoMovil.botesShowdown.concat([{
                 numBote: numBote,
                 cantidad: cantidad,
-                competidores: jugadoresCsv.length > 0 ? jugadoresCsv.split(",") : [],
                 ganador: "",
-                premioGanador: 0
+                premio: 0,
+                participantes: participantes
             }]);
         }
         function onBoteGanado(jugador, premio, numBote, combo) {
-            revealsShowdown = revealsShowdown.map(function(r) {
-                if (r.nombre !== jugador) return r;
-                return { nombre: r.nombre, cartas: r.cartas, combo: r.combo, esGanador: true, premio: r.premio + premio };
-            });
-            resumenBotes = resumenBotes.map(function(b) {
-                if (b.numBote !== numBote) return b;
-                return { numBote: b.numBote, cantidad: b.cantidad, competidores: b.competidores, ganador: jugador, premioGanador: premio };
-            });
+            // Etiqueta del bote: quién lo ganó y cuánto se llevó (con empate, se suma).
+            var botes = mesaJuegoMovil.botesShowdown.slice();
+            for (var i = 0; i < botes.length; i++) {
+                if (botes[i].numBote !== numBote) continue;
+                botes[i] = Object.assign({}, botes[i], {
+                    ganador: botes[i].ganador === "" ? jugador : botes[i].ganador,
+                    premio: botes[i].premio + premio
+                });
+            }
+            mesaJuegoMovil.botesShowdown = botes;
+            // Resaltar la mano ganadora y anunciarlo (cinta, fichas al ganador, sonido).
+            mesaJuegoMovil.marcarGanador(jugador, mejoresPorJugador[jugador] || []);
+            mesaJuegoMovil.anunciarGanador(jugador, premio, retirados.indexOf(nombreJugador) < 0,
+                                           comboLocalizado(combo));
         }
         function onGanadorSinShowdown(jugador, bote) {
-            cartasMesa = [];
-            revealsShowdown = [{
-                nombre: jugador, cartas: [], combo: Idioma.t("texto_gano_sin_mostrar"),
-                esGanador: true, premio: bote
-            }];
-            showdownAbierto = true;
+            // Todos se retiraron menos uno: la mesa se queda a la vista, cobra y (igual que
+            // cualquier retirado) puede elegir si enseña su mano.
+            mesaJuegoMovil.anunciarGanador(jugador, bote, retirados.indexOf(nombreJugador) < 0, "");
         }
         function onEsperandoVoto(mensaje) {
             mensajeVoto = mensaje;
             votoAbierto = true;
+            votoPlazoSegundos = Math.round((redcliente.plazoVotoMs || 0) / 1000);
+            votoInicioMs = Date.now();
+            votoRestanteSegundos = votoPlazoSegundos;
             tuTurno = false;
             turnoNombre = "";
         }
@@ -2119,6 +2379,7 @@ ApplicationWindow {
         function onReconectando(segundosRestantes) {
             reconectandoAhora = true;
             segundosReconexion = segundosRestantes;
+            ventana.animacionesMesaActivas = false;
         }
         function onReconectado() {
             reconectandoAhora = false;
@@ -2128,6 +2389,14 @@ ApplicationWindow {
         // la pantalla se reconstruye con lo que llega a continuación. Sin esto, se volvía
         // a la partida con el showdown de antes tapando la mesa y sin poder hacer nada.
         function onResincronizado() {
+            // No se anima el estado que llega de golpe: hasta la próxima mano nueva.
+            ventana.animacionesMesaActivas = false;
+            mesaJuegoMovil.reiniciarSinAnimar();
+            mesaJuegoMovil.eliminados = [];
+            ventana.puedeMostrarMisCartas = false;
+            ventana.colaEliminados = [];
+            mejoresPorJugador = ({});
+            detallesBotes = ({});
             showdownAbierto = false;
             votoAbierto = false;
             votoExtensionAbierto = false;
@@ -2716,7 +2985,7 @@ ApplicationWindow {
                 // el comentario grande junto a listaRankingMovil) para
                 // esta visita nueva a la pantalla.
                 listaRankingMovil.anclarArriba = true;
-                Qt.callLater(() => { listaRankingMovil.contentY = 0; });
+                Qt.callLater(() => { listaRankingMovil.contentY = listaRankingMovil.originY; });
             }
             if (nombre === "Social" && ventana.tokenSesion !== "") {
                 ventana.pestanaSocialActual = 0;
@@ -3418,11 +3687,13 @@ ApplicationWindow {
             // carrera contra la compensación interna de Flickable cuando
             // el contenido crece por encima de lo visible (la cabecera-
             // podio pasando de invisible a visible de golpe). En vez de
-            // adivinar el momento otra vez, esto FIJA contentY a 0 en
+            // adivinar el momento otra vez, esto FIJA contentY al INICIO en
             // cada cambio real de contentHeight hasta que el usuario
-            // mueva la lista de verdad.
+            // mueva la lista de verdad. OJO: con un `header`, el inicio NO es
+            // contentY=0 sino `originY` (= -alto de la cabecera); fijar 0 pasa
+            // de largo el podio (causa real, medida el 2026-09-20 en escritorio).
             property bool anclarArriba: true
-            onContentHeightChanged: if (anclarArriba) contentY = 0
+            onContentHeightChanged: if (anclarArriba) contentY = originY
             onMovementStarted: anclarArriba = false
             onFlickStarted: anclarArriba = false
             header: Column {
@@ -3441,7 +3712,7 @@ ApplicationWindow {
                 // que importa es cuándo cambia el alto de la cabecera.
                 // Reaccionar directamente a ESE evento, en vez de intentar
                 // adivinar el momento adecuado en otro sitio.
-                onHeightChanged: Qt.callLater(() => { listaRankingMovil.contentY = 0; })
+                onHeightChanged: Qt.callLater(() => { listaRankingMovil.contentY = listaRankingMovil.originY; })
 
                 // ── Podio: top 3 de la pestaña activa -- mismo diseño ya
                 // validado en escritorio (avatar grande + placa numérica,
@@ -7030,6 +7301,25 @@ ApplicationWindow {
                         }
                     }
 
+                    // Temporizador del voto entre manos: solo en una sala de red (en local no se espera a nadie).
+                    Row {
+                        visible: !ventana.sesionOffline
+                        width: parent.width
+                        Text {
+                            width: parent.width - interruptorTemporizadorVotoMovil.width
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Idioma.t("etiqueta_temporizador_voto")
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        Interruptor {
+                            id: interruptorTemporizadorVotoMovil
+                            activo: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
                     Row {
                         width: parent.width
                         Text {
@@ -7127,7 +7417,8 @@ ApplicationWindow {
                         interruptorRecompraMovil.activo,
                         interruptorRellenarMovil.activo,
                         interruptorAbiertaMovil.activo,
-                        interruptorPreguntarExtensionMovil.activo
+                        interruptorPreguntarExtensionMovil.activo,
+                        interruptorTemporizadorVotoMovil.activo
                     );
                 }
             }
@@ -7297,18 +7588,18 @@ ApplicationWindow {
         visible: ventana.pantalla === "Partida"
         anchors.fill: parent
 
-        // Mesa a 2/3 del ancho (antes casi toda la pantalla): un óvalo tan
-        // panorámico como el ancho completo es lo que causaba el solape
-        // real entre asientos y cartas comunitarias (radio vertical
-        // demasiado pequeño) — a 2/3 la proporción baja a algo mucho más
-        // manejable sin tocar la trigonometría de Mesa.qml.
+        // La mesa ocupa lo que deja el cajón (~72 % del ancho; antes 2/3): un óvalo tan
+        // panorámico como el ancho completo es lo que causaba el solape real entre asientos y
+        // cartas comunitarias (radio vertical demasiado pequeño). Al quitar del cajón la pestaña
+        // "Cartas" (tus cartas van ahora en tu asiento) se estrechó y la mesa ganó ancho, que
+        // necesita el showdown con las manos enseñadas junto a cada asiento.
         Mesa {
             id: mesaJuegoMovil
             anchors.left: parent.left
+            anchors.right: cajonPartidaMovil.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.margins: 8 * Tema.escala
-            width: parent.width * 2 / 3 - 8 * Tema.escala
             jugadores: jugadoresPartida
             cartasMesa: ventana.cartasMesa
             bote: ventana.boteActual
@@ -7324,19 +7615,51 @@ ApplicationWindow {
             tapete: ventana.tapeteMesaActivo
             miCarta1: ventana.miCarta1
             miCarta2: ventana.miCarta2
+            // Animaciones (reparto desde el dealer, comunitarias al vuelo, showdown en la mesa): solo
+            // con eventos nuevos y con el nivel "completas".
+            animar: ventana.animarMesa
+            // Sonidos de la mesa (ver ventana.sonar).
+            onRepartoIniciado: function(cartas, duracionMs) {
+                ventana.sonar("reparto", { n: cartas, duracion: duracionMs });
+            }
+            onCartasRecogidas: function(cartas, duracionMs) {
+                ventana.sonar("recogida", { n: cartas, duracion: duracionMs });
+            }
+            onComunitariasRepartidas: function(cuantas, inicioMs, duracionMs) {
+                ventana.sonar(cuantas === 3 ? "flop" : "comunitaria",
+                              { n: cuantas > 1 ? cuantas : undefined, duracion: duracionMs, inicio: inicioMs });
+            }
+            onFichasLanzadas: function(fichas, cantidad, inicioMs, duracionMs) {
+                ventana.sonar("fichas", { factor: fichas / 8, duracion: duracionMs, inicio: inicioMs,
+                                          vol: 0.55 + 0.45 * fichas / 8 });
+            }
+            onCobroLanzado: function(fichas, cantidad, inicioMs, duracionMs) {
+                ventana.sonar("cobro", { factor: fichas / 8, duracion: duracionMs, inicio: inicioMs,
+                                         vol: 0.55 + 0.45 * fichas / 8 });
+            }
+            onFoldLanzado: function(nombre) { ventana.sonar("fold", {}); }
+            onAllInAnunciado: function(nombre, cantidad, grande) {
+                ventana.sonar("allin", grande ? { vol: 1.0 } : { factor: 0.5, vol: 0.7 });
+            }
+            onGanadorAnunciado: function(nombre, esPropio, premio, participo) {
+                if (esPropio) ventana.sonar("ganar", {});
+                else if (participo) ventana.sonar("perder", {});
+            }
+            onEliminadoAnunciado: function(nombre, esPropio) {
+                ventana.sonar("eliminado", esPropio ? {} : { vol: 0.6 });
+            }
         }
 
-        // Cajón de pestañas al tercio restante — sustituye tanto la barra
+        // Cajón de pestañas a la derecha — sustituye tanto la barra
         // de acciones inferior como el IconoAjustes flotante que había
         // aquí (el suyo ahora vive en la cabecera del propio cajón).
         CajonPartida {
             id: cajonPartidaMovil
-            anchors.left: mesaJuegoMovil.right
             anchors.top: parent.top
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: 8 * Tema.escala
-            anchors.leftMargin: 8 * Tema.escala
+            width: Math.max(210 * Tema.escala, parent.width * 0.27)
             turnoNombre: ventana.turnoNombre
             tuTurno: ventana.tuTurno
             fraccionTiempo: ventana.fraccionTiempoRestante
@@ -7347,8 +7670,6 @@ ApplicationWindow {
             comboActual: ventana.comboLocalizado(ventana.comboActual)
             comboProbable: ventana.comboLocalizado(ventana.comboProbable)
             comboMaxima: ventana.comboLocalizado(ventana.comboMaxima)
-            miCarta1: ventana.miCarta1
-            miCarta2: ventana.miCarta2
             miSaldoActual: ventana.miSaldoActual
             aPagarParaIgualar: ventana.aPagarParaIgualar
             minSubidaActual: ventana.minSubidaActual
@@ -7361,6 +7682,19 @@ ApplicationWindow {
             confirmarAllIn: ventana.confirmarAllIn
             modeloHistorial: historialMovil
             modeloChat: mensajesChatPartida
+            votoAbierto: ventana.votoAbierto
+            votoRestanteSegundos: ventana.votoRestanteSegundos
+            enRed: !ventana.modoOfflineActivo && ventana.votoPlazoSegundos > 0
+            soyHost: ventana.soyHost
+            // 5 = MIN_MANOS_PARA_STATS en NetworkObserver.cpp (servidor) -- si cambia ahí, cambiar aquí también.
+            contariaComoPerdida: ventana.tokenSesion !== "" && ventana.manoActual >= 5
+            // "Mostrar cartas": solo si te retiraste o ganaste sin showdown Y tu mano no está ya revelada.
+            puedeMostrarCartas: ventana.puedeMostrarMisCartas && !mesaJuegoMovil.muestras[ventana.nombreJugador]
+            onMostrarCartasPedido: {
+                ventana.puedeMostrarMisCartas = false;
+                redcliente.mostrarCartas();
+            }
+            onVotoCerrado: ventana.votoAbierto = false
             onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
             onAbrirChuleta: chuletaMovil.open()
             onDecisionEnviada: {
@@ -7370,206 +7704,8 @@ ApplicationWindow {
             onRecompraPedida: ventana.recompraSolicitada = true
         }
 
-        // ── Showdown / voto de fin de mano ──────────────────────────────
-        // Mismo overlay para los dos casos (cartas reveladas de verdad, o
-        // "se llevó el bote sin mostrar cartas") — onGanadorSinShowdown
-        // también abre esto, con revealsShowdown de una sola tarjeta sin
-        // cartas. El voto de continuar/abandonar vive DENTRO, para poder
-        // votar sin dejar de ver el resultado.
-        Rectangle {
-            anchors.fill: parent
-            visible: ventana.showdownAbierto
-            color: "#0A140F"
-            opacity: 0.94
-
-            Flickable {
-                id: flickableShowdownMovil
-                anchors.fill: parent
-                anchors.margins: 16 * Tema.escala
-                contentWidth: width
-                contentHeight: columnaShowdownMovil.height
-                clip: true
-
-                Column {
-                    id: columnaShowdownMovil
-                    width: parent.width
-                    spacing: 14 * Tema.escala
-
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Idioma.t("titulo_showdown")
-                        color: Tema.colorAccent
-                        font.letterSpacing: 3
-                        font.pixelSize: 12 * Tema.escala
-                        font.bold: true
-                    }
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 4 * Tema.escala
-                        Repeater {
-                            model: ventana.cartasMesa
-                            delegate: Carta {
-                                required property string modelData
-                                codigo: modelData
-                            }
-                        }
-                    }
-
-                    Text {
-                        visible: ventana.resumenBotes.length <= 1
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Idioma.tf("etiqueta_bote_total", [ventana.boteTotalShowdown()])
-                        color: Tema.colorTextoTenueSobreOscuro
-                        font.pixelSize: 12 * Tema.escala
-                        font.family: Tema.fuenteElegante
-                    }
-
-                    Column {
-                        visible: ventana.resumenBotes.length > 1
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: parent.width
-                        spacing: 3 * Tema.escala
-                        Repeater {
-                            model: ventana.resumenBotes
-                            delegate: Text {
-                                required property var modelData
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                horizontalAlignment: Text.AlignHCenter
-                                width: parent.width
-                                wrapMode: Text.WordWrap
-                                font.pixelSize: 11 * Tema.escala
-                                font.family: Tema.fuenteElegante
-                                color: Tema.colorTextoTenueSobreOscuro
-                                text: {
-                                    var etiqueta = modelData.numBote === 0
-                                            ? Idioma.t("etiqueta_bote_principal")
-                                            : Idioma.tf("etiqueta_side_pot", [modelData.numBote]);
-                                    var linea = etiqueta + ": " + modelData.cantidad +
-                                            Idioma.tf("etiqueta_compiten", [modelData.competidores.join(", ")]);
-                                    if (modelData.ganador !== "")
-                                        linea += Idioma.tf("etiqueta_gano_bote", [modelData.ganador, modelData.premioGanador]);
-                                    return linea;
-                                }
-                            }
-                        }
-                    }
-
-                    // Una tarjeta por jugador que llegó al showdown, en
-                    // filas propias (cada Row se centra sola) — igual
-                    // patrón que escritorio, con menos hueco disponible
-                    // por fila al ser una pantalla más estrecha.
-                    Column {
-                        id: filaRevealsMovil
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 12 * Tema.escala
-                        readonly property real anchoItem: 130 * Tema.escala
-                        readonly property int itemsPorFila: Math.max(1, Math.floor(
-                                (parent.width + spacing) / (anchoItem + spacing)))
-                        Repeater {
-                            model: Math.ceil(ventana.revealsShowdown.length / filaRevealsMovil.itemsPorFila)
-                            delegate: Row {
-                                required property int index
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                spacing: filaRevealsMovil.spacing
-                                Repeater {
-                                    model: ventana.revealsShowdown.slice(
-                                            index * filaRevealsMovil.itemsPorFila,
-                                            (index + 1) * filaRevealsMovil.itemsPorFila)
-                                    delegate: TarjetaReveal {
-                                        required property var modelData
-                                        datos: modelData
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Column {
-                        visible: ventana.votoAbierto
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 10 * Tema.escala
-                        Text {
-                            // No se usa ventana.mensajeVoto tal cual: el
-                            // servidor lo redacta pensando en el cliente
-                            // ncurses ("Pulsa Enter para continuar..."),
-                            // que no tiene sentido sin teclado físico. El
-                            // botón de abajo (PanelVoto) ya deja claro qué
-                            // hacer, este texto es solo la cabecera.
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: Idioma.t("titulo_fin_mano")
-                            color: Tema.colorAccent
-                            font.bold: true
-                            font.pixelSize: 12 * Tema.escala
-                        }
-                        PanelVoto {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            soyHost: ventana.soyHost
-                            // 5 = MIN_MANOS_PARA_STATS en NetworkObserver.cpp (servidor) -- si cambia ahí, cambiar aquí también.
-                            contariaComoPerdida: ventana.tokenSesion !== "" && ventana.manoActual >= 5
-                            onAbandonar: ventana.votoAbierto = false
-                            onGuardarYSalir: ventana.votoAbierto = false
-                        }
-                    }
-                }
-            }
-
-            // Pista de que hay más contenido por debajo del scroll --
-            // pedido explícito (algunos probadores no se daban cuenta de
-            // que había que deslizar para llegar al botón de continuar).
-            // Fundido + texto que rebota suavemente, visibles solo
-            // mientras quede contenido sin ver por debajo (se ocultan
-            // solos en cuanto se llega al final, no hace falta tocar nada
-            // para que desaparezcan).
-            Rectangle {
-                id: fundidoInferiorShowdown
-                visible: opacity > 0
-                opacity: (flickableShowdownMovil.contentHeight > flickableShowdownMovil.height &&
-                          flickableShowdownMovil.contentY <
-                              flickableShowdownMovil.contentHeight - flickableShowdownMovil.height - 4) ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 46 * Tema.escala
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 1.0; color: Qt.rgba(0.04, 0.078, 0.059, 0.96) }
-                }
-                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property variant source
-                    property real amplitud: 30.0
-                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
-                }
-
-                Text {
-                    id: textoPistaScrollShowdown
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 6 * Tema.escala
-                    text: Idioma.t("texto_mas_abajo")
-                    color: Tema.colorTextoTenueSobreOscuro
-                    font.pixelSize: 10 * Tema.escala
-
-                    // "transform", no animar anchors.bottomMargin directo:
-                    // el anclaje reafirma la posición en cada layout y
-                    // pelearía con la animación. Un Translate se aplica
-                    // aparte, en tiempo de render, sin ese conflicto
-                    // (mismo patrón que el desplazamiento del chat sobre
-                    // el teclado en ChatBox.qml).
-                    property real rebote: 0
-                    transform: Translate { y: -textoPistaScrollShowdown.rebote }
-                    SequentialAnimation on rebote {
-                        loops: Animation.Infinite
-                        running: fundidoInferiorShowdown.opacity > 0
-                        NumberAnimation { from: 0; to: 4 * Tema.escala; duration: 550; easing.type: Easing.InOutQuad }
-                        NumberAnimation { from: 4 * Tema.escala; to: 0; duration: 550; easing.type: Easing.InOutQuad }
-                    }
-                }
-            }
-        }
+        // (El showdown ya no es un overlay: se hace sobre la propia mesa, ver Mesa.qml. Las decisiones de
+        // fin de mano -- seguir / abandonar / guardar y "Mostrar cartas" -- viven en el cajón, pestaña Turno.)
 
         // ── Voto de extensión de partida ────────────────────────────────
         Rectangle {
@@ -7980,16 +8116,22 @@ ApplicationWindow {
                         seleccionado: Idioma.idiomasDisponibles.indexOf(Idioma.actual)
                         onElegido: (indice) => Idioma.actual = Idioma.idiomasDisponibles[indice]
                     }
-                    // Oculto (pedido explícito, 2026-09-13) -- el ajuste
-                    // (sonidoActivado) y el propio sonido de "tu turno" se
-                    // quedan intactos, solo desaparece el control de Ajustes.
+                    // ── Sonidos de la mesa: interruptor general (apagado por defecto), volumen y, por
+                    // grupo, qué escuchar y qué no. Los eventos suenan solo con el general encendido.
+                    Text {
+                        width: parent.width
+                        text: Idioma.t("ajustes_sonidos_titulo")
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.pixelSize: 11 * Tema.escala
+                        font.letterSpacing: 2
+                    }
                     Row {
-                        visible: false
                         width: parent.width
                         Text {
                             width: parent.width - 46 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("texto_sonido_notificaciones")
+                            text: Idioma.t("ajustes_sonidos_activar")
                             color: Tema.colorTextoTenue
                             font.pixelSize: 13 * Tema.escala
                             wrapMode: Text.WordWrap
@@ -7998,6 +8140,86 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             activo: ventana.sonidoActivado
                             onAlternado: ventana.sonidoActivado = !ventana.sonidoActivado
+                        }
+                    }
+                    Row {
+                        visible: ventana.sonidoActivado
+                        width: parent.width
+                        spacing: 10 * Tema.escala
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Idioma.t("ajustes_sonidos_volumen")
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                        }
+                        Slider {
+                            width: parent.width - 100 * Tema.escala
+                            anchors.verticalCenter: parent.verticalCenter
+                            from: 0
+                            to: 1
+                            value: ventana.volumenSonidos
+                            onMoved: ventana.volumenSonidos = value
+                        }
+                    }
+                    // Diagnóstico y prueba: cuántas mezclas cargaron, con error, y cuántas han sonado.
+                    Row {
+                        visible: ventana.sonidoActivado
+                        width: parent.width
+                        spacing: 10 * Tema.escala
+                        Text {
+                            width: parent.width - botonProbarSonidoMovil.width - parent.spacing
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Idioma.tf("ajustes_sonidos_diagnostico", [bancoSonidos.listos, bancoSonidos.errores, bancoSonidos.reproducidos])
+                            color: Tema.colorTextoMuyTenue
+                            font.pixelSize: 11 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        BotonContorno {
+                            id: botonProbarSonidoMovil
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Idioma.t("ajustes_sonidos_probar")
+                            onClicked: ventana.sonar("ganar", {})
+                        }
+                    }
+                    Repeater {
+                        model: ["cartas", "fichas", "allin", "resultado", "retirarse", "turno"]
+                        delegate: Row {
+                            id: filaGrupoSonidoMovil
+                            required property string modelData
+                            visible: ventana.sonidoActivado
+                            width: parent.width
+                            Text {
+                                width: parent.width - 46 * Tema.escala
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: Idioma.t("sonido_grupo_" + filaGrupoSonidoMovil.modelData)
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 13 * Tema.escala
+                                wrapMode: Text.WordWrap
+                            }
+                            Interruptor {
+                                anchors.verticalCenter: parent.verticalCenter
+                                activo: !ventana.grupoSilenciado(filaGrupoSonidoMovil.modelData)
+                                onAlternado: ventana.alternarGrupoSonido(filaGrupoSonidoMovil.modelData)
+                            }
+                        }
+                    }
+                    // ── Animaciones de la mesa: completas (todo), reducidas (solo fichas y avisos) o
+                    // desactivadas. Con las desactivadas, el modo local tampoco espera entre fases.
+                    Text {
+                        width: parent.width
+                        text: Idioma.t("ajustes_animaciones_titulo")
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.pixelSize: 11 * Tema.escala
+                        font.letterSpacing: 2
+                    }
+                    SelectorSegmentado {
+                        width: parent.width
+                        opciones: [Idioma.t("animaciones_desactivadas"), Idioma.t("animaciones_reducidas"), Idioma.t("animaciones_completas")]
+                        seleccionado: ventana.nivelAnimaciones
+                        onElegido: (indice) => {
+                            ventana.nivelAnimaciones = indice;
+                            modoJuego.setPausasAnimacion(indice > 0);
                         }
                     }
                     Row {

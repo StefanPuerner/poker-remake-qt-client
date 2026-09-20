@@ -19,7 +19,23 @@ constexpr int TURNO_TIMEOUT_MS = 30'000;
 /// El cliente anima el cobro (~0.9 s) y el volteo (~0.5 s) en paralelo dentro
 /// de este hueco; poner 0 para quitar la pausa (el juego sigue sin animar el
 /// cobro). Ver IGameObserver::onPausaAnimacionMesa().
-constexpr int PAUSA_ANIMACION_MESA_MS = 1300;
+constexpr int PAUSA_ANIMACION_MESA_MS = 1600;
+
+/// Pausas de las animaciones de la mesa (ver docs/plan-integracion-animaciones.md). Solo las
+/// respeta un observador con interfaz detrás (NetworkObserver con clientes conectados y
+/// LocalGameObserver); en tests y benchmarks no cuestan nada.
+/// Tras asignar dealer y ciegas: los marcadores viajan al asiento nuevo (antes de las ciegas).
+constexpr int PAUSA_ROTACION_MS = 1000;
+/// Tras poner las ciegas: las fichas llegan al bote (antes de repartir).
+constexpr int PAUSA_CIEGAS_MS = 1100;
+/// Tras repartir las cartas iniciales: que vuelen del dealer/mazo a los asientos.
+constexpr int PAUSA_REPARTO_MS = 900;
+/// Entre una mano revelada y la siguiente en el showdown (orden de apuesta).
+constexpr int PAUSA_REVELAR_MANO_MS = 1300;
+/// Antes de cada calle que falta en un runout (nadie puede apostar más).
+constexpr int PAUSA_RUNOUT_CALLE_MS = 1900;
+/// Tras anunciar quién gana cada bote: banda, fichas al ganador y (si son varios) leer el siguiente.
+constexpr int PAUSA_BOTE_MS = 3600;
 
 /// Plazo para votar en las pantallas de entre manos (continuar / extender la
 /// partida). Antes no había: un jugador con el socket vivo pero sin mirar la
@@ -126,6 +142,11 @@ struct ReglasJuego {
   /// simplemente termina en el límite, como si nadie hubiera querido
   /// extender.
   bool           preguntarExtension = true;
+  /// Plazo del voto entre manos (VOTO_TIMEOUT_MS): si está activo y alguien no vota a tiempo,
+  /// cuenta como "continuar". Si el host lo desactiva al crear la sala, la mesa espera a que
+  /// voten todos los que siguen conectados (el caído ya no bloquea, ver marcarDesconectado()).
+  /// Activado por defecto: es el comportamiento de siempre.
+  bool           temporizadorVoto = true;
 };
 
 /// Tipos de acción que puede realizar un jugador en su turno.

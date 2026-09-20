@@ -45,7 +45,21 @@ void Bote::eliminarParticipante(Player* jugador) {
   return participantes_;
 }
 
+void Bote::agregarAportacion(Player* jugador, int cantidad) {
+  if (cantidad <= 0) return;
+  for (auto& a : aportaciones_) {
+    if (a.first == jugador) {
+      a.second += cantidad;
+      return;
+    }
+  }
+  aportaciones_.emplace_back(jugador, cantidad);
+}
+
+const std::vector<std::pair<Player*, int>>& Bote::getAportaciones() const { return aportaciones_; }
+
 void Bote::limpiar() {
+  aportaciones_.clear();
   saldo_ = 0;
   limite_ = INT_MAX;
   participantes_.clear();

@@ -1,67 +1,79 @@
-# PokerRemake v0.12.0
+# PokerRemake v0.13.0 — versión EXPERIMENTAL
 
-> **Esta versión necesita el servidor actualizado** (reclamar logros, avisos de
-> solicitudes y el blindaje de la reconexión viven en él). Con un servidor
-> antiguo lo demás sigue funcionando, pero los logros nuevos no se podrán
-> reclamar.
+> ## ⚠️ Versión experimental: estate atento a los errores
+> Esta versión cambia **mucho** de golpe: el showdown, las animaciones de la mesa, los
+> sonidos y buena parte de la interfaz del móvil. Casi todo se ha probado con partidas
+> automáticas y en pocos dispositivos reales, así que es probable que se cuele algún
+> **error visual** (cartas mal colocadas, textos tapados, cosas que se solapan en tu
+> pantalla) o de **sonido**. Si juegas con esta versión, **fíjate y cuéntanos lo que veas**:
+> mejor con una **captura** y diciendo el móvil o el ordenador y en qué momento de la mano
+> pasó. Cuantos más errores lleguen ahora, antes quedan arreglados.
+>
+> **Necesita el servidor actualizado.** Con un servidor antiguo la partida funciona, pero
+> sin los avisos de all-in, el orden del showdown ni el temporizador opcional, y con
+> pausas y reglas de heads-up de antes.
 
-## Bots: overhaul completo
-- **Juegan bien con o sin subida mínima y con cualquier tipo de límite**
-  (No-Limit, Pot-Limit, Fixed-Limit). Antes se retiraban ante casi cualquier
-  apuesta pequeña (apostarles 1 ficha o el mínimo funcionaba siempre) y tratan
-  igual una subida mínima que un all-in. Ahora leen el **tamaño** de la apuesta
-  respecto al bote.
-- **Las tres dificultades se notan de verdad**: FACIL paga de más y se le nota la
-  mano; NORMAL juega ajustado y con criterio; EXPERTO mezcla faroles y valor, varía
-  los tamaños y se adapta a cada rival. Cara a cara, NORMAL y EXPERTO ganan
-  claramente a FACIL, y el nuevo motor gana al anterior en las tres.
-- Preflop con rangos de apertura según posición y jugadores, defensa según el
-  tamaño de la subida y re-subidas.
+## El showdown se hace sobre la propia mesa
+- **Ya no hay una ventana que tape la mesa**: las manos se enseñan en cada asiento. Primero
+  se preparan todos a la vez y luego se **revelan de uno en uno, en orden de apuesta**, con
+  la combinación escrita debajo de cada mano.
+- **La mano ganadora se resalta** con un filo dorado y un halo que late (no se apagan las
+  demás cartas).
+- **Botes con detalle**: si hay side pots aparecen etiquetas compactas (*Principal*, *Side 1*…);
+  al pulsar una ves quién entró, cuánto puso y quién lo ganó.
+- **Mostrar cartas**: si te retiraste, o ganas sin que nadie llegue al showdown, puedes
+  enseñar tu mano si quieres (no influye en el resultado).
+- **Cintas de aviso** sobre las comunitarias: all-in, "¡Ganas!", "X gana" y eliminado.
+- Si todos los que quedan están all-in, **se enseñan las manos antes de las calles que
+  faltan**.
 
-## Torneos Solitario y logros
-- **Los logros se reclaman a mano**: al conseguirlo ves un punto de aviso en
-  **Cuenta** (y en la pestaña Logros) y un botón **Reclamar** que concede el XP, el
-  título y los objetos. Lo desbloqueado antes de esta versión ya está reclamado.
-- Los retos guardan y **continúan** (botón Continuar) y cuentan como partida contra
-  bots (XP, marco, logros y estadísticas).
+## Animaciones de la mesa
+- **Las cartas se reparten** de una en una a cada asiento (y tus dos cartas se voltean al
+  llegar); en el móvil salen del **dealer**, en el ordenador del mazo. Las comunitarias
+  también vuelan a su sitio.
+- **Fin de mano**: las cartas vuelven al mazo, los avatares recuperan su tamaño y los
+  marcadores **D / SB / BB viajan** al asiento siguiente antes de empezar la mano nueva.
+- **All-in**: aro dorado pulsante en el asiento, cinta y, si es grande, un pequeño temblor.
+- **Regla real de heads-up**: con dos jugadores el dealer pone la ciega pequeña.
+- Nuevo ajuste **Animaciones** (completas / reducidas / desactivadas). Con las
+  desactivadas el modo local tampoco espera entre fases.
 
-## Social
-- **Punto de aviso al recibir una solicitud de amistad**: sale en **Social** y en la
-  pestaña **Solicitudes**, igual que los mensajes.
+## Sonidos de la mesa
+- Sonidos reales (Kenney, CC0): reparto, fichas, all-in, ganar, perder, eliminado, retirada,
+  barajar… **Ajustes > Sonidos**: interruptor general (**apagado por defecto**), volumen y
+  qué grupos quieres oír. Los sonidos se ajustan a lo que pasa (más fichas, más cartas…).
+- Nuevo **aviso de "tu turno"** (una campana corta) y una **retirada más sutil**.
+- En el móvil, cada evento es **una sola pista ya mezclada** (antes, con muchas pistas a la vez,
+  Android dejaba sin sonar los más tardíos). En Ajustes > Sonidos hay un botón **Probar** y un
+  contador de sonidos cargados: si no oyes nada, dinos qué número sale.
 
-## Mesas y decoraciones
-- **Las mesas se compran por tipo y el color se elige después**: en vez de un objeto por
-  color, ahora compras la textura (Rombos, Palos, Puntos y las nuevas **Lino** y **Rayas**)
-  y eliges cualquier color al equiparla (Verde, Granate, Azul, Grafito, Taberna, Porcelana,
-  y los nuevos Violeta y Petróleo). Las de **madera** (Madera y Casino) traen 3 maderas:
-  Roble, **Roble oscuro** y **Nogal**. Lo que ya tenías se convierte solo: conservas tu mesa
-  con el mismo color y puedes elegir cualquier otro.
-- **Decoraciones laterales**: al tocarlas se abre una ventana para elegir el lado
-  (izquierda, derecha o **ambos**, con la misma decoración en los dos) y, si es de metal,
-  el material.
+## Móvil
+- **Tus cartas van en tu asiento**, más grandes, con volteo al llegar, y **se quedan cuando te
+  retiras** (la estimación de combinaciones sigue). Los rivales que se retiran devuelven las suyas.
+- **Cajón de la partida rehecho**: sin la pestaña *Cartas* y más estrecho (la **mesa gana
+  ancho**); las decisiones de fin de mano (continuar, abandonar, guardar, mostrar cartas)
+  salen en la pestaña *Turno*; **historial y chat con el estilo nuevo**; al empezar tu turno
+  salta solo a *Turno*.
+- El centro de la mesa se **recoloca en el showdown** para que la combinación del ganador no
+  quede tapada por las comunitarias ni por tu avatar.
 
-## Interfaz
-- **Los temas ya no ocupan media barra de Ajustes**: un botón abre una ventana
-  flotante con todos, cada uno con sus colores.
-- **La tienda va ordenada**: arriba lo que puedes comprar (por nivel y, dentro del
-  nivel, por precio), luego lo que se consigue por logro, y abajo del todo lo que ya
-  tienes.
-- **"Confirmar all-in" se recuerda** entre sesiones (antes había que activarlo cada vez).
-- La fecha de "mejor mano" del perfil ya se muestra corta (DD/MM/AA) y no se solapa con el texto.
-- **Anillo de nivel/XP** siempre visible arriba a la izquierda en Cuenta (escritorio) y en la esquina izquierda del Perfil (móvil).
+## Partidas
+- **Temporizador entre manos opcional**: al crear una sala online puedes desactivarlo; entonces
+  la mesa espera a que voten todos los que siguen conectados. Con él activado, cuenta atrás
+  visible (60 s) y la partida sigue sola si nadie vota.
 
 ## Correcciones
-- **Carta repetida en el showdown** (un 7 de picas en la mesa y en la mano de un
-  bot): quien quedaba all-in al poner la ciega no recibía cartas nuevas y jugaba con
-  las de la mano anterior. Arreglado.
-- **El dealer saltaba a los bots** en partidas con personas: el botón se saltaba a
-  quien se había retirado (los bots, sobre todo). Ahora avanza asiento a asiento.
-- **Recompra**: dejaba de funcionar tras extender la partida (la petición se perdía
-  durante la votación). **Quien recompra ya no puede ganar la partida.**
-- **Contraseñas de letras y números**: en el móvil el teclado dejaba los últimos
-  caracteres sin confirmar y una contraseña de 8 se leía de 7.
-- **Reconexión, blindada**: latido de conexión para detectar una conexión medio
-  muerta (móvil que cambia de red), el servidor acepta al jugador que vuelve aunque
-  aún no hubiera notado la caída, le manda el estado completo de la mesa (ya no
-  vuelves a un showdown viejo sin poder hacer nada) y la pantalla de conexión
-  perdida ya no deja pulsar los botones de debajo.
+- **Las cartas propias giraban con cada acción** en el móvil. Arreglado.
+- Un jugador retirado ya no vuelve a mostrar el aro de turno y el reloj tras retirarse.
+- **Contraseña en el móvil**: el teclado dejaba caracteres sin confirmar y solo se dibujaban 6-7
+  puntos aunque la contraseña fuese más larga.
+- El **ranking** debería abrirse ya desde el podio (el scroll iba a un punto equivocado); si no, avísanos.
+- La reconexión ya no se dispara por error cuando la propia aplicación se para un momento.
+
+## Qué conviene mirar al probar
+- El **centro de la mesa** con side pots y 6 o más jugadores, en pantallas pequeñas.
+- **Sonido en el móvil**: ¿suenan todos los eventos? ¿algún corte o tirón?
+- Que **nadie retirado** reciba turno ni apueste, y que ninguna carta se quede en un sitio raro
+  al acabar la mano.
+- La **conexión**: si se reconecta sola sin motivo, apunta cuándo (durante una animación, al
+  bloquear el móvil…).

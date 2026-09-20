@@ -74,6 +74,13 @@ class Partida {
   ReglasJuego  reglas_;
   int          raisesEnEstaMano_;        ///< Contador de raises en la mano actual (para range modeling en IA).
   TipoAccion   ultimaAccionRonda_;       ///< Última acción (para detectar señales de debilidad).
+  // Revelado del showdown: quién subió en la última ronda CON apuestas (o "" si se pasó) decide
+  // quién enseña primero. runoutRevelado_: las manos ya se enseñaron antes de repartir las calles
+  // que faltan (nadie podía apostar), así que el showdown no las vuelve a enseñar una a una.
+  std::string  agresorRondaActual_;
+  std::string  agresorRevelado_;
+  bool         huboAccionEnRonda_ = false;
+  bool         runoutRevelado_ = false;
   std::string  ultimoAgresorNombre_;     ///< Nombre de quien hizo el último RAISE/ALL_IN en la mano actual.
 
   /// Observer activo; unique_ptr garantiza un único observer y su destrucción con Partida.
@@ -230,6 +237,25 @@ class Partida {
 
   /// @return Índice del siguiente jugador en la lista que no está FOLD ni ELIMINADO.
   int obtenerSiguienteJugadorActivo(int indexActual) const;
+
+  /**
+   * @brief Índices de la ciega pequeña y la grande de la mano.
+   * Con 3 o más jugadores: SB = el siguiente al dealer, BB = el siguiente al SB. Con DOS
+   * (heads-up) rige la regla real del póker: el dealer es a la vez la ciega pequeña y el otro
+   * jugador la grande. Así el dealer habla primero antes del flop y último después.
+   * Lo usan cobrarCiegas() y gestionarRondaDeApuestas() (quién abre el preflop): tienen que
+   * coincidir siempre, por eso salen de una sola función.
+   */
+  void calcularIndicesCiegas(int& sbIdx, int& bbIdx) const;
+
+  /// Jugadores con derecho a bote (no retirados ni eliminados) en el orden en que enseñan: empieza
+  /// quien subió en la última ronda con apuestas; si nadie, el primero tras el dealer.
+  std::vector<Player*> ordenRevelado() const;
+  /// Runout (nadie puede apostar más): enseña las manos, una a una y con pausa, antes de las calles
+  /// que faltan. Una sola vez por mano.
+  void revelarManosRunout();
+  /// Al acabar la mano: quién puede enseñar su mano por decisión propia (ver ManoOpcional).
+  void anunciarManosOpcionales();
 
   /// @return Jugadores en estado ACTIVO o ALL_IN (elegibles para la mano).
   int contarJugadoresActivos() const;

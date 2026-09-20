@@ -33,6 +33,16 @@ struct JugadorSaliente {
  * Para añadir un nuevo modo de presentación (replay, GUI, test headless…)
  * basta con crear otra clase derivada sin tocar el motor.
  */
+/// Una mano que su dueño PUEDE enseñar si quiere (no influye en el resultado): la de quien se
+/// retiró, o la del ganador cuando todos se retiran. "combo"/"combinacion" van vacíos si la mesa no
+/// llegó a las 5 comunitarias.
+struct ManoOpcional {
+  std::string nombre;
+  std::vector<Carta> cartas;
+  std::string combo;
+  std::vector<Carta> combinacion;
+};
+
 class IGameObserver {
  public:
   virtual ~IGameObserver() = default;
@@ -58,6 +68,13 @@ class IGameObserver {
   /// observadores con una interfaz gráfica detrás (NetworkObserver y
   /// LocalGameObserver).
   virtual void onPausaAnimacionMesa(int /*ms*/) {}
+
+  /// Un jugador se queda SIN fichas al apostar o al poner una ciega (todo lo que iguala, sube o
+  /// pone la ciega es su pila entera). El ACCION de un CALL/RAISE que vacía la pila no dice
+  /// ALL_IN, así que esto es lo único que avisa. "porCiega": lo dejó a cero una ciega obligatoria
+  /// (la interfaz marca el aro pero no anuncia un all-in que no ha elegido). Se llama DESPUÉS de
+  /// onAccionJugador()/onCobroCiegas() de la misma jugada.
+  virtual void onJugadorAllIn(const std::string& /*nombre*/, int /*cantidad*/, bool /*porCiega*/) {}
   virtual void onRepartoCartasIniciales() = 0;
   virtual void onRepartiendoComunitarias(const std::string& faseDesc, int numCartas) = 0;
 
@@ -96,9 +113,25 @@ class IGameObserver {
   // ── Showdown ───────────────────────────────────────────────────────────────
 
   virtual void onInicioShowdown(const std::vector<Carta>& cartasMesa) = 0;
+  /// Quiénes enseñan su mano por obligación y en qué orden (el de apuesta: empieza quien subió en la
+  /// última ronda con apuestas, o el primero tras el dealer). La interfaz prepara a todos a la vez
+  /// (avatar pequeño, cartas grandes) y luego los revela de uno en uno con onMuestraCartas()
+  /// (showdown) u onManoRevelada() (runout). Se llama una vez por mano, antes de revelar.
+  virtual void onOrdenShowdown(const std::vector<std::string>& /*orden*/) {}
+  /// Runout: nadie puede apostar ya, así que las manos se enseñan ANTES de repartir las calles que
+  /// faltan. Solo para mostrar (sin combinación: la mesa está incompleta ni estadísticas: esas
+  /// van en onMuestraCartas() al final, una vez por jugador).
+  /// Al acabar la mano (showdown o victoria sin showdown): quién puede enseñar su mano por decisión
+  /// propia. La interfaz ofrece "Mostrar cartas" mientras está abierto el panel de decisiones.
+  virtual void onPuedenMostrar(const std::vector<ManoOpcional>& /*manos*/) {}
+  virtual void onManoRevelada(const std::string& /*nombre*/, const std::vector<Carta>& /*cartas*/) {}
   /// "elegibles": nombres de quienes compiten por ESTE bote (ya filtrados
   /// de fold/eliminados) — para que el cliente pueda mostrar quién compite
   /// por cada side pot, no solo el monto.
+  /// Cuánto puso cada jugador en ESTE bote (incluye a quien se retiró: dinero muerto), justo antes
+  /// de onEvaluandoBote(): la interfaz lo enseña al pulsar la etiqueta del bote.
+  virtual void onDetalleBote(int /*numBote*/,
+                             const std::vector<std::pair<std::string, int>>& /*aportes*/) {}
   virtual void onEvaluandoBote(int numBote, int cantidad,
                                const std::vector<std::string>& elegibles) = 0;
   /// "cartas": las 2 cartas PROPIAS del jugador (mano oculta), para
