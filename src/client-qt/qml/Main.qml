@@ -120,6 +120,9 @@ ApplicationWindow {
         // poco más abajo, ya documentado el mismo problema).
         property alias tokenGuardado: ventana.tokenSesion
         property alias sonido: ventana.sonidoActivado
+        // "Confirmar all-in" se recuerda entre sesiones (antes había que volver a activarlo
+        // cada vez que se abría la app).
+        property alias confirmarAllInPersistido: ventana.confirmarAllIn
         property alias verMiTapetePersistido: ventana.verMiTapete
         // Torneos > Solitario -- ver el comentario de retosGanadosPendientesCsv.
         property alias retosGanadosPendientes: ventana.retosGanadosPendientesCsv
@@ -242,6 +245,12 @@ ApplicationWindow {
     // (guardar y salir, terminar, abandonar, empezar de cero): las tarjetas
     // de Torneos lo leen para volver a preguntar "¿hay partida guardada?".
     property int retosGuardadosRev: 0
+    // Avisos (punto rojo): solicitudes de amistad pendientes y logros ya
+    // conseguidos pero sin reclamar. Los pinta el riel (Social/Cuenta) y la
+    // pestaña de cada pantalla.
+    readonly property int solicitudesPendientes: modeloSolicitudes.count
+    property int logrosPorReclamar: 0
+    property string mensajeLogros: ""
     // CSV de retos ganados pero SIN reclamar todavía (persistido, ver
     // Settings más abajo) -- separado de "ya reclamado" (que vive en
     // logrosModel, viene del servidor) porque jugar un reto no necesita
@@ -760,6 +769,21 @@ ApplicationWindow {
             }
         }
 
+        // Orden de la tienda: arriba lo que se puede COMPRAR, por nivel y, dentro
+        // del nivel, por precio ascendente; debajo lo que se consigue por LOGRO;
+        // y abajo del todo lo que ya tienes. Cada grupo se ordena igual.
+        var grupoTienda = function(o) {
+            if (o.poseido === 1) return 2;
+            return (o.esDeLogro === 1 || o.esDeLogro === true) ? 1 : 0;
+        };
+        filas.sort(function(a, b) {
+            var g = grupoTienda(a) - grupoTienda(b);
+            if (g !== 0) return g;
+            if (a.nivelMinimo !== b.nivelMinimo) return a.nivelMinimo - b.nivelMinimo;
+            if (a.precioTreboles !== b.precioTreboles) return a.precioTreboles - b.precioTreboles;
+            return a.nombre.localeCompare(b.nombre);
+        });
+
         tiendaModel.clear();
         for (var i = 0; i < filas.length; i++) tiendaModel.append(filas[i]);
     }
@@ -860,6 +884,15 @@ ApplicationWindow {
     readonly property bool sinMarcoPropio: Tema.metalesHasta(marcoPropio).length === 0
     readonly property bool previsualizandoConHierro: sinMarcoPropio && previewCodigo !== "" && previewCategoria !== "titulo"
     readonly property string marcoPreview: previsualizandoConHierro ? "hierro" : marcoPropio
+    // Tapete: se compra el TIPO y el color/madera se elige aquí (ver PopupTapete.qml).
+    // El loadout guarda "tipo:variante".
+    function abrirPopupTapete(codigo) {
+        var actual = redcliente.loadoutMarco.tapete || "";
+        var partes = actual.split(":");
+        var equipado = partes[0] === codigo;
+        var info = objetoTiendaPorCodigo(codigo);
+        popupTapete.abrir(codigo, info ? info.nombre : codigo, equipado && partes.length > 1 ? partes[1] : "", equipado);
+    }
     function equiparConAcabado(slot, codigo) {
         if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
@@ -928,6 +961,8 @@ ApplicationWindow {
         // Logros también: la pestaña Logros es accesible sin conexión, y
         // solo se cachea lo que el servidor haya llegado a mandar.
         redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+        // Solicitudes de amistad pendientes: para el punto de aviso de Social.
+        redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
         // XP ganado sin conexión desde la última vez que hubo servidor. El
         // servidor lo acota (ver AccountManager::sincronizarXpOffline()), así
         // que la bolsa local solo se vacía al confirmar cuánto acreditó.
@@ -1028,6 +1063,16 @@ ApplicationWindow {
     function etiquetaRareza(r) {
         return r === "oro" ? Idioma.t("marco_oro") : r === "plata" ? Idioma.t("marco_plata")
                : r === "bronce" ? Idioma.t("marco_bronce") : "";
+    }
+    // Fecha corta DD/MM/AA: toLocaleDateString() da el formato largo ("viernes, 11 de
+    // septiembre de 2026"), que no cabe en la columna de valor y se solapaba con la
+    // etiqueta.
+    function formatearFechaCorta(unixSegundos) {
+        var d = new Date(unixSegundos * 1000);
+        var dosDigitos = function(n) { return (n < 10 ? "0" : "") + n; };
+        return dosDigitos(d.getDate()) + "/" +
+               dosDigitos(d.getMonth() + 1) + "/" +
+               dosDigitos(d.getFullYear() % 100);
     }
     function logrosDesbloqueados() {
         var n = 0;
@@ -1505,6 +1550,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             pantallaActual: ventana.pantalla
+            avisos: ({ "Social": ventana.solicitudesPendientes > 0, "Cuenta": ventana.logrosPorReclamar > 0 })
             modoOffline: ventana.sesionOffline
             onSeccionElegida: (nombre) => {
                 ventana.pantalla = nombre;
@@ -3594,6 +3640,7 @@ ApplicationWindow {
                 width: parent.width
                 opciones: [Idioma.t("tab_amigos"), Idioma.t("tab_buscar_jugadores"),
                            Idioma.t("tab_jugadores_recientes"), Idioma.t("tab_solicitudes")]
+                avisos: [false, false, false, ventana.solicitudesPendientes > 0]
                 seleccionado: pestanaSocialActual
                 onElegido: (indice) => {
                     pestanaSocialActual = indice;
@@ -5799,7 +5846,15 @@ ApplicationWindow {
                 });
                 var ordenados = ordenarLogros(traducidos);
                 logrosModel.clear();
-                for (var i = 0; i < ordenados.length; i++) logrosModel.append(ordenados[i]);
+                var porReclamar = 0;
+                for (var i = 0; i < ordenados.length; i++) {
+                    // Un servidor anterior no manda "reclamado": todo lo desbloqueado
+                    // cuenta como ya reclamado (recibía su recompensa al momento).
+                    if (ordenados[i].reclamado === undefined) ordenados[i].reclamado = 1;
+                    if (ordenados[i].desbloqueado === 1 && ordenados[i].reclamado === 0) porReclamar++;
+                    logrosModel.append(ordenados[i]);
+                }
+                logrosPorReclamar = porReclamar;
             }
             // ── Tienda (Fase 5 del sistema de progresión) ───────────────────
             function onTiendaActualizada(tienda) {
@@ -5926,6 +5981,23 @@ ApplicationWindow {
             function onSolicitudAmistadError(mensaje) {
                 pendienteSolicitudUsername = "";
                 mensajeErrorSocial = mensaje;
+            }
+            // Alguien te ha enviado una solicitud: se pide la lista y el punto de aviso
+            // (Social > Solicitudes) sale solo al cambiar el recuento.
+            function onSolicitudAmistadRecibida(fromAccountId, fromUsername) {
+                redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
+            }
+            function onLogroReclamado(codigo) {
+                mensajeLogros = "";
+                // La recompensa (XP, título, objetos) ya está concedida: se refresca todo lo que la refleja.
+                redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+                redcliente.consultarTienda(servidorHost, servidorPuerto, tokenSesion);
+                redcliente.consultarLoadout(servidorHost, servidorPuerto, tokenSesion);
+            }
+            function onLogroReclamarError(mensaje) {
+                mensajeLogros = mensaje;
+                redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
             }
             function onSolicitudRespondida() {
                 redcliente.listarSolicitudesPendientes(servidorHost, servidorPuerto);
@@ -6653,6 +6725,25 @@ ApplicationWindow {
             function onReconectado() {
                 reconectandoAhora = false;
             }
+            // El servidor manda el estado completo tras reconectar: se descarta lo transitorio
+            // que quedara de antes de caerse (un showdown abierto, un turno que ya pasó...) y
+            // la pantalla se reconstruye con lo que llega a continuación. Sin esto, se volvía
+            // a la partida con el showdown de antes tapando la mesa y sin poder hacer nada.
+            function onResincronizado() {
+                showdownAbierto = false;
+                votoAbierto = false;
+                votoExtensionAbierto = false;
+                esperandoManosExtra = false;
+                soyYoQuienElige = false;
+                tuTurno = false;
+                revealsShowdown = [];
+                resumenBotes = [];
+                cartasMesa = [];
+                miCarta1 = "";
+                miCarta2 = "";
+                puedoRecomprar = false;
+                recompraSolicitada = false;
+            }
             function onReconexionFallida(motivo) {
                 reconectandoAhora = false;
                 // Mismo motivo que onAbandonaste/onFinDePartida/
@@ -6721,6 +6812,19 @@ ApplicationWindow {
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
             onSalir: ventana.pantalla = "Inicio"
         }
+        // Anillo de nivel/XP siempre a la vista en Cuenta (arriba a la izquierda,
+        // donde sobra hueco): antes solo estaba dentro de la pestaña Progreso.
+        AnilloNivel {
+            visible: ventana.pantalla === "Cuenta" && hayCuenta
+            anchors.top: barraCuenta.bottom
+            anchors.topMargin: 8 * Tema.escala
+            anchors.left: rielNavegacion.right
+            anchors.leftMargin: 20 * Tema.escala
+            width: 56 * Tema.escala
+            height: width
+            nivel: progresoNivelActual.nivel
+            fraccion: progresoNivelActual.xpEnNivel / Math.max(1, progresoNivelActual.xpParaSiguiente)
+        }
         // Título + selector de pestañas FIJOS, fuera del Flickable -- pedido
         // explícito 2026-09-01: "el selector de pestaña arriba tiene que
         // quedarse, el contenido baja... eso aplica a todos los sitios".
@@ -6752,6 +6856,7 @@ ApplicationWindow {
             SelectorSegmentado {
                 width: parent.width
                 opciones: [Idioma.t("tab_perfil"), Idioma.t("tab_progreso"), Idioma.t("tab_logros"), Idioma.t("tab_personalizar")]
+                avisos: [false, false, ventana.logrosPorReclamar > 0, false]
                 seleccionado: ventana.pestanaCuentaActual
                 onElegido: (indice) => ventana.pestanaCuentaActual = indice
             }
@@ -6946,7 +7051,7 @@ ApplicationWindow {
                                 { etiqueta: Idioma.t("stat_manos_ganadas"), valor: statsManosGanadas + "" },
                                 { etiqueta: Idioma.t("stat_mayor_bote_ganado"), valor: statsMayorBote + "", esDinero: true },
                                 { etiqueta: Idioma.t("stat_mejor_mano"), valor: statsMejorManoFecha > 0
-                                      ? comboLocalizado(statsMejorManoNombre) + " (" + new Date(statsMejorManoFecha * 1000).toLocaleDateString() + ")"
+                                      ? comboLocalizado(statsMejorManoNombre) + " (" + formatearFechaCorta(statsMejorManoFecha) + ")"
                                       : "—" }
                             ]
                             delegate: Row {
@@ -7490,6 +7595,12 @@ ApplicationWindow {
                     color: Tema.colorTextoTenue
                     font.pixelSize: 12 * Tema.escala
                 }
+                Text {
+                    visible: ventana.mensajeLogros !== ""
+                    text: Idioma.t(ventana.mensajeLogros)
+                    color: Tema.colorPeligro
+                    font.pixelSize: 12 * Tema.escala
+                }
 
                 Repeater {
                     model: logrosModel
@@ -7502,13 +7613,17 @@ ApplicationWindow {
                         required property int desbloqueadoEn
                         required property string nombre
                         required property string descripcion
+                        required property int reclamado
+                        // Conseguido pero sin reclamar: la recompensa espera al botón.
+                        readonly property bool porReclamar: desbloqueado === 1 && reclamado === 0
 
                         width: parent ? parent.width : 0
                         height: filaLogro.height + 24 * Tema.escala
                         radius: 10 * Tema.escala
                         opacity: desbloqueado ? 1.0 : 0.55
-                        border.width: 1
-                        border.color: desbloqueado ? colorRareza(rareza) : Qt.rgba(1, 1, 1, 0.12)
+                        border.width: porReclamar ? 2 : 1
+                        border.color: porReclamar ? Tema.colorAccent
+                                      : (desbloqueado ? colorRareza(rareza) : Qt.rgba(1, 1, 1, 0.12))
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
                             GradientStop { position: 1.0; color: Tema.colorPanel }
@@ -7553,7 +7668,7 @@ ApplicationWindow {
                                 border.color: colorRareza(tarjetaLogro.rareza)
                                 Text {
                                     anchors.centerIn: parent
-                                    text: tarjetaLogro.desbloqueado ? "✓" : tarjetaLogro.rareza.charAt(0).toUpperCase()
+                                    text: tarjetaLogro.porReclamar ? "!" : (tarjetaLogro.desbloqueado ? "✓" : tarjetaLogro.rareza.charAt(0).toUpperCase())
                                     color: tarjetaLogro.desbloqueado ? Tema.colorFondo : colorRareza(tarjetaLogro.rareza)
                                     font.bold: true
                                     font.pixelSize: 16 * Tema.escala
@@ -7567,7 +7682,7 @@ ApplicationWindow {
                                 // SIEMPRE, esté visible o no -- así la columna no
                                 // cambia de ancho según el logro, solo el texto de
                                 // al lado aparece o no.
-                                width: parent.width - 40 * Tema.escala - 14 * Tema.escala - 70 * Tema.escala - 14 * Tema.escala
+                                width: parent.width - 40 * Tema.escala - 14 * Tema.escala - 96 * Tema.escala - 14 * Tema.escala
                                 spacing: 4 * Tema.escala
 
                                 Row {
@@ -7606,7 +7721,14 @@ ApplicationWindow {
                                     wrapMode: Text.WordWrap
                                 }
                                 Text {
-                                    visible: tarjetaLogro.desbloqueado === 1
+                                    visible: tarjetaLogro.porReclamar
+                                    text: Idioma.tf("etiqueta_logro_por_reclamar", [tarjetaLogro.xpRecompensa])
+                                    color: Tema.colorAccent
+                                    font.bold: true
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Text {
+                                    visible: tarjetaLogro.desbloqueado === 1 && !tarjetaLogro.porReclamar
                                     text: Idioma.tf("etiqueta_logro_desbloqueado_fecha",
                                               [Qt.formatDate(new Date(tarjetaLogro.desbloqueadoEn * 1000), "d MMM yyyy"),
                                                tarjetaLogro.xpRecompensa])
@@ -7621,9 +7743,16 @@ ApplicationWindow {
                             // ver progresoLogro()) mientras no esté
                             // desbloqueado, nunca en blanco -- ya desbloqueado
                             // ya tiene su propia línea de "Desbloqueado el...".
+                            BotonRelleno {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 96 * Tema.escala
+                                visible: tarjetaLogro.porReclamar
+                                text: Idioma.t("boton_reclamar_logro")
+                                onClicked: redcliente.reclamarLogro(servidorHost, servidorPuerto, tokenSesion, tarjetaLogro.codigo)
+                            }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 70 * Tema.escala
+                                width: 96 * Tema.escala
                                 horizontalAlignment: Text.AlignRight
                                 visible: tarjetaLogro.desbloqueado !== 1
                                 text: progresoLogro(tarjetaLogro.codigo)
@@ -7866,31 +7995,27 @@ ApplicationWindow {
                                         BotonContorno {
                                             visible: celdaPersonalizar.categoria !== "decoracion_lateral"
                                             width: parent.width
-                                            text: celdaPersonalizar.equipado === 1 ? Idioma.t("boton_quitar") : Idioma.t("boton_equipar")
-                                            colorBorde: celdaPersonalizar.equipado === 1 ? Tema.colorPeligro : Tema.colorBorde
-                                            onClicked: equiparConAcabado(celdaPersonalizar.categoria,
-                                                celdaPersonalizar.equipado === 1 ? "" : celdaPersonalizar.codigo)
+                                            // Tapete: siempre abre la ventana de color/madera (equipar,
+                                            // cambiar el color o quitar); el resto alterna Equipar/Quitar.
+                                            readonly property bool esTapete: celdaPersonalizar.categoria === "tapete"
+                                            text: esTapete ? (celdaPersonalizar.equipado === 1 ? Idioma.t("boton_modificar") : Idioma.t("boton_equipar"))
+                                                           : (celdaPersonalizar.equipado === 1 ? Idioma.t("boton_quitar") : Idioma.t("boton_equipar"))
+                                            colorBorde: (!esTapete && celdaPersonalizar.equipado === 1) ? Tema.colorPeligro : Tema.colorBorde
+                                            onClicked: esTapete ? abrirPopupTapete(celdaPersonalizar.codigo)
+                                                : equiparConAcabado(celdaPersonalizar.categoria,
+                                                    celdaPersonalizar.equipado === 1 ? "" : celdaPersonalizar.codigo)
                                         }
-                                        // Decoraciones laterales -- DOS huecos (izq./der.),
-                                        // mismo criterio que ya usaba Tienda.
-                                        Row {
+                                        // Decoraciones laterales: un solo botón que abre la ventana
+                                        // de lado (izquierda/derecha/ambos) y material -- antes eran
+                                        // dos botones sueltos y el material ni se preguntaba.
+                                        BotonContorno {
+                                            readonly property bool enIzq: redcliente.loadoutMarco.decoracionLateral1 === celdaPersonalizar.codigo
+                                            readonly property bool enDer: redcliente.loadoutMarco.decoracionLateral2 === celdaPersonalizar.codigo
                                             visible: celdaPersonalizar.categoria === "decoracion_lateral"
                                             width: parent.width
-                                            spacing: 4 * Tema.escala
-                                            BotonContorno {
-                                                readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral1 === celdaPersonalizar.codigo
-                                                width: (parent.width - parent.spacing) / 2
-                                                text: aqui ? Idioma.t("boton_quitar_izq") : Idioma.t("boton_a_la_izq")
-                                                colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
-                                                onClicked: equiparConAcabado("decoracion_lateral_1", aqui ? "" : celdaPersonalizar.codigo)
-                                            }
-                                            BotonContorno {
-                                                readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral2 === celdaPersonalizar.codigo
-                                                width: (parent.width - parent.spacing) / 2
-                                                text: aqui ? Idioma.t("boton_quitar_der") : Idioma.t("boton_a_la_der")
-                                                colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
-                                                onClicked: equiparConAcabado("decoracion_lateral_2", aqui ? "" : celdaPersonalizar.codigo)
-                                            }
+                                            text: (enIzq || enDer) ? Idioma.t("boton_modificar") : Idioma.t("boton_equipar")
+                                            onClicked: popupAcabado.abrirLateral(celdaPersonalizar.codigo, celdaPersonalizar.nombre,
+                                                                                 ventana.marcoPropio, enIzq, enDer)
                                         }
                                     }
                                 }
@@ -8444,24 +8569,14 @@ ApplicationWindow {
                                             onClicked: redcliente.comprarObjeto(servidorHost, servidorPuerto,
                                                                                 tokenSesion, ventana.cartaSeleccionada)
                                         }
-                                        Row {
+                                        BotonContorno {
                                             readonly property var info: ventana.infoCartaSeleccionada()
+                                            readonly property bool enIzq: redcliente.loadoutMarco.decoracionLateral1 === ventana.cartaSeleccionada
+                                            readonly property bool enDer: redcliente.loadoutMarco.decoracionLateral2 === ventana.cartaSeleccionada
                                             visible: ventana.cartaSeleccionada !== "" && info !== null && info.poseido === 1
-                                            spacing: 4 * Tema.escala
-                                            BotonContorno {
-                                                readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral1 === ventana.cartaSeleccionada
-                                                text: aqui ? Idioma.t("boton_quitar_izq") : Idioma.t("boton_a_la_izq")
-                                                colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
-                                                onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
-                                                    "decoracion_lateral_1", aqui ? "" : ventana.cartaSeleccionada)
-                                            }
-                                            BotonContorno {
-                                                readonly property bool aqui: redcliente.loadoutMarco.decoracionLateral2 === ventana.cartaSeleccionada
-                                                text: aqui ? Idioma.t("boton_quitar_der") : Idioma.t("boton_a_la_der")
-                                                colorBorde: aqui ? Tema.colorPeligro : Tema.colorBorde
-                                                onClicked: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion,
-                                                    "decoracion_lateral_2", aqui ? "" : ventana.cartaSeleccionada)
-                                            }
+                                            text: (enIzq || enDer) ? Idioma.t("boton_modificar") : Idioma.t("boton_equipar")
+                                            onClicked: popupAcabado.abrirLateral(ventana.cartaSeleccionada, info ? info.nombre : "",
+                                                                                 ventana.marcoPropio, enIzq, enDer)
                                         }
                                     }
                                     // Ancho completo de la tarjeta -- pedido
@@ -8647,6 +8762,17 @@ ApplicationWindow {
         z: 100
         color: "#0A140F"
         opacity: 0.92
+
+        // Se traga TODOS los toques: un Rectangle no bloquea el ratón por sí solo,
+        // y los botones de debajo (el voto, las acciones) seguían pulsables mientras
+        // se veía "conexión perdida" -- se pulsaban sin conexión y al volver la
+        // pantalla quedaba en un estado que no correspondía a la partida.
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => wheel.accepted = true
+        }
 
         Column {
             anchors.centerIn: parent
@@ -8948,10 +9074,22 @@ ApplicationWindow {
         salaId: ventana.salaIdPropia
         listaAmigos: modeloAmigos
     }
+    PopupTapete {
+        id: popupTapete
+        onElegido: (codigo, variante) =>
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", codigo, variante)
+        onQuitado: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", "")
+    }
+
+    PopupTemas {
+        id: popupTemas
+    }
+
     PopupAcabado {
         id: popupAcabado
         onAcabadoElegido: (slot, codigo, acabado) =>
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo, acabado)
+        onQuitado: (slot) => redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, "")
     }
     // Herramientas de administración/QA -- ver el botón "Funcionalidades
     // Admin" en Cuenta > Perfil (solo visible con es_admin=1).
@@ -9056,6 +9194,8 @@ ApplicationWindow {
                 font.letterSpacing: 1
             }
 
+            // Los seis temas ya no son una lista fija aquí (ocupaban media
+            // barra): un botón abre una ventana flotante con todos ellos.
             Column {
                 width: parent.width
                 spacing: 10 * Tema.escala
@@ -9066,55 +9206,10 @@ ApplicationWindow {
                     font.pixelSize: 11 * Tema.escala
                     font.letterSpacing: 1
                 }
-
-                Repeater {
-                    model: Tema.temas
-                    delegate: Rectangle {
-                        id: filaTema
-                        required property var modelData
-                        required property int index
-                        width: parent.width
-                        height: 52 * Tema.escala
-                        radius: 8 * Tema.escala
-                        color: Tema.temaActual === filaTema.index ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
-                        border.width: Tema.temaActual === filaTema.index ? 2 : 1
-                        border.color: Tema.temaActual === filaTema.index ? filaTema.modelData.accent : Tema.colorBorde
-
-                        Row {
-                            anchors.fill: parent
-                            anchors.margins: 10 * Tema.escala
-                            spacing: 12 * Tema.escala
-
-                            Rectangle {
-                                width: 30 * Tema.escala
-                                height: 30 * Tema.escala
-                                radius: width / 2
-                                anchors.verticalCenter: parent.verticalCenter
-                                color: filaTema.modelData.tapete
-                                border.width: 2
-                                border.color: filaTema.modelData.accent
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                // El nombre de cada tema vive en Tema.qml, no en la
-                                // tabla de Idioma -- ese singleton también lo usa
-                                // AvatarTest (banco de pruebas SIN Idioma.qml
-                                // registrado, ver cmake/ClientesQt.cmake), así que
-                                // Tema.qml no puede llamar a Idioma.t() él mismo.
-                                // La traducción se hace aquí, por índice, en vez de
-                                // en el dato de origen.
-                                text: Idioma.t(["tema_verde_clasico", "tema_azul_medianoche", "tema_burdeos",
-                                                "tema_grafito", "tema_porcelana_dorada", "tema_taberna_real"][filaTema.index])
-                                color: Tema.temaActual === filaTema.index ? Tema.colorTexto : Tema.colorTextoTenue
-                                font.bold: Tema.temaActual === filaTema.index
-                                font.pixelSize: 13 * Tema.escala
-                            }
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Tema.temaActual = filaTema.index
-                        }
-                    }
+                BotonRelleno {
+                    width: parent.width
+                    text: Idioma.t(["tema_verde_clasico", "tema_azul_medianoche", "tema_burdeos", "tema_grafito", "tema_porcelana_dorada", "tema_taberna_real"][Tema.temaActual])
+                    onClicked: popupTemas.abrir()
                 }
             }
 

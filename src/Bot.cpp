@@ -31,6 +31,8 @@ Bot::Bot(const std::string& nombre, int saldo, Comportamiento nivel)
 
 void Bot::actualizarPersonalidad(int saldoPromedioMesa, int raisesEnMesa,
                                   DificultadBots dificultad) {
+  if (usaDificultadPropia_) dificultad = dificultadPropia_;
+  fuiAgresorPreflop_ = false;  // mano nueva
   // Momentum: cuánto ganó/perdió en la mano que se acaba de jugar. Se calcula
   // y se ancla ANTES de cualquier return para que nunca se pierda una mano.
   int deltaUltimaMano = saldo_ - saldoAnterior_;
@@ -129,20 +131,25 @@ void Bot::actualizarPersonalidad(int saldoPromedioMesa, int raisesEnMesa,
 
 Accion Bot::decidirAccion(const GameState& state) {
   if (state.rondaActual != rondaInterna_) {
+    // Una mano nueva empieza en PREFLOP viniendo de otra calle: se olvida lo de
+    // la mano anterior.
+    if (state.rondaActual == Rondas::PREFLOP) fuiAgresorPreflop_ = false;
     rondaInterna_ = state.rondaActual;
     numRaisesMiosEnRonda_ = 0;
   }
 
-  const std::map<std::string, PerfilJugador>* perfiles = nullptr;
-  if (state.reglas.dificultadBots == DificultadBots::EXPERTO) {
-    perfiles = &perfiles_;
-  }
+  ContextoBot ctx;
+  ctx.dificultad = usaDificultadPropia_ ? dificultadPropia_ : state.reglas.dificultadBots;
+  ctx.nivel = nivel_;
+  ctx.numRaisesMiosEnRonda = numRaisesMiosEnRonda_;
+  ctx.fuiAgresorPreflop = fuiAgresorPreflop_;
+  if (ctx.dificultad == DificultadBots::EXPERTO) ctx.perfiles = &perfiles_;
 
-  Accion accionElegida = DecisionEngine::pensarAccion(
-      state, nivel_, saldo_, cartasPropias_, numRaisesMiosEnRonda_, perfiles);
+  Accion accionElegida = DecisionEngine::pensar(state, cartasPropias_, ctx);
 
-  if (accionElegida.tipo == TipoAccion::RAISE) {
-    numRaisesMiosEnRonda_++;
+  if (accionElegida.tipo == TipoAccion::RAISE || accionElegida.tipo == TipoAccion::ALL_IN) {
+    if (accionElegida.tipo == TipoAccion::RAISE) numRaisesMiosEnRonda_++;
+    if (state.rondaActual == Rondas::PREFLOP) fuiAgresorPreflop_ = true;
   }
 
   // Simular tiempo de reflexión: 1–3 segundos aleatorios.
@@ -168,8 +175,15 @@ void Bot::iniciarManoJugador(const std::string& nombre) {
 }
 
 void Bot::registrarAccion(const std::string& nombre, TipoAccion accion,
-                           Rondas ronda, bool hayApuesta) {
+                           Rondas ronda, bool hayApuesta, int cantidad, int boteAntes) {
   auto& p = perfiles_[nombre];
+  // Tamaño de sus apuestas respecto al bote (postflop): quien sondea con
+  // apuestas mínimas casi siempre no tiene lo que representa.
+  if ((accion == TipoAccion::RAISE || accion == TipoAccion::ALL_IN) && ronda != Rondas::PREFLOP &&
+      cantidad > 0 && boteAntes > 0) {
+    p.apuestasTotal++;
+    if (static_cast<double>(cantidad) / boteAntes < 0.45) p.apuestasPequenas++;
+  }
 
   switch (accion) {
     case TipoAccion::RAISE:

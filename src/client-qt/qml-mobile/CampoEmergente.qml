@@ -51,6 +51,12 @@ Popup {
 
     function confirmar() {
         _confirmando = true;
+        // Confirma lo que el teclado aún tiene "a medio escribir" (región de
+        // composición del IME): TextField.text NO incluye ese texto, así que
+        // una contraseña de 8 caracteres con los últimos sin confirmar se leía
+        // de 7 y se rechazaba por corta (reportado 2026-09-20 con una
+        // contraseña de letras y números).
+        Qt.inputMethod.commit();
         aceptado(campoTexto.text);
         close();
     }

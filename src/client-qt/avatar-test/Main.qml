@@ -36,9 +36,11 @@ ApplicationWindow {
     // Un tapete a tamaño de partida (--tapete-grande CODIGO): para ver cómo
     // escalan la madera y los dibujos, que a 420px no se aprecia.
     property string tapeteGrande: ""
-    readonly property var tapetes: ["", "tapete_clasico", "tapete_granate", "tapete_azul",
-                                    "tapete_grafito", "tapete_taberna", "tapete_porcelana",
-                                    "tapete_casino", "tapete_madera"]
+    readonly property var tapetes: ["", "tapete_rombos:verde", "tapete_rombos:taberna", "tapete_palos:granate",
+                                    "tapete_palos:porcelana", "tapete_puntos:azul", "tapete_lino:violeta",
+                                    "tapete_rayas:petroleo", "tapete_lino:grafito", "tapete_rayas:verde",
+                                    "tapete_casino:roble", "tapete_casino:nogal",
+                                    "tapete_madera:roble", "tapete_madera:roble_oscuro", "tapete_madera:nogal"]
     // "reverso_taberna" confirmado por el usuario el 2026-09-17 ("me
     // gusta la carta y el icono de barril") tras revisarlo aquí primero
     // -- ya está en shop_items/AccountManager.cpp/Idioma.qml.

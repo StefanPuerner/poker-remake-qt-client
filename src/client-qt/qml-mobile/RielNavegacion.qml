@@ -28,6 +28,9 @@ Rectangle {
     // dependen 100% del servidor; "Salas" sí, pero solo para montar una
     // partida local (no lista salas ajenas).
     property bool modoOffline: false
+    // nombre de sección -> true: punto de aviso sobre su icono (algo pendiente:
+    // solicitudes de amistad, logros por reclamar...).
+    property var avisos: ({})
     readonly property var seccionesOffline: ["Salas", "Torneos", "Cuenta"]
     // Mismo criterio que el resto de componentes táctiles (ver Tema.qml,
     // móvil): nunca por debajo del suelo de accesibilidad, aunque la
@@ -217,6 +220,21 @@ Rectangle {
                     id: areaRiel
                     anchors.fill: parent
                     onClicked: riel.seccionElegida(cajaIcono.modelData)
+                }
+
+                // Punto de aviso (mismo lenguaje que el de mensajes sin leer).
+                Rectangle {
+                    visible: !!riel.avisos[cajaIcono.modelData]
+                    width: 11 * Tema.escala
+                    height: width
+                    radius: width / 2
+                    color: "#E5484D"
+                    border.width: 2
+                    border.color: Tema.colorPanel
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.rightMargin: -2 * Tema.escala
+                    anchors.topMargin: -2 * Tema.escala
                 }
             }
         }

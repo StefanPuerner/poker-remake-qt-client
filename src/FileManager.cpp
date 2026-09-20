@@ -64,6 +64,16 @@ void FileManager::guardarPartida(const PartidaSnapshot& snapshot,
   file << "HOST_NOMBRE:" << snapshot.hostNombre << "\n";
   file << "SALA_PUBLICA:" << (snapshot.salaPublica ? "1" : "0") << "\n";
   file << "SALA_CODIGO:" << snapshot.salaCodigo << "\n";
+  // Quienes recompraron durante la partida (los nombres no llevan comas: ver
+  // sanitizarNombre()).
+  {
+    std::string lista;
+    for (const auto& n : snapshot.recompraron) {
+      if (!lista.empty()) lista += ",";
+      lista += n;
+    }
+    file << "RECOMPRARON:" << lista << "\n";
+  }
 
   unsigned int checksum = snapshot.manoActual + snapshot.objetivoManos +
                           snapshot.ciegaGrande + snapshot.jugadores.size() +
@@ -192,6 +202,12 @@ PartidaSnapshot FileManager::cargarPartida(const std::string& rutaArchivo) {
         snapshot.salaPublica = (value == "1");
       } else if (key == "SALA_CODIGO") {
         snapshot.salaCodigo = value;
+      } else if (key == "RECOMPRARON") {
+        std::stringstream lista(value);
+        std::string nombre;
+        while (std::getline(lista, nombre, ',')) {
+          if (!nombre.empty()) snapshot.recompraron.push_back(nombre);
+        }
       }
     }
   } catch (const std::exception& e) {

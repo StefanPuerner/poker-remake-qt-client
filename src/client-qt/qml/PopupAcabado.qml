@@ -19,9 +19,29 @@ Popup {
     anchors.centerIn: parent
     modal: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    padding: 20 * Tema.escala
+    padding: 24 * Tema.escala
+    // Modo lateral: ventana ancha y fija (antes salía tan estrecha como la fila de
+    // metales, y el selector de lado se desbordaba por los costados).
+    width: popup.modoLateral ? Math.min(popup.parent.width - 40 * Tema.escala, 600 * Tema.escala) : implicitWidth
 
     signal acabadoElegido(string slot, string codigo, string acabado)
+    // Quitar la decoración de un lado (solo en modo lateral).
+    signal quitado(string slot)
+
+    // ── Modo lateral (2026-09-20) ────────────────────────────────────────
+    // Una decoración lateral puede ir a la izquierda, a la derecha o a AMBOS
+    // lados (la misma en los dos, si quieres). Antes cada lado era un botón
+    // suelto en la tarjeta -- y en el móvil se tocaba la tarjeta y se iba al
+    // primer hueco libre, sin poder elegir. Ahora tocar una decoración lateral
+    // abre esto: lado + material, y solo entonces se equipa.
+    property bool modoLateral: false
+    property string nombre: ""
+    property bool enIzq: false
+    property bool enDer: false
+    property int ladoIndice: 0   // 0 izquierda, 1 derecha, 2 ambos
+    // Hay de verdad un material que elegir (decoración de metal y más de un
+    // metal desbloqueado).
+    readonly property bool conMetal: Tema.decoracionesMetalicas[popup.codigo] === true && popup.metales.length >= 2
 
     property string slot: ""
     property string codigo: ""
@@ -29,7 +49,21 @@ Popup {
     property string elegido: ""
     readonly property var metales: Tema.metalesHasta(popup.marco)
 
+    function abrirLateral(codigo, nombre, marco, enIzq, enDer) {
+        popup.modoLateral = true;
+        popup.slot = "";
+        popup.codigo = codigo;
+        popup.nombre = nombre;
+        popup.marco = marco;
+        popup.elegido = marco;
+        popup.enIzq = enIzq;
+        popup.enDer = enDer;
+        popup.ladoIndice = enIzq ? 0 : (enDer ? 1 : 0);
+        popup.open();
+    }
     function abrir(slot, codigo, marco) {
+        popup.modoLateral = false;
+        popup.nombre = "";
         popup.slot = slot;
         popup.codigo = codigo;
         popup.marco = marco;
@@ -54,12 +88,30 @@ Popup {
         spacing: 14 * Tema.escala
 
         Text {
-            text: Idioma.t("popup_acabado_titulo")
+            text: popup.modoLateral ? popup.nombre : Idioma.t("popup_acabado_titulo")
             color: Tema.colorTexto
             font.family: Tema.fuenteElegante
-            font.pixelSize: 17 * Tema.escala
+            font.pixelSize: (popup.modoLateral ? 22 : 17) * Tema.escala
+        }
+        // Lado (solo decoraciones laterales).
+        Column {
+            visible: popup.modoLateral
+            width: parent.width
+            spacing: 6 * Tema.escala
+            Text {
+                text: Idioma.t("popup_deco_lado")
+                color: Tema.colorTextoTenue
+                font.pixelSize: 11 * Tema.escala
+            }
+            SelectorSegmentado {
+                width: parent.width
+                opciones: [Idioma.t("lado_izquierda"), Idioma.t("lado_derecha"), Idioma.t("lado_ambos")]
+                seleccionado: popup.ladoIndice
+                onElegido: (indice) => popup.ladoIndice = indice
+            }
         }
         Text {
+            visible: !popup.modoLateral || popup.conMetal
             width: filaMetales.width
             wrapMode: Text.WordWrap
             text: Idioma.t("popup_acabado_descripcion")
@@ -69,6 +121,7 @@ Popup {
 
         Row {
             id: filaMetales
+            visible: !popup.modoLateral || popup.conMetal
             spacing: 10 * Tema.escala
 
             Repeater {
@@ -138,11 +191,27 @@ Popup {
                 colorBorde: Tema.colorBorde
                 onClicked: popup.close()
             }
+            // Quitarla de donde esté puesta (solo en modo lateral).
+            BotonContorno {
+                visible: popup.modoLateral && (popup.enIzq || popup.enDer)
+                text: Idioma.t("boton_quitar")
+                colorBorde: Tema.colorPeligro
+                onClicked: {
+                    if (popup.enIzq && popup.ladoIndice !== 1) popup.quitado("decoracion_lateral_1");
+                    if (popup.enDer && popup.ladoIndice !== 0) popup.quitado("decoracion_lateral_2");
+                    popup.close();
+                }
+            }
             BotonRelleno {
                 text: Idioma.t("boton_equipar")
                 onClicked: {
-                    popup.acabadoElegido(popup.slot, popup.codigo,
-                                         popup.elegido === popup.marco ? "" : popup.elegido);
+                    var ac = (!popup.modoLateral || popup.conMetal) && popup.elegido !== popup.marco ? popup.elegido : "";
+                    if (popup.modoLateral) {
+                        if (popup.ladoIndice !== 1) popup.acabadoElegido("decoracion_lateral_1", popup.codigo, ac);
+                        if (popup.ladoIndice !== 0) popup.acabadoElegido("decoracion_lateral_2", popup.codigo, ac);
+                    } else {
+                        popup.acabadoElegido(popup.slot, popup.codigo, ac);
+                    }
                     popup.close();
                 }
             }

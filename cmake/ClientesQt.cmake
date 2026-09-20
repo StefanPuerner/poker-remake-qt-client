@@ -188,6 +188,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/BannerInvitacionSala.qml
             src/client-qt/qml/PopupSeleccionCarta.qml
             src/client-qt/qml/PopupAcabado.qml
+            src/client-qt/qml/PopupTemas.qml
+            src/client-qt/qml/PopupTapete.qml
             src/client-qt/qml/CajaTitulo.qml
             src/client-qt/qml/PopupFuncionalidadesAdmin.qml
         RESOURCES
@@ -244,6 +246,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             assets/tapetes/tesela_rombos.png
             assets/tapetes/tesela_puntos.png
             assets/tapetes/tesela_palos.png
+            assets/tapetes/tesela_lino.png
+            assets/tapetes/tesela_rayas.png
             # "mano_real" (La Corona) dejó de ser un icono suelto -- ahora
             # es un abanico de 5 cartas de verdad alrededor de la parte de
             # arriba del marco (pedido explícito 2026-08-31: "para
@@ -498,6 +502,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/AnilloNivel.qml
             src/client-qt/qml-mobile/PopupSeleccionCarta.qml
             src/client-qt/qml-mobile/PopupAcabado.qml
+            src/client-qt/qml-mobile/PopupTemas.qml
+            src/client-qt/qml-mobile/PopupTapete.qml
         RESOURCES
             # Mismo motivo que PokerClientQt más arriba -- se quedó fuera
             # al principio, sin darse cuenta: sin esto, Tema.fuenteElegante
@@ -560,6 +566,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             assets/tapetes/tesela_rombos.png
             assets/tapetes/tesela_puntos.png
             assets/tapetes/tesela_palos.png
+            assets/tapetes/tesela_lino.png
+            assets/tapetes/tesela_rayas.png
             # "mano_real" (La Corona) dejó de ser un icono suelto -- ahora
             # es un abanico de 5 cartas de verdad alrededor de la parte de
             # arriba del marco (pedido explícito 2026-08-31: "para

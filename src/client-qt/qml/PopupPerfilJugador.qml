@@ -44,6 +44,17 @@ Popup {
     // Nombre de combinación de póker (mejor mano) -- mismo mapa/motivo que
     // el gemelo comboLocalizado() de Main.qml (fichero separado, sin acceso
     // a sus funciones -- ver el comentario de cabecera de este fichero).
+    // Fecha corta DD/MM/AA: toLocaleDateString() da el formato largo ("viernes, 11 de
+    // septiembre de 2026"), que no cabe en la columna de valor y se solapaba con la
+    // etiqueta.
+    function fechaCorta(unixSegundos) {
+        var d = new Date(unixSegundos * 1000);
+        var dosDigitos = function(n) { return (n < 10 ? "0" : "") + n; };
+        return dosDigitos(d.getDate()) + "/" +
+               dosDigitos(d.getMonth() + 1) + "/" +
+               dosDigitos(d.getFullYear() % 100);
+    }
+
     function comboLocalizado(comboEs) {
         var mapa = {
             "Carta Alta": "combo_carta_alta",
@@ -185,7 +196,7 @@ Popup {
                         { etiqueta: Idioma.t("stat_manos_ganadas"), valor: (popup.perfil.manosGanadas || 0) + "" },
                         { etiqueta: Idioma.t("stat_mayor_bote_ganado"), valor: (popup.perfil.mayorBote || 0) + "", esDinero: true },
                         { etiqueta: Idioma.t("stat_mejor_mano"), valor: (popup.perfil.mejorManoFecha || 0) > 0
-                              ? popup.comboLocalizado(popup.perfil.mejorManoNombre) + " (" + new Date(popup.perfil.mejorManoFecha * 1000).toLocaleDateString() + ")"
+                              ? popup.comboLocalizado(popup.perfil.mejorManoNombre) + " (" + popup.fechaCorta(popup.perfil.mejorManoFecha) + ")"
                               : "—" }
                     ]
                     delegate: Row {

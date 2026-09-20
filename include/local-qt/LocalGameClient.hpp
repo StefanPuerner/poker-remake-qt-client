@@ -419,6 +419,7 @@ class LocalGameClient : public QObject {
   // llamarse (la pantalla de Torneos oculta el botón "Reclamar" sin
   // conexión), pero el stub existe por paridad de API con NetworkClient.
   Q_INVOKABLE void reclamarRecompensaReto(const QString&, quint16, QString, QString) {}
+  Q_INVOKABLE void reclamarLogro(const QString&, quint16, QString, QString) {}
   // Ranking / social / perfiles ajenos
   Q_INVOKABLE void consultarRanking(const QString&, quint16) {}
   Q_INVOKABLE void consultarPerfilJugador(const QString&, quint16, int) {}
@@ -579,6 +580,8 @@ class LocalGameClient : public QObject {
   /// Paridad con NetworkClient -- nunca se emite en modo local (no hay
   /// anfitrión con tapete propio: la mesa usa el del jugador).
   void tapeteAnfitrionActualizado(QString tapete);
+  /// Paridad con NetworkClient -- nunca se emite en modo local (no hay reconexión).
+  void resincronizado();
   void esMiTurno(int bote, int igualar, int miSaldo, int miApuesta, int timeoutMs,
                 int minSubida, int maxSubida, QString c1, QString c2, QString comboActual,
                 QString comboProbable, QString comboMaxima);
@@ -646,6 +649,9 @@ class LocalGameClient : public QObject {
   void registroError(QString mensaje);
   void logoutOk();
   void sesionInvalida(QString mensaje);
+  void logroReclamado(QString codigo);
+  void logroReclamarError(QString mensaje);
+  void solicitudAmistadRecibida(int fromAccountId, QString fromUsername);
   void retoReclamado(QString codigoReto, int treboles);
   void retoReclamarError(QString mensaje);
   void reautenticacionSinRespuesta();
@@ -853,6 +859,7 @@ class LocalGameClient : public QObject {
       // Partida::iniciarPartida()).
       partida.setArchivoOrigen(rutaOrigen.toStdString());
       partida.setManoActual(snap.manoActual);
+      partida.setRecompraron(snap.recompraron);
       obs->setJugadoresPartida(&partida.jugadoresMutable());
       partida.setObserver(std::move(obs));
       partida.iniciarPartida();

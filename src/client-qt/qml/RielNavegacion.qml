@@ -17,6 +17,9 @@ Rectangle {
     // Sesión sin conexión (Fase 7): el riel se reduce a lo que de verdad
     // funciona sin servidor -- ver "disponibleOffline" en cada sección.
     property bool modoOffline: false
+    // nombre de sección -> true: punto de aviso sobre su icono (algo pendiente:
+    // solicitudes de amistad, logros por reclamar...).
+    property var avisos: ({})
 
     // "disponibleOffline" en vez de filtrar el array: los glifos del
     // delegate se eligen por "index" (0=Salas, 1=Ranking...), así que
@@ -245,6 +248,21 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: riel.seccionElegida(itemRiel.modelData.nombre)
+                    }
+
+                    // Punto de aviso (mismo lenguaje que el de mensajes sin leer).
+                    Rectangle {
+                        visible: !!riel.avisos[itemRiel.modelData.nombre]
+                        width: 11 * Tema.escala
+                        height: width
+                        radius: width / 2
+                        color: "#E5484D"
+                        border.width: 2
+                        border.color: Tema.colorPanel
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.rightMargin: -2 * Tema.escala
+                        anchors.topMargin: -2 * Tema.escala
                     }
                 }
 

@@ -295,6 +295,10 @@ QtObject {
         "boton_jugar": { es: "Jugar", en: "Play", de: "Spielen" },
         "enlace_jugar_de_nuevo": { es: "Jugar de nuevo", en: "Play again", de: "Nochmal spielen" },
         "boton_continuar_reto": { es: "Continuar", en: "Continue", de: "Fortsetzen" },
+        "boton_reclamar_logro": { es: "Reclamar", en: "Claim", de: "Abholen" },
+        "etiqueta_logro_por_reclamar": { es: "¡Conseguido! Reclama tu recompensa (+%1 XP)", en: "Achieved! Claim your reward (+%1 XP)", de: "Geschafft! Hol dir deine Belohnung (+%1 XP)" },
+        "error_logro_no_disponible": { es: "Este logro ya no se puede reclamar.", en: "This achievement can no longer be claimed.", de: "Diese Errungenschaft kann nicht mehr abgeholt werden." },
+        "error_logro_no_existe": { es: "Logro desconocido.", en: "Unknown achievement.", de: "Unbekannte Errungenschaft." },
         "enlace_empezar_de_nuevo": { es: "Empezar de nuevo", en: "Start over", de: "Neu beginnen" },
         "reto_solitario_1_nombre": {
             es: "Reto 1 · Primeros pasos", en: "Challenge 1 · First steps",
@@ -453,6 +457,10 @@ QtObject {
         },
 
         // ── PopupAcabado.qml (elegir metal al equipar, los dos árboles) ─────
+        "popup_deco_lado": { es: "¿En qué lado?", en: "Which side?", de: "Welche Seite?" },
+        "lado_izquierda": { es: "Izquierda", en: "Left", de: "Links" },
+        "lado_derecha": { es: "Derecha", en: "Right", de: "Rechts" },
+        "lado_ambos": { es: "Ambos lados", en: "Both sides", de: "Beide Seiten" },
         "popup_acabado_titulo": { es: "Elige el acabado", en: "Choose the finish", de: "Wähle das Finish" },
         "popup_acabado_descripcion": {
             es: "Los metales de los marcos que ya has conseguido. Con el de tu marco, la decoración sube con él cuando tu marco suba.",
@@ -460,6 +468,8 @@ QtObject {
             de: "Die Metalle der Rahmen, die du bereits erhalten hast. Mit dem Metall deines eigenen Rahmens steigt die Dekoration mit ihm auf."
         },
         "etiqueta_tu_marco": { es: "tu marco", en: "your frame", de: "dein Rahmen" },
+        "boton_modificar": { es: "Modificar", en: "Change", de: "Ändern" },
+        "boton_cerrar": { es: "Cerrar", en: "Close", de: "Schließen" },
         "boton_cancelar": { es: "Cancelar", en: "Cancel", de: "Abbrechen" },
         "boton_equipar": { es: "Equipar", en: "Equip", de: "Ausrüsten" },
 
@@ -1475,14 +1485,26 @@ QtObject {
         "objeto_reverso_obsidiana_nombre": { es: "Obsidiana", en: "Obsidian", de: "Obsidian" },
         "objeto_reverso_taberna_nombre": { es: "Taberna", en: "Tavern", de: "Taverne" },
         // Tapetes de mesa (2026-09-19).
-        "objeto_tapete_clasico_nombre": { es: "Clásico", en: "Classic", de: "Klassisch" },
-        "objeto_tapete_granate_nombre": { es: "Granate", en: "Garnet", de: "Granat" },
-        "objeto_tapete_azul_nombre": { es: "Azul", en: "Blue", de: "Blau" },
-        "objeto_tapete_grafito_nombre": { es: "Grafito", en: "Graphite", de: "Graphit" },
-        "objeto_tapete_taberna_nombre": { es: "Taberna", en: "Tavern", de: "Taverne" },
-        "objeto_tapete_porcelana_nombre": { es: "Porcelana", en: "Porcelain", de: "Porzellan" },
+        "objeto_tapete_rombos_nombre": { es: "Rombos", en: "Diamonds", de: "Rauten" },
+        "objeto_tapete_palos_nombre": { es: "Palos", en: "Suits", de: "Farben" },
+        "objeto_tapete_puntos_nombre": { es: "Puntos", en: "Dots", de: "Punkte" },
+        "objeto_tapete_lino_nombre": { es: "Lino", en: "Linen", de: "Leinen" },
+        "objeto_tapete_rayas_nombre": { es: "Rayas", en: "Stripes", de: "Streifen" },
         "objeto_tapete_casino_nombre": { es: "Casino", en: "Casino", de: "Casino" },
         "objeto_tapete_madera_nombre": { es: "Madera", en: "Wood", de: "Holz" },
+        "tapete_variante_verde": { es: "Verde", en: "Green", de: "Grün" },
+        "tapete_variante_granate": { es: "Granate", en: "Garnet", de: "Granat" },
+        "tapete_variante_azul": { es: "Azul", en: "Blue", de: "Blau" },
+        "tapete_variante_grafito": { es: "Grafito", en: "Graphite", de: "Graphit" },
+        "tapete_variante_taberna": { es: "Taberna", en: "Tavern", de: "Taverne" },
+        "tapete_variante_porcelana": { es: "Porcelana", en: "Porcelain", de: "Porzellan" },
+        "tapete_variante_violeta": { es: "Violeta", en: "Violet", de: "Violett" },
+        "tapete_variante_petroleo": { es: "Petróleo", en: "Teal", de: "Petrol" },
+        "tapete_variante_roble": { es: "Roble", en: "Oak", de: "Eiche" },
+        "tapete_variante_roble_oscuro": { es: "Roble oscuro", en: "Dark oak", de: "Dunkle Eiche" },
+        "tapete_variante_nogal": { es: "Nogal", en: "Walnut", de: "Nussbaum" },
+        "popup_tapete_descripcion_pano": { es: "Elige el color del paño. Puedes cambiarlo cuando quieras, sin coste.", en: "Pick the felt colour. You can change it any time, at no cost.", de: "Wähle die Farbe des Tuchs. Du kannst sie jederzeit kostenlos ändern." },
+        "popup_tapete_descripcion_madera": { es: "Elige el tipo de madera. Puedes cambiarlo cuando quieras, sin coste.", en: "Pick the wood. You can change it any time, at no cost.", de: "Wähle das Holz. Du kannst es jederzeit kostenlos ändern." },
         "texto_ver_mi_tapete": {
             es: "Ver mi tapete (si no, el del anfitrión)", en: "Show my table (otherwise the host's)",
             de: "Meinen Tisch anzeigen (sonst den des Gastgebers)"

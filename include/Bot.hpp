@@ -34,6 +34,11 @@ class Bot : public Player {
 
   Accion decidirAccion(const GameState& state) override;
 
+  /// Fija la dificultad de ESTE bot, por encima de la de las reglas de la
+  /// partida (que es la de todos). Sirve para enfrentar dificultades entre sí
+  /// (benchmark); en una partida real no se usa.
+  void setDificultad(DificultadBots d) { dificultadPropia_ = d; usaDificultadPropia_ = true; }
+
   Comportamiento getNivel() const;
   void setNivel(Comportamiento nivel);
 
@@ -43,8 +48,11 @@ class Bot : public Player {
   void iniciarManoJugador(const std::string& nombre);
 
   /// Registra una acción de @p nombre para actualizar su perfil estadístico.
+  ///
+  /// @p cantidad y @p boteAntes (importe puesto y bote justo antes de esa
+  /// acción) permiten medir el tamaño de sus apuestas; 0 = no disponible.
   void registrarAccion(const std::string& nombre, TipoAccion accion,
-                       Rondas ronda, bool hayApuesta);
+                       Rondas ronda, bool hayApuesta, int cantidad = 0, int boteAntes = 0);
 
   /// @return Mapa de perfiles estadísticos indexado por nombre de jugador.
   const std::map<std::string, PerfilJugador>& getPerfiles() const {
@@ -73,6 +81,9 @@ class Bot : public Player {
  private:
   static bool delaySimuladoActivo_;
   Comportamiento nivel_;
+  DificultadBots dificultadPropia_ = DificultadBots::NORMAL;
+  bool           usaDificultadPropia_ = false;
+  bool           fuiAgresorPreflop_ = false;  ///< Subí antes del flop en esta mano (apuesta de continuación).
   int            numRaisesMiosEnRonda_;    ///< Raises que ha hecho este bot en la ronda actual.
   Rondas         rondaInterna_;            ///< Última fase conocida (para resetear el contador de raises).
   std::map<std::string, PerfilJugador> perfiles_; ///< Historial estadístico de rivales.

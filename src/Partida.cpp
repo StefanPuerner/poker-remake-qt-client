@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <utility>
@@ -463,21 +464,23 @@ void Partida::procesarRecomprasPendientes() {
     bool pidioRecompra =
         std::find(quierenRecomprar.begin(), quierenRecomprar.end(),
                   p->getNombre()) != quierenRecomprar.end();
-    if (pidioRecompra) p->ganarSaldo(saldoInicial_);
+    if (pidioRecompra) {
+      p->ganarSaldo(saldoInicial_);
+      recompraron_.insert(p->getNombre());
+    }
   }
 }
 
 void Partida::ejecutarMano() {
   limpiarEstadosMano();
 
-  // Inicializar perfiles de rivales al comienzo de cada mano (solo EXPERTO)
-  if (reglas_.dificultadBots == DificultadBots::EXPERTO) {
-    for (Player* otro : jugadores_) {
-      if (Bot* b = dynamic_cast<Bot*>(otro)) {
-        for (Player* p : jugadores_) {
-          if (p->getEstado() != PlayerState::ELIMINADO) {
-            b->iniciarManoJugador(p->getNombre());
-          }
+  // Inicializar perfiles de rivales al comienzo de cada mano (los usa solo quien
+  // juega como EXPERTO, pero la dificultad puede ser distinta por bot).
+  for (Player* otro : jugadores_) {
+    if (Bot* b = dynamic_cast<Bot*>(otro)) {
+      for (Player* p : jugadores_) {
+        if (p->getEstado() != PlayerState::ELIMINADO) {
+          b->iniciarManoJugador(p->getNombre());
         }
       }
     }
@@ -745,13 +748,15 @@ void Partida::gestionarRondaDeApuestas() {
       }
       ultimaAccionRonda_ = a.tipo;
 
-      // Actualizar perfiles de rivales en todos los bots (solo EXPERTO)
-      if (reglas_.dificultadBots == DificultadBots::EXPERTO) {
+      // Actualizar perfiles de rivales en todos los bots. Antes solo con la
+      // dificultad global EXPERTO; ahora siempre (son cuatro contadores), porque
+      // la dificultad puede ser distinta por bot y solo la usa quien es EXPERTO.
+      {
         bool hayApuesta = (state.apuestaAIgualar > 0);
         for (Player* otro : jugadores_) {
           if (Bot* b = dynamic_cast<Bot*>(otro)) {
-            b->registrarAccion(p->getNombre(), a.tipo,
-                               state.rondaActual, hayApuesta);
+            b->registrarAccion(p->getNombre(), a.tipo, state.rondaActual, hayApuesta,
+                               a.cantidad, state.boteTotal);
           }
         }
       }
@@ -1072,7 +1077,18 @@ void Partida::limpiarEstadosMano() {
 }
 
 void Partida::rotarDealer() {
-  dealerIndex_ = obtenerSiguienteJugadorActivo(dealerIndex_);
+  // El botón pasa al siguiente ASIENTO con fichas. Antes usaba
+  // obtenerSiguienteJugadorActivo(), que salta a quien se retiró en la mano
+  // que acaba de terminar: como los bots se retiran mucho más que las
+  // personas, el dealer "saltaba" de humano en humano ignorando a los bots.
+  const int n = static_cast<int>(jugadores_.size());
+  for (int i = 1; i <= n; ++i) {
+    int siguiente = (dealerIndex_ + i) % n;
+    if (jugadores_[siguiente]->getSaldo() > 0) {
+      dealerIndex_ = siguiente;
+      return;
+    }
+  }
 }
 
 // --- AUXILIARES INTERNOS ---
@@ -1184,6 +1200,7 @@ PartidaSnapshot Partida::generarSnapshot() const {
   snap.hostNombre = hostNombre_;
   snap.salaPublica = salaPublica_;
   snap.salaCodigo = salaCodigo_;
+  snap.recompraron.assign(recompraron_.begin(), recompraron_.end());
 
   for (Player* p : jugadores_) {
     JugadorSnapshot js;
@@ -1212,14 +1229,29 @@ PartidaStats Partida::generarEstadisticas() const {
   stats.manosJugadas =
       manoActual_ - 1;  // La manoActual sumó 1 al terminar el último bucle
 
-  // Encontrar al ganador (quien tenga más saldo, asumiendo que los demás están
-  // a 0, o el que va ganando si la partida se cortó por límite de manos)
-  Player* ganador = jugadores_[0];
+  // Ganador: quien tenga más saldo (el que va ganando si la partida se cortó
+  // por límite de manos), pero NUNCA quien haya recomprado: volver a entrar
+  // pagando no puede acabar en victoria. Entre los que no recompraron manda el
+  // saldo y, a igualdad, quien aguantó más manos (el eliminado más tarde).
+  // Si todos recompraron no hay a quién preferir y se aplica solo el saldo.
+  auto elegible = [this](const Player* p) { return !recompraron_.count(p->getNombre()); };
+  bool hayElegibles = false;
+  for (const Player* p : jugadores_) hayElegibles = hayElegibles || elegible(p);
+  auto manoDeCaida = [this](const Player* p) {
+    auto it = eliminaciones_.find(p->getNombre());
+    return it == eliminaciones_.end() ? 1000000 : std::atoi(it->second.c_str());
+  };
+  auto mejorQue = [&](const Player* a, const Player* b) {
+    if (a->getSaldo() != b->getSaldo()) return a->getSaldo() > b->getSaldo();
+    return manoDeCaida(a) > manoDeCaida(b);
+  };
+  Player* ganador = nullptr;
+  for (Player* p : jugadores_) {
+    if (hayElegibles && !elegible(p)) continue;
+    if (!ganador || mejorQue(p, ganador)) ganador = p;
+  }
 
   for (Player* p : jugadores_) {
-    if (p->getSaldo() > ganador->getSaldo()) {
-      ganador = p;
-    }
 
     // Registrar qué le pasó a este jugador
     JugadorFinStats jfs;

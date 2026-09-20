@@ -21,7 +21,12 @@ void TexasHoldem::repartirCartasIniciales() {
   observer_->onRepartoCartasIniciales();
 
   for (Player* p : jugadores_) {
-    if (p->getEstado() == PlayerState::ACTIVO) {
+    // ACTIVO o ALL_IN: quien no llega a cubrir la ciega queda ALL_IN al
+    // ponerla (cobrarCiegas() va ANTES del reparto) y sigue en la mano. Antes
+    // solo se repartía a los ACTIVO, así que ese jugador llegaba al showdown
+    // con las cartas de la mano ANTERIOR -- que podían coincidir con las de la
+    // mesa (bug real: un 7 de picas en la mesa y en la mano de un bot).
+    if (p->getEstado() == PlayerState::ACTIVO || p->getEstado() == PlayerState::ALL_IN) {
       Carta c1 = baraja_.repartir();
       Carta c2 = baraja_.repartir();
       p->recibirCartas(c1, c2);

@@ -59,6 +59,8 @@ struct PerfilJugador {
   int foldsARaise   = 0;  ///< Veces que foldeó ante una apuesta/raise.
   int vecesRaised   = 0;  ///< Veces que enfrentó una apuesta/raise.
   int preflopRaises = 0;
+  int apuestasTotal = 0;     ///< Apuestas/subidas con importe conocido (para medir su tamaño).
+  int apuestasPequenas = 0;  ///< De ellas, las de menos de ~45% del bote ("sondeos").
   bool vpipEstaMano = false;  ///< Flag temporal para no contar VPIP dos veces en la misma mano.
 
   static constexpr int MIN_MUESTRAS = 6;
@@ -198,6 +200,9 @@ struct PartidaSnapshot {
   std::string hostNombre;
   bool        salaPublica = true;
   std::string salaCodigo;
+  /// Quienes habían recomprado antes de guardar (no pueden ganar la partida). Fuera
+  /// del checksum, como el resto de metadatos: un .pok viejo simplemente no lo trae.
+  std::vector<std::string> recompraron;
 };
 
 // ── Estructuras de estadísticas ───────────────────────────────────────────────

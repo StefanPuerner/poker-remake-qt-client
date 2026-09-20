@@ -536,10 +536,30 @@ class NetworkClient : public QObject {
         [this](const std::string& payload) {
           static const QStringList campos = {"codigo", "rareza", "xpRecompensa",
                                               "desbloqueado", "desbloqueadoEn",
-                                              "nombre", "descripcion"};
+                                              "nombre", "descripcion", "reclamado"};
           emit logrosActualizados(
               parsearFilasChat(net::jsonGetStr(payload, "logros"), campos));
         });
+  }
+
+  /// Reclama un logro ya desbloqueado: el servidor concede su XP y objetos.
+  /// El cliente no manda nunca qué se concede.
+  Q_INVOKABLE void reclamarLogro(const QString& host, quint16 puerto, QString token, QString codigo) {
+    if (token.isEmpty()) return;
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::RECLAMAR_LOGRO, {
+        {"token",  token.toStdString()},
+        {"codigo", codigo.toStdString()},
+    }), [this, codigo](const std::string& payload) {
+      if (payload.empty()) {
+        emit logroReclamarError(QStringLiteral("error_conexion_timeout"));
+        return;
+      }
+      if (net::jsonGetStr(payload, "evento") == "LOGRO_RECLAMADO") {
+        emit logroReclamado(codigo);
+      } else {
+        emit logroReclamarError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
   }
 
   // ── Fase 5 del sistema de progresión: marcos v2 + tienda ────────────────
@@ -1002,6 +1022,7 @@ class NetworkClient : public QObject {
   }
 
   Q_INVOKABLE void enviarAccion(const QString& accion, int cantidad) {
+    if (reconectando_) return;  // sin conexión de verdad: el servidor no lo recibiría (o llegaría fuera de su momento)
     enviarMensaje(net::buildMsg(net::MsgType::ACTION,
                                 {{"accion", accion.toStdString()},
                                  {"cantidad", std::to_string(cantidad)}}));
@@ -1018,14 +1039,17 @@ class NetworkClient : public QObject {
   /// fichas — solo tiene efecto si la sala lo permite; se aplica una vez
   /// por mano (ver Partida::iniciarPartida()/onComprobarRecompras).
   Q_INVOKABLE void pedirRecompra() {
+    if (reconectando_) return;  // sin conexión de verdad: el servidor no lo recibiría (o llegaría fuera de su momento)
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "RECOMPRA"}}));
   }
 
   Q_INVOKABLE void votar() {
+    if (reconectando_) return;  // sin conexión de verdad: el servidor no lo recibiría (o llegaría fuera de su momento)
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "VOTO"}}));
   }
 
   Q_INVOKABLE void votarExtension(bool siExtender) {
+    if (reconectando_) return;  // sin conexión de verdad: el servidor no lo recibiría (o llegaría fuera de su momento)
     enviarMensaje(net::buildMsg(
         net::MsgType::ACTION,
         {{"accion", siExtender ? "EXTENDER" : "NO_EXTENDER"}}));
@@ -1034,6 +1058,7 @@ class NetworkClient : public QObject {
   /// Solo lo llama el host, tras ELEGIR_MANOS_EXTRA (todos ya aceptaron
   /// continuar) -- cuántas manos más quiere añadir.
   Q_INVOKABLE void elegirManosExtra(int cantidad) {
+    if (reconectando_) return;  // sin conexión de verdad: el servidor no lo recibiría (o llegaría fuera de su momento)
     enviarMensaje(net::buildMsg(
         net::MsgType::ACTION,
         {{"accion", "MANOS_EXTRA"}, {"cantidad", std::to_string(cantidad)}}));
@@ -1183,6 +1208,10 @@ class NetworkClient : public QObject {
   void reconectando(int segundosRestantes);
   /// Reconexión conseguida — la partida sigue igual, no hace falta volver al Lobby.
   void reconectado();
+  /// El servidor acaba de mandar el estado completo tras una reconexión (RESYNC_INICIO):
+  /// QML descarta las pantallas transitorias (showdown, voto, turno) y se reconstruye
+  /// con lo que llega a continuación.
+  void resincronizado();
   /// Se agotó la ventana de reconexión (60s) sin éxito.
   /// @p motivo: lo que contestó el servidor si dijo que no (la partida ya
   /// no existe); vacío si solo se agotaron los 60 s.
@@ -1229,6 +1258,11 @@ class NetworkClient : public QObject {
   /// "desbloqueado" llega como int (0/1), no bool -- mismo motivo que
   /// ultimoEsMio en el chat, coerce con !! en QML si hace falta.
   void logrosActualizados(QVariantList logros);
+  /// Respuesta a reclamarLogro(): éxito (la recompensa ya está concedida) o error.
+  void logroReclamado(QString codigo);
+  void logroReclamarError(QString mensaje);
+  /// Push por presencia: alguien te ha enviado una solicitud de amistad.
+  void solicitudAmistadRecibida(int fromAccountId, QString fromUsername);
 
   // Fase 5 del sistema de progresión -- ver consultarTienda()/
   // comprarObjeto()/equiparObjeto()/consultarLoadout().
@@ -1408,6 +1442,10 @@ class NetworkClient : public QObject {
           QString::fromStdString(net::jsonGetStr(payload, "texto")),
           net::jsonGetInt(payload, "creado_en"),
           net::jsonGetInt(payload, "mensaje_id"));
+    } else if (tipo == net::MsgType::SOLICITUD_AMISTAD_ENTRANTE) {
+      emit solicitudAmistadRecibida(
+          net::jsonGetInt(payload, "from_account_id"),
+          QString::fromStdString(net::jsonGetStr(payload, "from_username")));
     } else if (tipo == net::MsgType::INVITACION_SALA_ENTRANTE) {
       emit invitacionSalaRecibida(
           net::jsonGetInt(payload, "from_account_id"),
@@ -1545,6 +1583,25 @@ class NetworkClient : public QObject {
     // misma sala muerta la próxima vez que se abra la app.
     olvidarSesionEnDisco();
     emit reconexionFallida(motivo);
+  }
+
+  /**
+   * @brief Detecta una conexión "viva" que en realidad está muerta.
+   *
+   * Un móvil que cambia de red o sale de segundo plano deja el socket
+   * abierto y mudo: el cliente no recibe ningún error y sigue "en partida"
+   * sin que llegue nada -- justo lo que se vio como "la partida estuvo muerta
+   * dos manos". El servidor manda un LATIDO cada 4 s durante la partida; si
+   * pasan más de 20 s sin NINGÚN mensaje (y este servidor sí manda latidos),
+   * se da la conexión por perdida y se entra en la reconexión normal -- que ahora
+   * el servidor acepta aunque aún no se hubiera enterado de la caída.
+   */
+  void vigilarConexion() {
+    if (!enPartida_ || reconectando_ || desconexionEsperada_ || !latidoVisto_) return;
+    if (socket_.state() != QAbstractSocket::ConnectedState) return;
+    if (!ultimaActividad_.isValid() || ultimaActividad_.elapsed() < 20000) return;
+    socket_.abort();
+    if (conectadoAlgunaVez_) iniciarReconexion();
   }
 
   /// Arranca (o reinicia) la ventana de reintentos de 60s tras perder la conexión.
@@ -1794,6 +1851,8 @@ class NetworkClient : public QObject {
       if (!certificadoValido(&socket_)) return;
       buffer_.clear();
       esperandoHeader_ = true;
+      ultimaActividad_.restart();
+      latidoVisto_ = false;  // esta conexión todavía no ha demostrado que el servidor manda latidos
       if (reconectando_) {
         // OJO: un connected() aquí es solo el handshake TCP -- NO significa
         // que ya estemos reconectados de verdad. Antes esto ponía
@@ -1880,6 +1939,10 @@ class NetworkClient : public QObject {
     timerReintento_.setInterval(2000);
     connect(&timerReintento_, &QTimer::timeout, this,
             [this]() { intentarReconexionAhora(); });
+    // Vigilancia de conexión medio muerta (ver vigilarConexion()).
+    timerVigilancia_.setInterval(5000);
+    connect(&timerVigilancia_, &QTimer::timeout, this, [this]() { vigilarConexion(); });
+    timerVigilancia_.start();
     connect(&socket_, &QSslSocket::readyRead, this, [this]() {
       buffer_ += socket_.readAll();  // todo lo que ha llegado se ACUMULA aquí
 
@@ -1895,6 +1958,7 @@ class NetworkClient : public QObject {
           std::string payload(buffer_.constData(), longitudEsperada_);
           buffer_.remove(0, longitudEsperada_);
           esperandoHeader_ = true;  // listo para el próximo mensaje
+          ultimaActividad_.restart();  // cualquier mensaje prueba que la conexión vive
 
           // Confirmación real de reconexión: el primer mensaje que de
           // verdad llega del servidor tras el connected()+JOIN_LOBBY de
@@ -2060,6 +2124,10 @@ class NetworkClient : public QObject {
               emit showdownIniciado(mesa);
             } else if (evento == "MODO_ESPECTADOR") {
               emit eventoJuego("El resto de la mano la juegan los bots — no quedan humanos activos.", "sistema");
+            } else if (evento == "LATIDO") {
+              latidoVisto_ = true;  // solo sirve para vigilarConexion(); ultimaActividad_ ya se refrescó arriba
+            } else if (evento == "RESYNC_INICIO") {
+              emit resincronizado();
             } else if (evento == "AVISO_RECOMPRA") {
               bool puedeRecomprar = net::jsonGetInt(payload, "puede_recomprar") == 1;
               emit eventoJuego(puedeRecomprar
@@ -2322,6 +2390,9 @@ class NetworkClient : public QObject {
   int segundosReconexionRestantes_ = 0;
   QElapsedTimer relojReconexion_;  // reloj de pared real, ver intentarReconexionAhora()
   QTimer timerReintento_;
+  QTimer timerVigilancia_;             ///< Ver vigilarConexion().
+  QElapsedTimer ultimaActividad_;      ///< Último mensaje recibido del servidor.
+  bool latidoVisto_ = false;           ///< Esta conexión ya recibió algún LATIDO.
   QByteArray buffer_;
   bool esperandoHeader_ = true;
   uint32_t longitudEsperada_ = 0;

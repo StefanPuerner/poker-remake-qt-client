@@ -15,6 +15,9 @@ import QtQuick.Effects
 Rectangle {
     id: selector
     property var opciones: []
+    // Una entrada por opción: true = punto de aviso sobre esa opción (algo
+    // pendiente de mirar en esa pestaña).
+    property var avisos: []
     property int seleccionado: 0
     // Ver el comentario largo en la versión de escritorio de este mismo
     // fichero -- este componente nunca escribe su propia "seleccionado"
@@ -114,6 +117,7 @@ Rectangle {
                 height: selector.height
 
                 Text {
+                    id: textoSegmento
                     anchors.centerIn: parent
                     text: segmento.modelData
                     font.pixelSize: 14 * Tema.escala
@@ -122,6 +126,18 @@ Rectangle {
                     Behavior on color {
                         ColorAnimation { duration: 120 }
                     }
+                }
+                // Punto de aviso: algo por mirar en esta pestaña.
+                Rectangle {
+                    visible: !!(selector.avisos && selector.avisos[segmento.index])
+                    width: 9 * Tema.escala
+                    height: width
+                    radius: width / 2
+                    color: "#E5484D"
+                    border.width: 1.5
+                    border.color: Tema.colorPanel
+                    x: parent.width / 2 + textoSegmento.implicitWidth / 2 + 3 * Tema.escala
+                    y: parent.height / 2 - textoSegmento.implicitHeight / 2 - 2 * Tema.escala
                 }
                 MouseArea {
                     anchors.fill: parent

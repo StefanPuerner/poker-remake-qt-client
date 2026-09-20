@@ -25,35 +25,65 @@ Item {
     // a 40px no se distinguirían, y cada capa de más es un efecto por tarjeta.
     property bool miniatura: false
 
-    // claro/oscuro: extremos del degradado del paño (luz cenital, más claro
-    // arriba); SIN ellos el paño sigue al tema activo. borde: contorno.
-    // patron: dibujo encima del paño (rombos/palos/puntos, ver
-    // assets/tapetes/) con su opacidad. pespunte: línea fina inscrita, de
-    // ese color. madera: la pastilla ENTERA es madera. riel: aro de madera
-    // alrededor del paño.
-    readonly property var presets: ({
-        "tapete_clasico": { claro: "#2F6B51", oscuro: "#1B4332", borde: "#2A5A44",
-                            patron: "rombos", patronOpacidad: 0.16, pespunte: "#D4A24E" },
-        "tapete_granate": { claro: "#7A2C3D", oscuro: "#4D1B26", borde: "#632A38",
-                            patron: "palos", patronOpacidad: 0.11, pespunte: "#D4A24E" },
-        "tapete_azul":    { claro: "#2B5582", oscuro: "#173250", borde: "#2A4A63",
-                            patron: "puntos", patronOpacidad: 0.15, pespunte: "#D4A24E" },
-        // Uno por tema para que ninguno se quede sin el suyo: Taberna real
-        // (cuero marrón con filo dorado) y Porcelana dorada (crema y oro, el
-        // único tema claro -- por eso su dibujo va oscurecido con patronColor).
-        "tapete_taberna": { claro: "#8A5A34", oscuro: "#5A3520", borde: "#8F5A30",
-                            patron: "rombos", patronOpacidad: 0.14, pespunte: "#D9A566" },
-        "tapete_porcelana": { claro: "#EBD8AA", oscuro: "#CFAE6C", borde: "#A67C2E",
-                            patron: "palos", patronOpacidad: 0.20, patronColor: "#6E4E1A",
-                            pespunte: "#8A6423" },
-        "tapete_grafito": { claro: "#454A52", oscuro: "#2B2E33", borde: "#44484E",
-                            patron: "rombos", patronOpacidad: 0.10, pespunte: "#C9CED6" },
+    // "preset" = "tipo" o "tipo:variante" (p. ej. "tapete_rombos:granate",
+    // "tapete_madera:nogal"). El TIPO es lo que se compra (la textura); el color
+    // del paño o la madera se elige al equiparlo. Sin variante, la de por defecto
+    // (verde / roble). ⚠️ Los colores y maderas tienen que coincidir con
+    // varianteTapeteValida() de AccountManager.cpp.
+    readonly property var tipos: ({
+        "tapete_rombos": { patron: "rombos", patronOpacidad: 0.16 },
+        "tapete_palos":  { patron: "palos",  patronOpacidad: 0.11 },
+        "tapete_puntos": { patron: "puntos", patronOpacidad: 0.15 },
+        "tapete_lino":   { patron: "lino",   patronOpacidad: 0.10 },
+        "tapete_rayas":  { patron: "rayas",  patronOpacidad: 0.09 },
         // El paño de "casino" es el del tema activo: lo que cambia es el
         // marco de madera, así que combina con cualquier paleta.
-        "tapete_casino":  { riel: true },
-        "tapete_madera":  { madera: true }
+        "tapete_casino": { riel: true },
+        "tapete_madera": { madera: true }
     })
-    readonly property var estilo: presets[preset] || null
+    readonly property var colores: ({
+        "verde":     { claro: "#2F6B51", oscuro: "#1B4332", borde: "#2A5A44", pespunte: "#D4A24E" },
+        "granate":   { claro: "#7A2C3D", oscuro: "#4D1B26", borde: "#632A38", pespunte: "#D4A24E" },
+        "azul":      { claro: "#2B5582", oscuro: "#173250", borde: "#2A4A63", pespunte: "#D4A24E" },
+        "grafito":   { claro: "#454A52", oscuro: "#2B2E33", borde: "#44484E", pespunte: "#C9CED6" },
+        "taberna":   { claro: "#8A5A34", oscuro: "#5A3520", borde: "#8F5A30", pespunte: "#D9A566" },
+        // Crema y oro (el único claro): su dibujo va oscurecido y más marcado.
+        "porcelana": { claro: "#EBD8AA", oscuro: "#CFAE6C", borde: "#A67C2E", pespunte: "#8A6423",
+                       patronColor: "#6E4E1A", opacidadMult: 1.8 },
+        "violeta":   { claro: "#6A4C93", oscuro: "#3E2A5C", borde: "#4F3A75", pespunte: "#D4A24E" },
+        "petroleo":  { claro: "#2A7F86", oscuro: "#154B50", borde: "#1F6167", pespunte: "#D4A24E" }
+    })
+    // La madera se tiñe desde una sola imagen (brillo/saturación/tinte encima).
+    readonly property var maderas: ({
+        "roble":         { brillo: 0.0,   saturacion: 0.0,   tinte: "",        tinteFuerza: 0.0 },
+        "roble_oscuro":  { brillo: -0.36, saturacion: 0.05,  tinte: "",        tinteFuerza: 0.0 },
+        "nogal":         { brillo: -0.46, saturacion: -0.05, tinte: "#5B3A4A", tinteFuerza: 0.30 }
+    })
+    // Códigos de antes de que hubiera tipo + color (un servidor o un anfitrión
+    // anteriores los siguen mandando): se traducen al equivalente.
+    readonly property var codigosAntiguos: ({
+        "tapete_clasico": "tapete_rombos:verde", "tapete_granate": "tapete_palos:granate",
+        "tapete_azul": "tapete_puntos:azul", "tapete_grafito": "tapete_rombos:grafito",
+        "tapete_taberna": "tapete_rombos:taberna", "tapete_porcelana": "tapete_palos:porcelana"
+    })
+    readonly property string presetEfectivo: codigosAntiguos[preset] || preset
+    readonly property string tipoId: presetEfectivo.indexOf(":") >= 0 ? presetEfectivo.split(":")[0] : presetEfectivo
+    readonly property string variante: presetEfectivo.indexOf(":") >= 0 ? presetEfectivo.split(":")[1] : ""
+    readonly property var estilo: {
+        var t = tipos[tipoId];
+        if (!t) return null;
+        var e = {};
+        for (var k in t) e[k] = t[k];
+        if (t.madera || t.riel) {
+            var m = maderas[variante] || maderas["roble"];
+            for (var km in m) e[km] = m[km];
+        } else {
+            var c = colores[variante] || colores["verde"];
+            for (var kc in c) e[kc] = c[kc];
+            e.patronOpacidad = t.patronOpacidad * (c.opacidadMult || 1.0);
+        }
+        return e;
+    }
 
     readonly property bool esMadera: estilo !== null && estilo.madera === true
     readonly property bool conRiel: estilo !== null && estilo.riel === true
@@ -84,7 +114,7 @@ Item {
     // rombos y una veta gigante no se leían como tapete), nunca crecen.
     readonly property real escalaMadera: Math.max(0.12, Math.min(0.75, width / 1500))
     readonly property real factorDensidad: Math.max(0.35, Math.min(1, width / 1400))
-    readonly property var periodoBase: ({ rombos: 44, palos: 84, puntos: 18 })
+    readonly property var periodoBase: ({ rombos: 44, palos: 84, puntos: 18, lino: 18, rayas: 16 })
     readonly property real periodoPatron: patron === "" ? 1
                                           : Math.max(6, Math.round(periodoBase[patron] * factorDensidad))
 
@@ -131,6 +161,12 @@ Item {
             source: capaMadera
             maskEnabled: true
             maskSource: mascaraMadera
+            // Variante de madera (roble / roble oscuro / nogal): la misma imagen,
+            // más oscura o teñida.
+            brightness: tapete.estilo && tapete.estilo.brillo ? tapete.estilo.brillo : 0.0
+            saturation: tapete.estilo && tapete.estilo.saturacion ? tapete.estilo.saturacion : 0.0
+            colorization: tapete.estilo && tapete.estilo.tinteFuerza ? tapete.estilo.tinteFuerza : 0.0
+            colorizationColor: tapete.estilo && tapete.estilo.tinte ? tapete.estilo.tinte : "white"
         }
         // Volumen: luz arriba, sombra abajo -- sin esto la veta se ve plana.
         Rectangle {

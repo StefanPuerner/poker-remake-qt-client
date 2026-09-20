@@ -1,756 +1,807 @@
 #include "../include/DecisionEngine.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <map>
+#include <cstdint>
 #include <random>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  UTILIDADES INTERNAS
-// ─────────────────────────────────────────────────────────────────────────────
+#include "../include/ReglasRaise.hpp"
 
-std::vector<Carta> DecisionEngine::obtenerCartasDesconocidas(
-    const GameState& state, const std::vector<Carta>& cartasPropias) {
-  std::vector<Carta> desconocidas;
-  desconocidas.reserve(52);
-  for (int p = static_cast<int>(Palo::CORAZONES);
-       p <= static_cast<int>(Palo::PICAS); ++p) {
-    for (int v = static_cast<int>(Valor::DOS); v <= static_cast<int>(Valor::AS); ++v) {
-      Carta c(static_cast<Palo>(p), static_cast<Valor>(v));
-      bool enMano = (c == cartasPropias[0] || c == cartasPropias[1]);
-      bool enMesa = std::find(state.cartasComunitarias.begin(),
-                              state.cartasComunitarias.end(), c) !=
-                   state.cartasComunitarias.end();
-      if (!enMano && !enMesa) desconocidas.push_back(c);
-    }
-  }
-  return desconocidas;
+// ═════════════════════════════════════════════════════════════════════════════
+//  Utilidades: azar, evaluador rápido, percentil preflop
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+// thread_local: cada sala (hilo) tiene su propio generador -- ver el comentario
+// equivalente en Bot.cpp.
+std::mt19937& generador() {
+  static thread_local std::mt19937 gen(std::random_device{}());
+  return gen;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CÁLCULO DE FUERZA ACTUAL (exhaustivo — bueno para River)
-// ─────────────────────────────────────────────────────────────────────────────
-
-double DecisionEngine::calcularFuerzaMano(const GameState& state,
-                                          const std::vector<Carta>& cartasPropias) {
-  auto desconocidas = obtenerCartasDesconocidas(state, cartasPropias);
-  HandResult miRes = Analyzer::evaluarMano(cartasPropias, state.cartasComunitarias);
-
-  int victorias = 0, empates = 0, total = 0;
-  for (size_t i = 0; i < desconocidas.size() - 1; ++i) {
-    for (size_t j = i + 1; j < desconocidas.size(); ++j) {
-      std::vector<Carta> rival = {desconocidas[i], desconocidas[j]};
-      HandResult rivalRes = Analyzer::evaluarMano(rival, state.cartasComunitarias);
-      if (miRes > rivalRes)      ++victorias;
-      else if (miRes == rivalRes) ++empates;
-      ++total;
-    }
-  }
-  if (total == 0) return 0.0;
-  return static_cast<double>(victorias + empates / 2.0) / total;
+double unif() {
+  return std::uniform_real_distribution<double>(0.0, 1.0)(generador());
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  FUERZA BRUTA (FACIL) — O(1): una sola evaluación, sin rango de rival
-// ─────────────────────────────────────────────────────────────────────────────
+double sigmoide(double x) { return 1.0 / (1.0 + std::exp(-x)); }
 
-double DecisionEngine::calcularFuerzaBruta(const std::vector<Carta>& cartasPropias,
-                                            const std::vector<Carta>& mesa) {
-  if (mesa.empty()) return 0.5;
-  HandResult hr = Analyzer::evaluarMano(cartasPropias, mesa);
-  long long categoria = hr.score / 759375LL;
-  switch (static_cast<HandRank>(categoria)) {
-    case HandRank::CARTA_ALTA:   return 0.18;
-    case HandRank::PAREJA:       return 0.38;
-    case HandRank::DOBLE_PAREJA: return 0.58;
-    case HandRank::TRIO:         return 0.72;
-    case HandRank::ESCALERA:     return 0.82;
-    case HandRank::COLOR:        return 0.87;
-    case HandRank::FULL_HOUSE:   return 0.92;
-    case HandRank::POKER:        return 0.97;
-    default:                     return 0.99;  // escalera de color / real
-  }
+/// Decide con una transición suave alrededor de un umbral: lejos de él es casi
+/// determinista, cerca es una moneda al aire. Un bot con umbrales duros es
+/// legible; con una "temperatura" pequeña deja de serlo sin jugar mal.
+bool superaUmbral(double valor, double umbral, double temp) {
+  if (temp <= 1e-9) return valor >= umbral;
+  return unif() < sigmoide((valor - umbral) / temp);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  RANGE NARROWING — solo considera rivales con top-40% de manos
-// ─────────────────────────────────────────────────────────────────────────────
-
-double DecisionEngine::estimarFuerzaConRango(const GameState& state,
-                                              const std::vector<Carta>& cartasPropias) {
-  auto desconocidas = obtenerCartasDesconocidas(state, cartasPropias);
-  HandResult miRes = Analyzer::evaluarMano(cartasPropias, state.cartasComunitarias);
-
-  // Paso 1: recopilar scores de todas las manos posibles del rival
-  std::vector<long long> scores;
-  scores.reserve(desconocidas.size() * desconocidas.size() / 2);
-  for (size_t i = 0; i < desconocidas.size() - 1; ++i) {
-    for (size_t j = i + 1; j < desconocidas.size(); ++j) {
-      std::vector<Carta> rival = {desconocidas[i], desconocidas[j]};
-      scores.push_back(Analyzer::evaluarMano(rival, state.cartasComunitarias).score);
-    }
+/// Mayor carta de una escalera dentro de una máscara de valores (bit 12 = As),
+/// contando el As como 1 (rueda). -1 si no hay escalera.
+int altaEscalera(int mascara) {
+  int m = (mascara << 1) | ((mascara >> 12) & 1);  // bit j = valor j-1; bit 0 = As bajo
+  for (int h = 13; h >= 4; --h) {
+    if (((m >> (h - 4)) & 31) == 31) return h - 1;
   }
-  if (scores.empty()) return 0.5;
-
-  // Sin agresión: eliminar el 45% de manos más débiles (rango de limp/call).
-  // Cada escalada de apuestas estrecha más el rango estimado del rival.
-  double corte;
-  if      (state.raisesRivalesEstaMano >= 3) corte = 0.72;
-  else if (state.raisesRivalesEstaMano >= 2) corte = 0.62;
-  else if (state.raisesRivalesEstaMano >= 1) corte = 0.50;
-  else                                        corte = 0.45;
-  std::vector<long long> sorted = scores;
-  std::sort(sorted.begin(), sorted.end());
-  long long umbral = sorted[static_cast<size_t>(sorted.size() * corte)];
-
-  // Paso 2: comparar solo contra manos fuertes.
-  // scores[k] ya es la puntuación completa de esa mano rival (calculada en el
-  // paso 1): comparar el long long directamente evita re-evaluar la mano por
-  // segunda vez, que es el costo dominante de esta función.
-  int victorias = 0, empates = 0, total = 0;
-  for (long long s : scores) {
-    if (s < umbral) continue;
-    if (miRes.score > s)      ++victorias;
-    else if (miRes.score == s) ++empates;
-    ++total;
-  }
-  if (total == 0) return 0.5;
-  return static_cast<double>(victorias + empates / 2.0) / total;
+  return -1;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  MONTE CARLO — simula múltiples rivales según numJugadoresActivos
-// ─────────────────────────────────────────────────────────────────────────────
-
-double DecisionEngine::simularEquityMonteCarlo(
-    const GameState& state, const std::vector<Carta>& cartasPropias,
-    int numSimulaciones) {
-  auto desconocidas = obtenerCartasDesconocidas(state, cartasPropias);
-  if (desconocidas.empty()) return 0.5;
-
-  int cartasFaltantes = 5 - static_cast<int>(state.cartasComunitarias.size());
-  if (cartasFaltantes <= 0)
-    return calcularFuerzaMano(state, cartasPropias);
-
-  // Preflop: siempre 1v1 — la fuerza de la mano inicial es relativa a un rival;
-  // el precio de entrar en multijugador ya lo gestiona el potOdds.
-  // Postflop: simular rivales reales (hasta 4) para mayor realismo.
-  int numRivales = (state.rondaActual == Rondas::PREFLOP)
-      ? 1
-      : std::max(1, std::min(state.numJugadoresActivos - 1, 4));
-  int cartasNecesarias = cartasFaltantes + numRivales * 2;
-  while (cartasNecesarias > static_cast<int>(desconocidas.size()) && numRivales > 1) {
-    --numRivales;
-    cartasNecesarias = cartasFaltantes + numRivales * 2;
+/// Los @p cuantas valores más altos de la máscara, de mayor a menor.
+int tomarAltos(int mascara, int cuantas, int* fuera) {
+  int n = 0;
+  for (int v = 12; v >= 0 && n < cuantas; --v) {
+    if (mascara & (1 << v)) fuera[n++] = v;
   }
-  if (static_cast<int>(desconocidas.size()) < cartasNecesarias) return 0.5;
-
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  int victorias = 0, empates = 0;
-
-  for (int s = 0; s < numSimulaciones; ++s) {
-    std::vector<Carta> pool = desconocidas;
-    std::shuffle(pool.begin(), pool.end(), gen);
-
-    std::vector<Carta> mesa = state.cartasComunitarias;
-    for (int i = 0; i < cartasFaltantes; ++i) {
-      mesa.push_back(pool.back());
-      pool.pop_back();
-    }
-
-    HandResult miRes = Analyzer::evaluarMano(cartasPropias, mesa);
-    bool perdio = false, empato = false;
-
-    for (int r = 0; r < numRivales && pool.size() >= 2; ++r) {
-      std::vector<Carta> manoRival = {pool.back()};
-      pool.pop_back();
-      manoRival.push_back(pool.back());
-      pool.pop_back();
-      HandResult rivalRes = Analyzer::evaluarMano(manoRival, mesa);
-      if (rivalRes > miRes)      { perdio = true; break; }
-      if (rivalRes == miRes)       empato = true;
-    }
-
-    if (!perdio) {
-      if (empato) ++empates;
-      else        ++victorias;
-    }
-  }
-
-  return static_cast<double>(victorias + empates / 2.0) / numSimulaciones;
+  return n;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PROBABILIDAD DE MEJORAR (para semi-faroles)
-// ─────────────────────────────────────────────────────────────────────────────
-
-double DecisionEngine::calcularProbabilidadMejorar(
-    const GameState& state, const std::vector<Carta>& cartasPropias) {
-  if (state.rondaActual == Rondas::RIVER || state.rondaActual == Rondas::SHOWDOWN)
-    return 0.0;
-
-  auto desconocidas = obtenerCartasDesconocidas(state, cartasPropias);
-  HandResult actual = Analyzer::evaluarMano(cartasPropias, state.cartasComunitarias);
-  long long catActual = actual.score / 759375LL;
-
-  int mejoras = 0;
-  for (const auto& futura : desconocidas) {
-    std::vector<Carta> mesaFutura = state.cartasComunitarias;
-    mesaFutura.push_back(futura);
-    if (Analyzer::evaluarMano(cartasPropias, mesaFutura).score / 759375LL > catActual)
-      ++mejoras;
-  }
-  return desconocidas.empty() ? 0.0
-                               : static_cast<double>(mejoras) / desconocidas.size();
+long long empaquetar(int categoria, const int* k, int m) {
+  long long v = categoria;
+  for (int i = 0; i < 5; ++i) v = v * 13 + (i < m ? k[i] : 0);
+  return v;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PELIGRO DE MESA — color/escalera/mesa pareada (0.0 = segura, 1.0 = peligrosa)
-// ─────────────────────────────────────────────────────────────────────────────
+}  // namespace
 
-double DecisionEngine::analizarPeligroMesa(const std::vector<Carta>& mesa) {
-  if (mesa.size() < 3) return 0.0;
-  double peligro = 0.0;
-
-  // Riesgo de color: 3+ cartas del mismo palo
-  std::map<int, int> palos;
-  for (const auto& c : mesa) palos[static_cast<int>(c.getPalo())]++;
-  for (const auto& [p, cnt] : palos) {
-    if (cnt >= 4) peligro += 0.45;
-    else if (cnt >= 3) peligro += 0.22;
-  }
-
-  // Riesgo de escalera: cartas conectadas en ventana de 5
-  std::vector<int> vals;
-  for (const auto& c : mesa) vals.push_back(static_cast<int>(c.getValor()));
-  std::sort(vals.begin(), vals.end());
-  vals.erase(std::unique(vals.begin(), vals.end()), vals.end());
-  // As bajo
-  if (!vals.empty() && vals.back() == 14) vals.insert(vals.begin(), 1);
-
-  int maxConectadas = 0;
-  for (size_t i = 0; i < vals.size(); ++i) {
-    int start = vals[i], count = 1;
-    for (size_t j = i + 1; j < vals.size() && vals[j] <= start + 4; ++j)
-      ++count;
-    maxConectadas = std::max(maxConectadas, count);
-  }
-  if (maxConectadas >= 4) peligro += 0.35;
-  else if (maxConectadas >= 3) peligro += 0.15;
-
-  // Mesa pareada: pareja en tablón = cualquier rival con esa carta tiene trio
-  // Se penaliza más porque es la amenaza más común y menos obvia
-  std::map<int, int> cuentaVals;
-  for (const auto& c : mesa) cuentaVals[static_cast<int>(c.getValor())]++;
-  for (const auto& [v, cnt] : cuentaVals) {
-    if (cnt >= 3) peligro += 0.45; // Trio en mesa: potencial full/poker para rivales
-    else if (cnt >= 2) peligro += 0.32; // Pareja en mesa: trio muy alcanzable
-  }
-
-  return std::clamp(peligro, 0.0, 1.0);
+int DecisionEngine::codificar(const Carta& c) {
+  int valor = static_cast<int>(c.getValor()) - 2;
+  int palo = static_cast<int>(c.getPalo()) - static_cast<int>(Palo::CORAZONES);
+  return valor * 4 + (palo & 3);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  OUTS — cartas que mejorarían mi mano
-// ─────────────────────────────────────────────────────────────────────────────
-
-int DecisionEngine::contarOuts(const GameState& state,
-                                const std::vector<Carta>& cartasPropias) {
-  if (state.rondaActual == Rondas::RIVER || state.rondaActual == Rondas::SHOWDOWN)
-    return 0;
-
-  auto desconocidas = obtenerCartasDesconocidas(state, cartasPropias);
-  HandResult actual = Analyzer::evaluarMano(cartasPropias, state.cartasComunitarias);
-  long long catActual = actual.score / 759375LL;
-
-  int outs = 0;
-  for (const auto& futura : desconocidas) {
-    std::vector<Carta> mesaFutura = state.cartasComunitarias;
-    mesaFutura.push_back(futura);
-    if (Analyzer::evaluarMano(cartasPropias, mesaFutura).score / 759375LL > catActual)
-      ++outs;
-  }
-  return outs;
-}
-
-// Regla del 2 y del 4
-double DecisionEngine::calcularEquityPorOuts(int outs, Rondas ronda) {
-  if (ronda == Rondas::FLOP) return std::min(1.0, outs * 0.04);
-  if (ronda == Rondas::TURN) return std::min(1.0, outs * 0.02);
-  return 0.0;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CONTRIBUCIÓN PROPIA — cuántas de mis 5 cartas ganadoras son mías (0.0–0.4)
-//  0.0 = la mesa hace la mano por mí (todos pueden tenerla)
-//  0.4 = ambas cartas propias están en la combinación (ventaja exclusiva)
-// ─────────────────────────────────────────────────────────────────────────────
-
-double DecisionEngine::calcularContribucionPropia(
-    const std::vector<Carta>& cartasPropias, const std::vector<Carta>& mesa) {
-  if (mesa.empty() || cartasPropias.size() < 2) return 0.5;
-
-  HandResult res = Analyzer::evaluarMano(cartasPropias, mesa);
-  int propias = 0;
-  for (const auto& c : res.combination) {
-    if (c == cartasPropias[0] || c == cartasPropias[1]) ++propias;
-  }
-  return static_cast<double>(propias) / 5.0;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  SCORE DE DECISIÓN — ponderación fuerza/equity según ronda
-// ─────────────────────────────────────────────────────────────────────────────
-
-double DecisionEngine::calcularDecisionScore(Rondas ronda, double fuerzaActual,
-                                              double equityFutura, int numJugadores) {
-  if (ronda == Rondas::PREFLOP) {
-    // Equity 1v1: cuanto más jugadores activos, más calidad necesita la mano.
-    // Con 2 jugadores (HU): minEq=0.358; con 6 jugadores: minEq=0.390.
-    int rivales = std::max(1, numJugadores - 1);
-    double minEq = 0.35 + rivales * 0.008;
-    return std::clamp((equityFutura - minEq) / 0.40, 0.0, 1.0);
-  }
-  if (ronda == Rondas::FLOP)  return fuerzaActual * 0.60 + equityFutura * 0.40;
-  if (ronda == Rondas::TURN)  return fuerzaActual * 0.85 + equityFutura * 0.15;
-  return fuerzaActual; // RIVER: solo importa la fuerza actual
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  SIZING DE RAISE — basado en el bote (NORMAL/DIFICIL) o multiplicador (FACIL)
-// ─────────────────────────────────────────────────────────────────────────────
-
-int DecisionEngine::calcularMontoRaise(const GameState& state,
-                                       Comportamiento nivel, int saldo,
-                                       double fuerza) {
-  int aPagar = std::max(0, state.apuestaAIgualar - state.miApuestaEnRonda);
-  int minRaise = std::max(state.ciegaGrande,
-                          state.apuestaAIgualar > 0 ? state.apuestaAIgualar
-                                                    : state.ciegaGrande);
-  // Si el saldo no llega al mínimo de raise, el único movimiento posible es all-in.
-  // Clampear aquí evita que clamp() reciba hi < lo y aborte el proceso.
-  if (saldo <= 0) return 0;
-  minRaise = std::min(minRaise, saldo);
-
-  // Todos los niveles: apuesta fracción del bote calibrada según fuerza
-  int boteEfectivo = state.boteTotal + aPagar;
-  double fraccion;
-  if (nivel == Comportamiento::AGRESIVO)
-    fraccion = (fuerza > 0.80) ? 0.80 : 0.60;
-  else if (nivel == Comportamiento::SEGURO)
-    fraccion = (fuerza > 0.90) ? 0.55 : 0.40;
-  else
-    fraccion = (fuerza > 0.75) ? 0.65 : 0.50;
-
-  // Value bet más alto en River con mano fuerte
-  if (state.rondaActual == Rondas::RIVER && fuerza > 0.70)
-    fraccion = std::min(1.0, fraccion + 0.15);
-
-  int cantidad = std::max(static_cast<int>(boteEfectivo * fraccion), minRaise);
-
-  if (state.rondaActual == Rondas::PREFLOP) {
-    // Open: 2.5-3x BB. Re-raise: 3x la apuesta anterior (no pot-sizing).
-    int openSize = static_cast<int>(state.ciegaGrande * 2.5);
-    if (state.apuestaAIgualar > state.ciegaGrande) {
-      // Ya hay un raise anterior → 3-bet estándar = 3x el raise previo
-      cantidad = std::min(cantidad, state.apuestaAIgualar * 3);
-    }
-    cantidad = std::max(cantidad, openSize);
+long long DecisionEngine::puntuarRapido(const int* cartas, int n) {
+  int cntV[13] = {0};
+  int cntP[4] = {0};
+  int mascP[4] = {0};
+  int mascV = 0;
+  for (int i = 0; i < n; ++i) {
+    int v = cartas[i] >> 2, p = cartas[i] & 3;
+    ++cntV[v];
+    ++cntP[p];
+    mascP[p] |= 1 << v;
+    mascV |= 1 << v;
   }
 
-  return std::clamp(cantidad, minRaise, saldo);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  FAROL — con detección de debilidad del rival en River
-// ─────────────────────────────────────────────────────────────────────────────
-
-bool DecisionEngine::decidirFarol(Rondas ronda, Comportamiento nivel,
-                                   double fuerza, double mejora,
-                                   bool accionAnteriorFueCheck) {
-  // Preflop: no hay líneas de betting que justifiquen farol; la fuerza de mano
-  // ya filtra cuándo abrir/subir/pasar. Evitar raises aleatorios preflop.
-  if (ronda == Rondas::PREFLOP) return false;
-
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<> dis(0.0, 1.0);
-
-  double prob = 0.02;
-
-  // Semi-farol: mano débil con proyecto real (mejora > 0.22 filtra gutshots sueltos)
-  if (fuerza < 0.45 && mejora > 0.22) prob += 0.12;
-
-  if (nivel == Comportamiento::SEGURO)        prob *= 0.4;
-  else if (nivel == Comportamiento::AGRESIVO) prob *= 1.4;
-
-  if (ronda == Rondas::RIVER) {
-    if (fuerza < 0.20) {
-      // Farol puro: solo si el rival mostró debilidad con un check previo
-      if (accionAnteriorFueCheck) {
-        prob = (nivel == Comportamiento::AGRESIVO)   ? 0.20 :
-               (nivel == Comportamiento::EQUILIBRADO) ? 0.07 : 0.02;
-      } else {
-        // Rival apostó → raramente faroleamos encima
-        prob = (nivel == Comportamiento::AGRESIVO) ? 0.04 : 0.01;
+  // Escalera de color.
+  for (int p = 0; p < 4; ++p) {
+    if (cntP[p] >= 5) {
+      int h = altaEscalera(mascP[p]);
+      if (h >= 0) {
+        int k[1] = {h};
+        return empaquetar(8, k, 1);
       }
-    } else {
-      prob = 0.0; // Tenemos valor → check/call, no farol
     }
   }
 
-  return dis(gen) < prob;
+  int poker = -1;
+  int trios[3], nt = 0, parejas[3], np = 0;
+  for (int v = 12; v >= 0; --v) {
+    if (cntV[v] == 4) poker = v;
+    else if (cntV[v] == 3) { if (nt < 3) trios[nt++] = v; }
+    else if (cntV[v] == 2) { if (np < 3) parejas[np++] = v; }
+  }
+
+  if (poker >= 0) {
+    int resto = mascV & ~(1 << poker);
+    int k[2] = {poker, 0};
+    int alto[1];
+    if (tomarAltos(resto, 1, alto) > 0) k[1] = alto[0];
+    return empaquetar(7, k, 2);
+  }
+
+  if (nt >= 1 && (nt >= 2 || np >= 1)) {
+    int par = -1;
+    if (nt >= 2) par = trios[1];
+    if (np >= 1) par = std::max(par, parejas[0]);
+    int k[2] = {trios[0], par};
+    return empaquetar(6, k, 2);
+  }
+
+  for (int p = 0; p < 4; ++p) {
+    if (cntP[p] >= 5) {
+      int k[5];
+      int m = tomarAltos(mascP[p], 5, k);
+      return empaquetar(5, k, m);
+    }
+  }
+
+  int h = altaEscalera(mascV);
+  if (h >= 0) {
+    int k[1] = {h};
+    return empaquetar(4, k, 1);
+  }
+
+  if (nt >= 1) {
+    int resto = mascV & ~(1 << trios[0]);
+    int k[3] = {trios[0], 0, 0};
+    int alt[2];
+    int m = tomarAltos(resto, 2, alt);
+    for (int i = 0; i < m; ++i) k[1 + i] = alt[i];
+    return empaquetar(3, k, 3);
+  }
+
+  if (np >= 2) {
+    int resto = mascV & ~(1 << parejas[0]) & ~(1 << parejas[1]);
+    int k[3] = {parejas[0], parejas[1], 0};
+    int alt[1];
+    if (tomarAltos(resto, 1, alt) > 0) k[2] = alt[0];
+    return empaquetar(2, k, 3);
+  }
+
+  if (np == 1) {
+    int resto = mascV & ~(1 << parejas[0]);
+    int k[4] = {parejas[0], 0, 0, 0};
+    int alt[3];
+    int m = tomarAltos(resto, 3, alt);
+    for (int i = 0; i < m; ++i) k[1 + i] = alt[i];
+    return empaquetar(1, k, 4);
+  }
+
+  int k[5];
+  int m = tomarAltos(mascV, 5, k);
+  return empaquetar(0, k, m);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PENSARACCION — motor de decisión principal
-// ─────────────────────────────────────────────────────────────────────────────
+namespace {
 
-Accion DecisionEngine::pensarAccion(const GameState& state,
-                                    Comportamiento nivel, int saldo,
+/// Puntuación tipo Chen de una mano inicial (más alto = mejor).
+double puntuarChen(int v1, int v2, bool suited) {  // v = 0..12 (2..As)
+  int alto = std::max(v1, v2), bajo = std::min(v1, v2);
+  auto valorAlto = [](int v) {
+    switch (v) {
+      case 12: return 10.0;
+      case 11: return 8.0;
+      case 10: return 7.0;
+      case 9:  return 6.0;
+      default: return (v + 2) / 2.0;
+    }
+  };
+  double pts = valorAlto(alto);
+  if (alto == bajo) return std::max(5.0, pts * 2.0);
+  if (suited) pts += 2.0;
+  int hueco = alto - bajo - 1;
+  if (hueco == 1) pts -= 1.0;
+  else if (hueco == 2) pts -= 2.0;
+  else if (hueco == 3) pts -= 4.0;
+  else if (hueco >= 4) pts -= 5.0;
+  if (hueco <= 1 && alto < 10) pts += 1.0;  // proyecto de escalera sin pasar de la reina
+  return std::ceil(pts);
+}
+
+/// Puntuaciones de las 1326 manos iniciales, ordenadas (se calcula una vez).
+const std::vector<double>& tablaChen() {
+  static const std::vector<double> tabla = [] {
+    std::vector<double> t;
+    t.reserve(1326);
+    for (int a = 0; a < 52; ++a) {
+      for (int b = a + 1; b < 52; ++b) {
+        t.push_back(puntuarChen(a >> 2, b >> 2, (a & 3) == (b & 3)));
+      }
+    }
+    std::sort(t.begin(), t.end());
+    return t;
+  }();
+  return tabla;
+}
+
+}  // namespace
+
+double DecisionEngine::percentilPreflop(const Carta& a, const Carta& b) {
+  int ca = codificar(a), cb = codificar(b);
+  double s = puntuarChen(ca >> 2, cb >> 2, (ca & 3) == (cb & 3));
+  const auto& t = tablaChen();
+  auto lo = std::lower_bound(t.begin(), t.end(), s);
+  auto hi = std::upper_bound(t.begin(), t.end(), s);
+  double debajo = static_cast<double>(lo - t.begin());
+  double iguales = static_cast<double>(hi - lo);
+  return (debajo + 0.5 * iguales) / static_cast<double>(t.size());
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Rasgos por dificultad
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+/// La dificultad son rasgos de juego, no "cuánto calcula". FACIL paga de más y
+/// se le nota lo que tiene; EXPERTO mezcla, lee el tamaño y se adapta.
+struct Rasgos {
+  int simulaciones;       ///< Muestras Monte Carlo (más = menos ruido en la equity).
+  bool leeApuesta;        ///< El rango del rival depende del tamaño de su apuesta.
+  double gammaFijo;       ///< Sesgo del rango si no lee la apuesta.
+  double margenCall;      ///< Se suma a la equity exigida (negativo = paga de más).
+  double temp;            ///< Ruido de las decisiones cerca del umbral.
+  double faroles;         ///< Frecuencia base de farol/semifarol.
+  double umbralValor;     ///< Equity mínima para apostar por valor.
+  double umbralSubida;    ///< Equity mínima para subir por valor ante una apuesta.
+  double cbet;            ///< Frecuencia de apuesta de continuación (heads-up).
+  double aperturaMult;    ///< Anchura del rango de apertura preflop.
+  double limp;            ///< Fracción de manos con las que iguala en vez de subir.
+  double kCall;           ///< Anchura del rango con el que iguala una subida preflop.
+  double k3bet;           ///< Anchura del rango con el que re-sube preflop.
+  double blandura;        ///< Cuánto defiende (MDF) ante apuestas pequeñas.
+  bool usaPerfiles;
+  bool subeSobrePequenas; ///< Sube de farol sobre apuestas mínimas.
+  bool ocultaValor;       ///< Varía el tamaño y a veces retrasa la mano fuerte.
+};
+
+Rasgos rasgosDe(DificultadBots d) {
+  switch (d) {
+    case DificultadBots::FACIL:
+      return {150, false, 0.55, -0.07, 0.07, 0.02, 0.66, 0.80, 0.30,
+              0.60, 0.45, 1.5, 0.15, 0.90, false, false, false};
+    case DificultadBots::NORMAL:
+      return {350, true, 0.0, 0.02, 0.035, 0.09, 0.62, 0.74, 0.60,
+              0.90, 0.20, 1.1, 0.26, 0.75, false, false, true};
+    default:  // EXPERTO
+      return {600, true, 0.0, 0.01, 0.02, 0.17, 0.58, 0.70, 0.55,
+              1.00, 0.06, 1.0, 0.32, 0.65, true, true, true};
+  }
+}
+
+double factorPersonalidad(Comportamiento n) {
+  return n == Comportamiento::AGRESIVO ? 1.25 : (n == Comportamiento::SEGURO ? 0.80 : 1.0);
+}
+
+}  // namespace
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Rango del rival y equity
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+struct Evaluacion {
+  double equity = 0.5;       ///< Probabilidad de ganar (empates a la mitad) contra el rango.
+  double fuerzaAhora = 0.5;  ///< Con la mesa actual, fracción de manos del rival que vencemos.
+};
+
+/// Equity de @p mias contra @p rivales rivales con rango sesgado hacia manos
+/// fuertes por q^gamma (q = percentil de fuerza SOBRE LA MESA ACTUAL).
+Evaluacion evaluarContraRango(const std::array<int, 2>& mias, const std::vector<int>& mesa,
+                              int rivales, double gamma, int simulaciones) {
+  Evaluacion ev;
+  const int nMesa = static_cast<int>(mesa.size());
+  std::uint64_t usadas = 0;
+  usadas |= 1ULL << mias[0];
+  usadas |= 1ULL << mias[1];
+  for (int c : mesa) usadas |= 1ULL << c;
+
+  std::vector<int> libres;
+  libres.reserve(52);
+  for (int c = 0; c < 52; ++c) {
+    if (!(usadas & (1ULL << c))) libres.push_back(c);
+  }
+  const int nl = static_cast<int>(libres.size());
+
+  // Puntuación de cada mano posible del rival sobre la mesa actual.
+  struct Combo { int a, b; long long puntos; double peso; };
+  std::vector<Combo> combos;
+  combos.reserve(static_cast<std::size_t>(nl * (nl - 1) / 2));
+  int buf[7];
+  for (int i = 0; i < nMesa; ++i) buf[i] = mesa[i];
+  for (int i = 0; i < nl; ++i) {
+    for (int j = i + 1; j < nl; ++j) {
+      buf[nMesa] = libres[i];
+      buf[nMesa + 1] = libres[j];
+      combos.push_back({libres[i], libres[j], DecisionEngine::puntuarRapido(buf, nMesa + 2), 1.0});
+    }
+  }
+  if (combos.empty()) return ev;
+
+  buf[nMesa] = mias[0];
+  buf[nMesa + 1] = mias[1];
+  const long long mio = DecisionEngine::puntuarRapido(buf, nMesa + 2);
+
+  // Percentil de cada mano (0..1) por orden de fuerza; los empates comparten.
+  std::sort(combos.begin(), combos.end(),
+            [](const Combo& x, const Combo& y) { return x.puntos < y.puntos; });
+  const double total = static_cast<double>(combos.size());
+  double batidos = 0.0;
+  for (std::size_t i = 0; i < combos.size();) {
+    std::size_t j = i;
+    while (j < combos.size() && combos[j].puntos == combos[i].puntos) ++j;
+    double q = ((static_cast<double>(i) + static_cast<double>(j)) * 0.5) / total;  // percentil medio
+    double peso = gamma <= 1e-9 ? 1.0 : std::pow(std::max(q, 1e-3), gamma);
+    for (std::size_t k = i; k < j; ++k) combos[k].peso = peso;
+    if (combos[i].puntos < mio) batidos += static_cast<double>(j - i);
+    else if (combos[i].puntos == mio) batidos += 0.5 * static_cast<double>(j - i);
+    i = j;
+  }
+  ev.fuerzaAhora = batidos / total;
+
+  std::vector<double> acumulado(combos.size());
+  double suma = 0.0;
+  for (std::size_t i = 0; i < combos.size(); ++i) {
+    suma += combos[i].peso;
+    acumulado[i] = suma;
+  }
+
+  // Río: no queda nada por salir, la equity es exacta contra el rango ponderado.
+  if (nMesa == 5) {
+    double gana = 0.0;
+    for (const Combo& c : combos) {
+      if (c.puntos < mio) gana += c.peso;
+      else if (c.puntos == mio) gana += 0.5 * c.peso;
+    }
+    double e = gana / suma;
+    ev.equity = rivales <= 1 ? e : std::pow(e, rivales);
+    return ev;
+  }
+
+  // Calle intermedia: Monte Carlo con rivales sacados del rango y el resto de
+  // la mesa al azar.
+  auto muestrear = [&](std::uint64_t ocupadas, int& a, int& b) {
+    for (int intento = 0; intento < 12; ++intento) {
+      double x = unif() * suma;
+      std::size_t idx = static_cast<std::size_t>(
+          std::lower_bound(acumulado.begin(), acumulado.end(), x) - acumulado.begin());
+      if (idx >= combos.size()) idx = combos.size() - 1;
+      const Combo& c = combos[idx];
+      if (!(ocupadas & (1ULL << c.a)) && !(ocupadas & (1ULL << c.b))) {
+        a = c.a;
+        b = c.b;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  double ganadas = 0.0;
+  int hechas = 0;
+  const int faltan = 5 - nMesa;
+  for (int s = 0; s < simulaciones; ++s) {
+    std::uint64_t ocupadas = usadas;
+    int manos[4][2];
+    int nr = 0;
+    for (int r = 0; r < rivales && r < 4; ++r) {
+      int a = 0, b = 0;
+      if (!muestrear(ocupadas, a, b)) break;
+      manos[nr][0] = a;
+      manos[nr][1] = b;
+      ++nr;
+      ocupadas |= (1ULL << a) | (1ULL << b);
+    }
+    if (nr == 0) continue;
+
+    int siete[7];
+    for (int i = 0; i < nMesa; ++i) siete[i] = mesa[i];
+    for (int i = 0; i < faltan; ++i) {
+      int c;
+      do { c = static_cast<int>(generador()() % 52); } while (ocupadas & (1ULL << c));
+      ocupadas |= 1ULL << c;
+      siete[nMesa + i] = c;
+    }
+
+    siete[5] = mias[0];
+    siete[6] = mias[1];
+    long long m = DecisionEngine::puntuarRapido(siete, 7);
+    double resultado = 1.0;
+    for (int r = 0; r < nr; ++r) {
+      siete[5] = manos[r][0];
+      siete[6] = manos[r][1];
+      long long o = DecisionEngine::puntuarRapido(siete, 7);
+      if (o > m) { resultado = 0.0; break; }
+      if (o == m) resultado = 0.5;
+    }
+    ganadas += resultado;
+    ++hechas;
+  }
+  ev.equity = hechas > 0 ? ganadas / hechas : 0.5;
+  return ev;
+}
+
+}  // namespace
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Construcción de acciones (siempre dentro de los límites de la partida)
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+Accion accion(TipoAccion t, int cantidad = 0) { return {t, cantidad, true, ""}; }
+
+/// Igualar (o pasar si es gratis). Si igualar cuesta todo el saldo es all-in.
+Accion igualar(int aPagar, int saldo) {
+  if (aPagar <= 0) return accion(TipoAccion::CHECK);
+  if (aPagar >= saldo) return accion(TipoAccion::ALL_IN, saldo);
+  return accion(TipoAccion::CALL, aPagar);
+}
+
+/// Sube "hasta" @p objetivoTotal fichas puestas en esta ronda (o lo más cerca
+/// que permitan las reglas). Respeta No-Limit con o sin mínimo, Pot-Limit y
+/// Fixed-Limit a través de calcularLimitesRaise(). Si no cabe ninguna subida,
+/// iguala.
+Accion subirA(const GameState& st, int saldo, int aPagar, int objetivoTotal) {
+  auto [minExtra, maxExtra] = calcularLimitesRaise(st, aPagar, saldo);
+  if (maxExtra <= 0) return igualar(aPagar, saldo);
+  int extra = objetivoTotal - st.apuestaAIgualar;
+  extra = std::clamp(extra, minExtra, maxExtra);
+  // ¿Se queda sin fichas? Entonces es all-in, y solo es legal si el tope de la
+  // subida (Pot-Limit) permite llegar hasta ahí -- calcularLimitesRaise() ya lo
+  // ha acotado, así que aPagar + extra >= saldo solo ocurre si cabe.
+  if (aPagar + extra >= saldo) return accion(TipoAccion::ALL_IN, saldo);
+  return accion(TipoAccion::RAISE, aPagar + extra);
+}
+
+/// Sube una fracción del bote (bote tras igualar = boteTotal + aPagar).
+Accion subirFraccion(const GameState& st, int saldo, int aPagar, double fraccion,
+                     double minimoSensato = 0.25) {
+  double baseBote = static_cast<double>(st.boteTotal + aPagar);
+  int extraDeseado = static_cast<int>(std::lround(fraccion * baseBote));
+  // Una subida de 1 ficha no es una jugada: aunque las reglas la permitan, el
+  // bot no la hace (sí sabe responder a las de los demás).
+  int extraMinimo = std::max(1, static_cast<int>(std::lround(minimoSensato * baseBote)));
+  extraDeseado = std::max(extraDeseado, extraMinimo);
+  int objetivo = st.apuestaAIgualar + extraDeseado;
+  // Compromiso: si la apuesta se lleva más de ~60% del saldo, se va all-in.
+  if (aPagar + extraDeseado >= static_cast<int>(0.6 * saldo)) objetivo = st.apuestaAIgualar + saldo;
+  return subirA(st, saldo, aPagar, objetivo);
+}
+
+}  // namespace
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Preflop
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+Accion decidirPreflop(const GameState& st, double ph, int saldo, const ContextoBot& ctx,
+                      const Rasgos& rg) {
+  const int BB = std::max(1, st.ciegaGrande);
+  const int aPagar = std::max(0, st.apuestaAIgualar - st.miApuestaEnRonda);
+  const int N = std::max(2, st.numJugadoresActivos);
+  const double pers = factorPersonalidad(ctx.nivel);
+  const double stackBB = static_cast<double>(saldo + st.miApuestaEnRonda) / BB;
+
+  // Posición: 1 = actúo la última (botón), 0 = la primera. Cara a cara, quien
+  // abre preflop es el botón: la mejor posición postflop.
+  double pos = N <= 2 ? (aPagar > 0 && st.miApuestaEnRonda < BB ? 0.9 : 0.4)
+                      : 1.0 - static_cast<double>(st.jugadoresPendientes) / (N - 1);
+  pos = std::clamp(pos, 0.0, 1.0);
+
+  const bool sinSubida = st.raisesRivalesEstaMano == 0 && st.apuestaAIgualar <= BB;
+
+  // Con pocas ciegas el único movimiento es empujar o retirarse.
+  const bool pilaCorta = stackBB <= 10.0;
+
+  if (sinSubida) {
+    double base = N == 2 ? 0.82 : (N == 3 ? 0.46 : (N <= 5 ? 0.33 : 0.23));
+    double apertura = std::clamp(base * (0.75 + 0.5 * pos) * rg.aperturaMult * pers, 0.02, 0.97);
+    int limpers = std::max(0, static_cast<int>(std::lround(static_cast<double>(st.boteTotal) / BB - 1.5)));
+
+    if (aPagar == 0) {
+      // Ciega grande con opción: sube sobre los iguales solo con buena mano.
+      double frecuencia = std::clamp(apertura * 0.45, 0.03, 0.6);
+      if (superaUmbral(ph, 1.0 - frecuencia, rg.temp * 2.0)) {
+        double bb = 3.0 + limpers;
+        return subirA(st, saldo, aPagar, static_cast<int>(bb * BB));
+      }
+      return accion(TipoAccion::CHECK);
+    }
+
+    if (pilaCorta && ph >= 1.0 - apertura * 0.9) return accion(TipoAccion::ALL_IN, saldo);
+
+    if (superaUmbral(ph, 1.0 - apertura, rg.temp * 2.0)) {
+      double bb = 2.5 + limpers + (unif() < 0.35 ? 0.5 : 0.0);
+      if (!rg.ocultaValor) bb = 3.0 + limpers;  // FACIL: siempre igual
+      return subirA(st, saldo, aPagar, static_cast<int>(bb * BB));
+    }
+    // Iguala (limp) manos jugables; el resto se retira. Completar la ciega
+    // pequeña cara a cara es casi gratis, así que solo se tiran las peores.
+    double rangoLimp = rg.limp * (N == 2 ? 1.6 : 1.0);
+    double suelo = (N == 2 && aPagar <= BB) ? 0.12 : 1.0 - apertura - rangoLimp;
+    if (ph >= suelo) return igualar(aPagar, saldo);
+    return accion(TipoAccion::FOLD);
+  }
+
+  // ── Ante una subida ────────────────────────────────────────────────────
+  // Sin nada que igualar (ya puse lo que toca) no hay decisión que tomar.
+  if (aPagar == 0) return accion(TipoAccion::CHECK);
+  const double r = static_cast<double>(st.apuestaAIgualar) / BB;  // subida en ciegas
+  const double rho0 = N == 2 ? 0.66 : 0.36;                        // rango de quien sube
+  double rho = std::clamp(rho0 / std::pow(std::max(r, 1.2) / 2.5, 0.85), 0.04, 0.92);
+  if (st.raisesRivalesEstaMano >= 2) rho *= std::pow(0.6, st.raisesRivalesEstaMano - 1);
+  rho = std::max(rho, 0.03);
+
+  const double potPrevio = static_cast<double>(std::max(1, st.boteTotal - aPagar));
+  const double precio = static_cast<double>(aPagar) / (potPrevio + 2.0 * aPagar);  // equity mínima aprox.
+  double fraccionCall = rho * rg.kCall * std::clamp(0.33 / std::max(precio, 0.05), 0.55, 1.8);
+
+  // Defensa mínima: ante una subida barata no se abandona todo el rango.
+  if (aPagar <= 0.25 * saldo) {
+    double mdf = potPrevio / (potPrevio + aPagar);
+    fraccionCall = std::max(fraccionCall, mdf * rg.blandura * 0.75);
+  }
+  fraccionCall = std::clamp(fraccionCall, 0.03, 0.97);
+
+  // Perfil del que sube (EXPERTO): a un loco se le paga más ancho, a un roca
+  // menos.
+  if (rg.usaPerfiles && ctx.perfiles && !st.ultimoAgresorNombre.empty()) {
+    auto it = ctx.perfiles->find(st.ultimoAgresorNombre);
+    if (it != ctx.perfiles->end() && it->second.esConfiable()) {
+      const PerfilJugador& p = it->second;
+      if (p.agresividad() > 0.6f && p.VPIP() > 0.5f) fraccionCall = std::min(0.97, fraccionCall * 1.5);
+      else if (p.VPIP() < 0.25f) fraccionCall *= 0.75;
+    }
+  }
+
+  // Sube (re-sube) por valor con la parte alta de su rango de continuación.
+  double kSube = rg.k3bet * pers;
+  double umbralSube = 1.0 - std::clamp(rho * kSube, 0.02, 0.35);
+  bool puedeSubir = st.raisesRivalesEstaMano <= 2 && ctx.numRaisesMiosEnRonda < 1;
+  if (st.raisesRivalesEstaMano >= 2) umbralSube = std::max(umbralSube, 0.965);
+
+  if (pilaCorta) {
+    if (ph >= 1.0 - std::clamp(fraccionCall * 0.9, 0.05, 0.9)) return accion(TipoAccion::ALL_IN, saldo);
+    return accion(TipoAccion::FOLD);
+  }
+
+  if (puedeSubir && superaUmbral(ph, umbralSube, rg.temp * 2.0)) {
+    double mult = st.raisesRivalesEstaMano >= 2 ? 2.4 : (pos > 0.6 ? 3.0 : 3.5);
+    return subirA(st, saldo, aPagar, static_cast<int>(mult * st.apuestaAIgualar));
+  }
+
+  // Re-subida de farol con manos justo por debajo del rango de valor.
+  if (puedeSubir && st.raisesRivalesEstaMano == 1 && rg.faroles > 0.05 && r <= 4.5 &&
+      ph >= 1.0 - fraccionCall && ph < umbralSube) {
+    double prob = rg.faroles * 0.9 * pers;
+    if (unif() < prob) {
+      return subirA(st, saldo, aPagar, static_cast<int>((pos > 0.6 ? 3.0 : 3.5) * st.apuestaAIgualar));
+    }
+  }
+
+  if (superaUmbral(ph, 1.0 - fraccionCall, rg.temp * 2.0)) return igualar(aPagar, saldo);
+  return accion(TipoAccion::FOLD);
+}
+
+}  // namespace
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Postflop
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+/// Sesgo del rango del rival hacia manos fuertes: crece con el tamaño de su
+/// apuesta relativo al bote. 0 = manos al azar; ~2 = apuesta del tamaño del
+/// bote; >2.5 = sobreapuesta.
+double calcularGamma(const GameState& st, double fraccionApuesta, const ContextoBot& ctx,
+                     const Rasgos& rg) {
+  if (!rg.leeApuesta) return rg.gammaFijo;
+  double g;
+  if (fraccionApuesta <= 0.0) {
+    // Nadie ha apostado: su rango es más débil que el medio (pasó).
+    g = st.accionAnteriorFueCheck ? 0.2 : 0.35;
+  } else if (st.reglas.tipoLimite == TipoLimite::LIMITE_FIJO) {
+    // Fixed-Limit: todas las apuestas miden lo mismo, así que su tamaño no dice
+    // nada de la mano (el bote sí crece con cada calle, y una apuesta fija
+    // parece "grande" en el flop y "pequeña" en el río). Solo cuenta que apostó.
+    g = 0.9;
+    if (st.raisesRivalesEstaMano > 1) g += std::min(0.8, 0.3 * (st.raisesRivalesEstaMano - 1));
+  } else {
+    g = 0.4 + 1.6 * std::pow(std::min(fraccionApuesta, 1.0), 0.8);
+    if (fraccionApuesta > 1.0) g += 0.25 * (std::min(fraccionApuesta, 3.0) - 1.0);
+    // Varias subidas seguidas: aún más fuerte.
+    if (st.raisesRivalesEstaMano > 1) g += std::min(1.0, 0.35 * (st.raisesRivalesEstaMano - 1));
+  }
+  if (rg.usaPerfiles && ctx.perfiles && !st.ultimoAgresorNombre.empty() && fraccionApuesta > 0) {
+    auto it = ctx.perfiles->find(st.ultimoAgresorNombre);
+    if (it != ctx.perfiles->end() && it->second.esConfiable()) {
+      const PerfilJugador& p = it->second;
+      if (p.agresividad() > 0.6f && p.VPIP() > 0.5f) g *= 0.7;        // apuesta con casi todo
+      else if (p.VPIP() < 0.25f && p.agresividad() < 0.45f) g *= 1.2; // roca: cuando apuesta, va en serio
+      if (p.apuestasTotal >= 6 && fraccionApuesta <= 0.45 &&
+          static_cast<double>(p.apuestasPequenas) / p.apuestasTotal > 0.5) {
+        g *= 0.65;  // acostumbra a apostar poco con cualquier cosa
+      }
+    }
+  }
+  return std::clamp(g, 0.0, 3.2);
+}
+
+double fraccionApuestaValor(double equity, Rondas ronda, const Rasgos& rg) {
+  if (!rg.ocultaValor) return equity >= 0.8 ? 0.8 : 0.5;  // FACIL: se le nota
+  double f;
+  if (equity >= 0.86) f = 0.75;
+  else if (equity >= 0.72) f = 0.62;
+  else f = 0.45;
+  if (ronda == Rondas::RIVER && equity >= 0.8) f += 0.1;
+  f += (unif() - 0.5) * (rg.usaPerfiles ? 0.3 : 0.2);
+  if (rg.usaPerfiles && ronda == Rondas::RIVER && equity >= 0.9 && unif() < 0.10) f = 1.2;  // sobreapuesta
+  return std::clamp(f, 0.25, 1.3);
+}
+
+Accion decidirPostflop(const GameState& st, const std::array<int, 2>& mias,
+                       const std::vector<int>& mesa, int saldo, const ContextoBot& ctx,
+                       const Rasgos& rg) {
+  const int aPagar = std::max(0, st.apuestaAIgualar - st.miApuestaEnRonda);
+  const int N = std::max(2, st.numJugadoresActivos);
+  const int rivales = N - 1;
+  const double pers = factorPersonalidad(ctx.nivel);
+  const bool enPosicion = st.jugadoresPendientes == 0;
+  const bool rio = st.rondaActual == Rondas::RIVER;
+
+  const double potPrevio = static_cast<double>(std::max(1, st.boteTotal - aPagar));
+  const double b = static_cast<double>(aPagar) / potPrevio;  // apuesta rival / bote
+  const double gamma = calcularGamma(st, b, ctx, rg);
+
+  Evaluacion ev = evaluarContraRango(mias, mesa, rivales, gamma, rg.simulaciones);
+  const double E = ev.equity;
+
+  // Proyecto: la equity supera con mucho lo que ya vale la mano hoy.
+  const bool proyecto = !rio && E - ev.fuerzaAhora >= 0.08 && ev.fuerzaAhora < 0.75;
+
+  // Perfil del rival (EXPERTO): cuánto se retira ante presión.
+  double presion = 1.0;    // >1 = se retira mucho (farolear rinde)
+  double valorFino = 0.0;  // umbral de valor más bajo contra estaciones de pago
+  if (rg.usaPerfiles && ctx.perfiles && !st.ultimoAgresorNombre.empty()) {
+    auto it = ctx.perfiles->find(st.ultimoAgresorNombre);
+    if (it != ctx.perfiles->end() && it->second.esConfiable() && it->second.vecesRaised >= 4) {
+      float ftr = it->second.foldToRaise();
+      if (ftr > 0.6f) presion = 1.5;
+      else if (ftr < 0.3f) { presion = 0.3; valorFino = 0.03; }
+    }
+  }
+
+  // ── Nadie ha apostado: apostar o pasar ─────────────────────────────────
+  if (aPagar == 0) {
+    double umbral = rg.umbralValor - valorFino - (enPosicion ? 0.02 : 0.0) - (pers - 1.0) * 0.06;
+    if (rio) umbral += 0.05;
+    if (rivales >= 2) umbral += 0.04;
+
+    bool valor = superaUmbral(E, umbral, rg.temp);
+    // Retrasar la mano muy fuerte (solo EXPERTO, en el flop, a veces).
+    if (valor && rg.usaPerfiles && E >= 0.93 && st.rondaActual == Rondas::FLOP && rivales == 1 &&
+        unif() < 0.18) {
+      valor = false;
+    }
+    if (valor && unif() < (rg.ocultaValor ? 0.88 : 0.93)) {
+      return subirFraccion(st, saldo, 0, fraccionApuestaValor(E, st.rondaActual, rg));
+    }
+
+    // Apuesta de continuación: quien subió antes del flop sigue apostando.
+    double pApuesta = 0.0;
+    if (ctx.fuiAgresorPreflop && st.rondaActual == Rondas::FLOP && rivales == 1 &&
+        ctx.numRaisesMiosEnRonda == 0) {
+      pApuesta = rg.cbet * (E > 0.3 ? 1.0 : 0.6);
+    }
+    // Farol y semifarol.
+    double pFarol = rg.faroles * pers;
+    if (proyecto) pFarol *= 2.2;
+    if (enPosicion || st.accionAnteriorFueCheck) pFarol *= 1.4;
+    if (rivales >= 2) pFarol *= 0.3;
+    if (rio) pFarol = ev.fuerzaAhora < 0.3 ? pFarol * 1.1 : 0.0;
+    if (E > 0.55) pFarol = 0.0;  // con mano de valor se apuesta por valor, no de farol
+    if (static_cast<double>(saldo) < 0.6 * st.boteTotal) pFarol *= 0.3;  // sin fichas no hay presión
+    pFarol *= presion;
+    pApuesta = std::max(pApuesta, pFarol);
+    if (unif() < std::clamp(pApuesta, 0.0, 0.9)) {
+      double f = 0.4;
+      if (rg.ocultaValor) {
+        if (rg.usaPerfiles) {
+          double u = unif();
+          f = u < 0.5 ? 0.5 : (u < 0.8 ? 0.66 : 0.85);
+        } else {
+          f = 0.55;
+        }
+      }
+      return subirFraccion(st, saldo, 0, f);
+    }
+    return accion(TipoAccion::CHECK);
+  }
+
+  // ── Hay una apuesta que igualar ────────────────────────────────────────
+  const double potFinal = static_cast<double>(st.boteTotal + aPagar);
+  double requerida = static_cast<double>(aPagar) / potFinal;  // equity mínima para igualar
+  // Odds implícitas: con proyecto y fichas detrás se paga algo más.
+  if (proyecto && !rio && static_cast<double>(saldo) > 3.0 * aPagar) requerida *= 0.88;
+  double margen = rg.margenCall - (pers - 1.0) * 0.05;
+  if (aPagar >= saldo) margen += 0.03;  // jugarse todo tiene su varianza
+
+  const bool puedeSubirMas = ctx.numRaisesMiosEnRonda < 2 && st.raisesRivalesEstaMano < 4;
+
+  // Subida por valor.
+  if (puedeSubirMas && aPagar < saldo) {
+    double umbral = rg.umbralSubida + 0.05 * std::max(0, st.raisesRivalesEstaMano - 1) - (pers - 1.0) * 0.05;
+    if (superaUmbral(E, umbral, rg.temp) && unif() < (rg.usaPerfiles ? 0.85 : 0.75)) {
+      return subirFraccion(st, saldo, aPagar, E >= 0.88 ? 0.85 : 0.65, 0.5);
+    }
+    // Subida de farol/semifarol: ante apuestas pequeñas (fáciles de mover) y
+    // con proyecto o aire; nunca con mano que ya paga.
+    if (rg.faroles > 0.05 && E < 0.5 && rivales == 1 &&
+        static_cast<double>(saldo) > 1.0 * (aPagar + st.boteTotal)) {
+      double p = rg.faroles * pers * (b <= 0.45 ? 1.6 : 0.5);
+      if (rg.subeSobrePequenas && b <= 0.45) p *= 1.5;
+      if (proyecto) p *= 1.6;
+      if (rio) p *= (ev.fuerzaAhora < 0.3 ? 0.6 : 0.0);
+      p *= presion;
+      if (unif() < std::clamp(p, 0.0, 0.5)) return subirFraccion(st, saldo, aPagar, 0.7, 0.5);
+    }
+  }
+
+  // Igualar o retirarse: la equity contra su rango frente al precio.
+  double x = E - requerida - margen;
+  // Contra apuestas pequeñas no se abandona todo el rango (defensa mínima).
+  if (x < 0 && aPagar < saldo && b <= 0.8 && st.raisesRivalesEstaMano < 3) {
+    double mdf = potPrevio / (potPrevio + aPagar);
+    double cerca = std::clamp(1.0 - (-x) / 0.25, 0.0, 1.0);
+    double pDefiende = std::clamp(mdf * rg.blandura * (0.3 + 0.7 * cerca) * 0.6, 0.0, 0.6);
+    if (unif() < pDefiende) return igualar(aPagar, saldo);
+  }
+  if (superaUmbral(x, 0.0, rg.temp)) return igualar(aPagar, saldo);
+  return accion(TipoAccion::FOLD);
+}
+
+}  // namespace
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Punto de entrada
+// ═════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+Accion pensarInterno(const GameState& state, const std::vector<Carta>& cartasPropias,
+                     const ContextoBot& ctx, const Rasgos& rg) {
+  const int saldo = state.miSaldo;
+  if (state.rondaActual == Rondas::PREFLOP || state.cartasComunitarias.size() < 3) {
+    double ph = DecisionEngine::percentilPreflop(cartasPropias[0], cartasPropias[1]);
+    return decidirPreflop(state, ph, saldo, ctx, rg);
+  }
+
+  const std::array<int, 2> mias = {DecisionEngine::codificar(cartasPropias[0]),
+                                   DecisionEngine::codificar(cartasPropias[1])};
+  std::vector<int> mesa;
+  mesa.reserve(5);
+  for (const Carta& c : state.cartasComunitarias) mesa.push_back(DecisionEngine::codificar(c));
+  return decidirPostflop(state, mias, mesa, saldo, ctx, rg);
+}
+
+}  // namespace
+
+Accion DecisionEngine::pensar(const GameState& state, const std::vector<Carta>& cartasPropias,
+                              const ContextoBot& ctx) {
+  const int saldo = state.miSaldo;
+  const int aPagar = std::max(0, state.apuestaAIgualar - state.miApuestaEnRonda);
+  if (cartasPropias.size() < 2 || saldo <= 0) return igualar(aPagar, saldo);
+
+  const Rasgos rg = rasgosDe(ctx.dificultad);
+  Accion a = pensarInterno(state, cartasPropias, ctx, rg);
+  // Red de seguridad: retirarse cuando pasar es gratis nunca es lo correcto.
+  if (a.tipo == TipoAccion::FOLD && aPagar == 0) return accion(TipoAccion::CHECK);
+  return a;
+}
+
+Accion DecisionEngine::pensarAccion(const GameState& state, Comportamiento nivel, int saldo,
                                     const std::vector<Carta>& cartasPropias,
                                     int numRaisesMiosEnRonda,
                                     const std::map<std::string, PerfilJugador>* perfiles) {
-  DificultadBots dificultad = state.reglas.dificultadBots;
-
-  int aPagar = std::max(0, state.apuestaAIgualar - state.miApuestaEnRonda);
-  double potOdds = (state.boteTotal + aPagar > 0)
-      ? static_cast<double>(aPagar) / (state.boteTotal + aPagar) : 0.0;
-
-  // ── 1. FUERZA ACTUAL ────────────────────────────────────────────────────────
-  // NORMAL/EXPERTO: range narrowing — los rivales activos no tienen manos
-  // aleatorias; como mínimo filtramos el 30% inferior (manos que no continuarían).
-  // El corte se estrecha automáticamente con cada raise dentro de estimarFuerzaConRango.
-  // FACIL: solo mira su propia categoría de mano (calcularFuerzaBruta, O(1)),
-  // sin modelar el rango del rival — el leak clásico de un jugador principiante.
-  double fuerzaActual = 0.0;
-  if (state.rondaActual != Rondas::PREFLOP) {
-    fuerzaActual = (dificultad == DificultadBots::FACIL)
-        ? calcularFuerzaBruta(cartasPropias, state.cartasComunitarias)
-        : estimarFuerzaConRango(state, cartasPropias);
-  }
-
-  // ── 2. EQUITY FUTURA (Monte Carlo multi-rival) ──────────────────────────────
-  double equityFutura = 0.0;
-  if (state.rondaActual != Rondas::RIVER && state.rondaActual != Rondas::SHOWDOWN) {
-    int numSim = (dificultad == DificultadBots::EXPERTO) ? 1000 :
-                 (dificultad == DificultadBots::NORMAL)  ? 700 : 250;
-    equityFutura = simularEquityMonteCarlo(state, cartasPropias, numSim);
-  }
-
-  // ── 3. EQUITY POR OUTS (Flop/Turn, NORMAL+) ────────────────────────────────
-  double equityPorOuts = 0.0;
-  if (dificultad != DificultadBots::FACIL &&
-      (state.rondaActual == Rondas::FLOP || state.rondaActual == Rondas::TURN)) {
-    int outs = contarOuts(state, cartasPropias);
-    equityPorOuts = calcularEquityPorOuts(outs, state.rondaActual);
-  }
-  double equityEfectiva = std::max(equityFutura, equityPorOuts);
-
-  // ── 4. TEXTURA DE MESA Y CONTRIBUCIÓN PERSONAL (NORMAL+) ───────────────────
-  // FACIL ignora el peligro del tablón: no descuenta su mano aunque la mesa
-  // esté pareada o con proyecto de color/escalera a la vista.
-  double peligroMesa      = 0.0;
-  double contribucionPropia = 0.5; // neutral en preflop
-  if (dificultad != DificultadBots::FACIL && !state.cartasComunitarias.empty()) {
-    peligroMesa       = analizarPeligroMesa(state.cartasComunitarias);
-    contribucionPropia = calcularContribucionPropia(cartasPropias,
-                                                    state.cartasComunitarias);
-    // Penalizar fuerza si la ventaja es de la mesa (compartida con rivales)
-    // y la mesa es peligrosa. Si mis cartas son la clave → penalización mínima.
-    double penalizacion = peligroMesa * std::max(0.0, 0.5 - contribucionPropia);
-    fuerzaActual = std::max(0.0, fuerzaActual - penalizacion);
-  }
-
-  // ── 4b. PENALIZACIÓN POR ESCALADA DE APUESTAS (postflop, NORMAL+) ──────────
-  // Cuando los rivales siguen subiendo en cadena, es señal de manos muy fuertes.
-  // Se descuenta el decisionScore final para que el bot no se "pique" a contraatacar.
-  // FACIL no reacciona a esto: sigue pagando escaladas como si nada (leak explotable).
-  if (dificultad != DificultadBots::FACIL &&
-      state.rondaActual != Rondas::PREFLOP &&
-      state.raisesRivalesEstaMano >= 2) {
-    int exceso = state.raisesRivalesEstaMano - 1; // cuántos raises por encima del primero
-    double descuento = exceso * 0.06 + peligroMesa * exceso * 0.04;
-    fuerzaActual   = std::max(0.0, fuerzaActual - descuento);
-    equityEfectiva = std::max(0.0, equityEfectiva - descuento * 0.5);
-  }
-
-  // ── 5. DECISION SCORE ───────────────────────────────────────────────────────
-  double decisionScore = calcularDecisionScore(state.rondaActual, fuerzaActual,
-                                               equityEfectiva,
-                                               state.numJugadoresActivos);
-
-  // ── 6. AJUSTE POR POSICIÓN (NORMAL+) ───────────────────────────────────────
-  if (dificultad != DificultadBots::FACIL) {
-    if (state.jugadoresPendientes > 3)
-      decisionScore -= 0.08;
-    else if (state.jugadoresPendientes == 0)
-      decisionScore += 0.05;
-  }
-  decisionScore = std::clamp(decisionScore, 0.0, 1.0);
-
-  // ── 7. FAROL ────────────────────────────────────────────────────────────────
-  // FACIL no detecta proyectos (mejora=0): no hace semi-faroles con draws.
-  double mejora = (dificultad == DificultadBots::FACIL)
-      ? 0.0 : calcularProbabilidadMejorar(state, cartasPropias);
-  bool farol = decidirFarol(state.rondaActual, nivel, fuerzaActual, mejora,
-                            state.accionAnteriorFueCheck);
-
-  // ── 8. LÓGICA ESPECIAL DEL RIVER ────────────────────────────────────────────
-  if (state.rondaActual == Rondas::RIVER) {
-    if (fuerzaActual >= 0.20) farol = false;
-  }
-
-  // ── 9. UMBRALES ─────────────────────────────────────────────────────────────
-  double umbralFoldBase, umbralRaise;
-  switch (dificultad) {
-    case DificultadBots::FACIL:
-      umbralFoldBase = (nivel == Comportamiento::SEGURO) ? 0.40 :
-                       (nivel == Comportamiento::AGRESIVO ? 0.32 : 0.35);
-      umbralRaise    = (nivel == Comportamiento::SEGURO) ? 0.85 :
-                       (nivel == Comportamiento::AGRESIVO ? 0.68 : 0.76);
-      break;
-    case DificultadBots::NORMAL:
-      umbralFoldBase = (nivel == Comportamiento::SEGURO) ? 0.45 :
-                       (nivel == Comportamiento::AGRESIVO ? 0.38 : 0.40);
-      umbralRaise    = (nivel == Comportamiento::SEGURO) ? 0.80 :
-                       (nivel == Comportamiento::AGRESIVO ? 0.62 : 0.71);
-      break;
-    default: // EXPERTO
-      umbralFoldBase = (nivel == Comportamiento::SEGURO) ? 0.45 :
-                       (nivel == Comportamiento::AGRESIVO ? 0.35 : 0.40);
-      umbralRaise    = (nivel == Comportamiento::SEGURO) ? 0.78 :
-                       (nivel == Comportamiento::AGRESIVO ? 0.60 : 0.69);
-  }
-
-  double factorRiesgo = (nivel == Comportamiento::AGRESIVO) ? 0.80 :
-                        (nivel == Comportamiento::SEGURO    ? 1.20 : 1.0);
-  double umbralFold = std::max(umbralFoldBase, potOdds * factorRiesgo);
-
-  // PREFLOP: el umbral de fold escala con el nivel de agresión en la mesa.
-  if (state.rondaActual == Rondas::PREFLOP) {
-    double minFoldPreflop = (dificultad == DificultadBots::FACIL) ? 0.10 : 0.18;
-    // Sin raise: limpar solo cuesta 1BB; umbral mínimo (solo foldar basura)
-    // Con raise: ajustar por pot-odds y presión de la mesa
-    double ajustePorSubida;
-    if (state.raisesRivalesEstaMano == 0) {
-      ajustePorSubida = minFoldPreflop;
-    } else {
-      ajustePorSubida = (potOdds > 0.30) ? potOdds * factorRiesgo : minFoldPreflop;
-    }
-    double ajustePorRaises = state.raisesRivalesEstaMano * 0.04;
-    umbralFold = std::max(minFoldPreflop, ajustePorSubida + ajustePorRaises);
-  }
-
-  if (farol && potOdds > 0.35) farol = false;
-
-  // ── 9b. AJUSTE POR PERFILES (solo EXPERTO) ──────────────────────────────────
-  if (dificultad == DificultadBots::EXPERTO && perfiles && !perfiles->empty()) {
-    float agrProm = 0.0f, ftrProm = 0.0f, vipProm = 0.0f;
-    int n = 0;
-    for (const auto& [nombre, perf] : *perfiles) {
-      if (perf.esConfiable()) {
-        agrProm += perf.agresividad();
-        ftrProm += perf.foldToRaise();
-        vipProm += perf.VPIP();
-        ++n;
-      }
-    }
-    if (n > 0) {
-      agrProm /= n; ftrProm /= n; vipProm /= n;
-      float agr = agrProm, ftr = ftrProm, vip = vipProm;
-
-      // Si sabemos quién fue el último en subir, su perfil individual pesa más
-      // que la media de la mesa: es la información más relevante para reaccionar
-      // a ESTA apuesta concreta, no a "cómo juega la mesa en general".
-      if (!state.ultimoAgresorNombre.empty()) {
-        auto itAgresor = perfiles->find(state.ultimoAgresorNombre);
-        if (itAgresor != perfiles->end() && itAgresor->second.esConfiable()) {
-          agr = 0.65f * itAgresor->second.agresividad() + 0.35f * agrProm;
-          ftr = 0.65f * itAgresor->second.foldToRaise() + 0.35f * ftrProm;
-          vip = 0.65f * itAgresor->second.VPIP()        + 0.35f * vipProm;
-        }
-      }
-
-      // Rock/Nit: tight-passive → sus apuestas son manos fuertes, bluffear más
-      if (vip < 0.25f && agr < 0.40f) {
-        umbralFold = std::min(umbralFold + 0.06, 1.0);
-        if (!farol && decisionScore > 0.20 && mejora > 0.10)
-          farol = true;
-      }
-      // Calling Station: llaman todo → nunca farolear, apostar valor fino
-      else if (vip > 0.60f && ftr < 0.35f) {
-        farol       = false;
-        umbralRaise = std::max(umbralRaise - 0.05, 0.40);
-      }
-      // LAG: loose-aggressive → su agresión no correlaciona con la fuerza de
-      // su mano, así que "respetar" sus subidas (como con un TAG) es un error:
-      // hay que pagar más ligero, no menos. Tampoco merece la pena farolear
-      // a alguien que ya apuesta y sube sin ningún criterio.
-      //
-      // Además, estimarFuerzaConRango() ya descontó fuerzaActual asumiendo que
-      // cada raise viene de una mano fuerte (state.raisesRivalesEstaMano). Esa
-      // asunción es la base de todo el rango estrechado, y es precisamente la
-      // que NO se cumple con un LAG: hay que revertir parte del descuento aquí,
-      // donde ya sabemos (por perfil) que el supuesto de partida era erróneo.
-      else if (vip > 0.50f && agr > 0.55f) {
-        umbralFold = std::max(umbralFold - 0.06, 0.0);
-        farol      = false;
-        decisionScore = std::clamp(decisionScore + 0.10, 0.0, 1.0);
-      }
-      // TAG: tight-aggressive → cuando apuestan van en serio
-      else if (vip < 0.35f && agr > 0.55f) {
-        umbralFold = std::min(umbralFold + 0.08, 1.0);
-      }
-    }
-  }
-
-  bool intentarRaise = (farol || decisionScore >= umbralRaise);
-
-  // Preflop: raise solo con manos fuertes; máximo 1 raise por bot por ronda.
-  if (state.rondaActual == Rondas::PREFLOP && intentarRaise) {
-    double minPreflop = (dificultad == DificultadBots::EXPERTO) ? 0.72 :
-                        (dificultad == DificultadBots::NORMAL)  ? 0.75 : 0.80;
-    // Cada raise previo en la ronda exige más mano para re-subir
-    minPreflop += state.raisesRivalesEstaMano * 0.05;
-    minPreflop  = std::min(minPreflop, 0.95);
-    // Solo se permite un raise propio preflop (evita guerras de re-raises)
-    if (decisionScore < minPreflop || numRaisesMiosEnRonda >= 1)
-      intentarRaise = false;
-  }
-
-  // ── 9c. 3-BET LIGERO DE FAROL PREFLOP (solo EXPERTO) ───────────────────────
-  // El resto de niveles nunca farolea preflop (decidirFarol lo bloquea sin
-  // excepción). EXPERTO se permite una excepción muy acotada: re-subir de farol
-  // a un rival perfilado como excesivamente nitty (se rinde a un raise más del
-  // 65% de las veces), y solo si la propia mano no es papel mojado del todo.
-  bool farolPreflopLigero = false;
-  if (dificultad == DificultadBots::EXPERTO && !intentarRaise &&
-      state.rondaActual == Rondas::PREFLOP &&
-      state.raisesRivalesEstaMano == 1 && numRaisesMiosEnRonda == 0 &&
-      decisionScore > 0.35 && perfiles && !state.ultimoAgresorNombre.empty()) {
-    auto itAgresor = perfiles->find(state.ultimoAgresorNombre);
-    if (itAgresor != perfiles->end() && itAgresor->second.esConfiable() &&
-        itAgresor->second.foldToRaise() > 0.65f) {
-      static thread_local std::mt19937 genBluffPreflop(std::random_device{}());
-      std::uniform_real_distribution<> probBluffPreflop(0.0, 1.0);
-      if (probBluffPreflop(genBluffPreflop) < 0.12) {
-        intentarRaise = true;
-        farolPreflopLigero = true;
-      }
-    }
-  }
-
-  // Máximo de raises propios por ronda (postflop: hasta 2)
-  if (intentarRaise && state.rondaActual != Rondas::PREFLOP
-      && numRaisesMiosEnRonda >= 2)
-    intentarRaise = false;
-
-  // Margen del 7%: no llamar en el límite exacto de pot-odds sino con ventaja real.
-  bool callMatematico = (aPagar > 0 && decisionScore >= potOdds + 0.07);
-
-  // ── 10. RESOLUCIÓN ──────────────────────────────────────────────────────────
-  if (intentarRaise) {
-    // EXPERTO: al farolear, el tamaño de la apuesta debe representar una mano
-    // fuerte de verdad. Si el sizing se derivara directamente del decisionScore
-    // real (bajo, por definición, cuando se farolea) el farol se apostaría más
-    // pequeño que un value bet — un patrón explotable por un rival observador.
-    double fuerzaParaSizing = decisionScore;
-    if (dificultad == DificultadBots::EXPERTO && (farol || farolPreflopLigero)) {
-      fuerzaParaSizing = std::max(decisionScore, 0.82);
-    }
-    int cantidad = calcularMontoRaise(state, nivel, saldo, fuerzaParaSizing);
-
-    // Respetar límites de la partida
-    if (state.reglas.tipoLimite == TipoLimite::LIMITE_BOTE) {
-      int potMax = state.boteTotal + 2 * aPagar;
-      if (potMax > 0 && cantidad > potMax) cantidad = potMax;
-    } else if (state.reglas.tipoLimite == TipoLimite::LIMITE_FIJO &&
-               state.reglas.monteFijo > 0) {
-      cantidad = state.reglas.monteFijo;
-    }
-
-    if (state.reglas.aplicarMinRaise) {
-      int minRaise = state.apuestaAIgualar > 0 ? state.apuestaAIgualar
-                                               : state.ciegaGrande;
-      if (cantidad < minRaise && cantidad < saldo) {
-        if (aPagar == 0)   return {TipoAccion::CHECK,  0,      true, ""};
-        if (aPagar >= saldo) return {TipoAccion::ALL_IN, saldo, true, ""};
-        return {TipoAccion::CALL, aPagar, true, ""};
-      }
-    }
-
-    cantidad = std::min(cantidad, saldo);
-    if (cantidad >= saldo) {
-      // All-in solo con mano suficientemente fuerte según la calle
-      double umbralAllin = (state.rondaActual == Rondas::PREFLOP) ? 0.88 :
-                           (state.rondaActual == Rondas::RIVER)   ? 0.88 : 0.75;
-      if (decisionScore >= umbralAllin)
-        return {TipoAccion::ALL_IN, saldo, true, ""};
-      // Mano no llega al umbral: apostar fracción del bote sin ir all-in
-      int minRaiseCalc = std::max(state.ciegaGrande,
-          state.apuestaAIgualar > 0 ? state.apuestaAIgualar : state.ciegaGrande);
-      minRaiseCalc = std::min(minRaiseCalc, saldo);
-      // Si minRaiseCalc == saldo (stack corto), el hi de este clamp no puede
-      // caer por debajo del lo o std::clamp() aborta el proceso. En ese caso
-      // betAlt == saldo fuerza el fallback a CALL/CHECK justo debajo.
-      int betAlt = std::clamp(
-          static_cast<int>((state.boteTotal + aPagar) * 0.55),
-          minRaiseCalc, std::max(minRaiseCalc, saldo - 1));
-      if (betAlt >= saldo || betAlt < minRaiseCalc) {
-        if (aPagar == 0) return {TipoAccion::CHECK, 0, true, ""};
-        return {TipoAccion::CALL, std::min(aPagar, saldo), true, ""};
-      }
-      return {TipoAccion::RAISE, betAlt, true, ""};
-    }
-    return {TipoAccion::RAISE, cantidad, true, ""};
-  }
-
-  if (decisionScore >= umbralFold || farol || aPagar == 0 || callMatematico) {
-    if (aPagar == 0) return {TipoAccion::CHECK, 0, true, ""};
-    if (aPagar >= saldo) {
-      // All-in requiere mano muy sólida; con muchas subidas previas, más aún
-      double umbralAllIn = 0.80;
-      if (state.raisesRivalesEstaMano >= 2) umbralAllIn += 0.05;
-      if (state.raisesRivalesEstaMano >= 3) umbralAllIn += 0.05;
-      umbralAllIn = std::min(umbralAllIn, 0.93); // techo: nunca imposible
-      if (decisionScore > umbralAllIn) return {TipoAccion::ALL_IN, saldo, true, ""};
-      return {TipoAccion::FOLD, 0, true, ""};
-    }
-    return {TipoAccion::CALL, aPagar, true, ""};
-  }
-
-  // ── 11. DEFENSA MÍNIMA ──────────────────────────────────────────────────────
-  // Hasta aquí el bot se retiraba cada vez que su puntuación quedaba por
-  // debajo de un umbral que apenas dependía del precio: apostándole el mínimo
-  // (media apuesta, o menos) en cada calle se retiraba ~45% de las veces por
-  // calle -- unas 8 de cada 10 manos a lo largo de las tres calles. Contra una
-  // apuesta de tamaño b sobre un bote p, quien nunca defiende más de p/(p+b)
-  // de su rango es explotable por cualquiera que apueste sin mano (reporte del
-  // reto 3 de Torneos Solitario, 2026-09-19). Aquí, en vez de retirarse sin
-  // más, paga con esa probabilidad, más alta cuanto más cerca estaba del
-  // umbral (un proyecto o una pareja floja, no una carta alta sin nada).
-  //
-  // Solo postflop y solo ante apuestas pequeñas o medianas: ante una apuesta
-  // grande retirarse con una mano floja sigue siendo lo correcto, y con
-  // varias subidas encima el rival tiene mano de verdad.
-  if (state.rondaActual != Rondas::PREFLOP && aPagar > 0 && aPagar < saldo &&
-      aPagar <= std::max(state.ciegaGrande * 4, saldo / 8) &&
-      state.raisesRivalesEstaMano < 3) {
-    double botePrevio = std::max(1, state.boteTotal - aPagar);
-    double mdf = botePrevio / (botePrevio + aPagar);
-    double firmeza = (dificultad == DificultadBots::FACIL)  ? 0.90 :
-                     (dificultad == DificultadBots::NORMAL) ? 0.80 : 0.72;
-    if (nivel == Comportamiento::SEGURO)        firmeza *= 0.85;
-    else if (nivel == Comportamiento::AGRESIVO) firmeza *= 1.10;
-    if (state.raisesRivalesEstaMano >= 2) firmeza *= 0.6;
-    double cercania = std::clamp(1.0 - (umbralFold - decisionScore) / 0.30, 0.0, 1.0);
-    double probDefiende = std::clamp(mdf * firmeza * (0.35 + 0.65 * cercania), 0.0, 0.85);
-    static thread_local std::mt19937 genDefensa(std::random_device{}());
-    std::uniform_real_distribution<> tirada(0.0, 1.0);
-    if (tirada(genDefensa) < probDefiende) return {TipoAccion::CALL, aPagar, true, ""};
-  }
-
-  return {TipoAccion::FOLD, 0, true, ""};
+  GameState st = state;
+  if (saldo > 0) st.miSaldo = saldo;
+  ContextoBot ctx;
+  ctx.dificultad = state.reglas.dificultadBots;
+  ctx.nivel = nivel;
+  ctx.numRaisesMiosEnRonda = numRaisesMiosEnRonda;
+  ctx.perfiles = perfiles;
+  return pensar(st, cartasPropias, ctx);
 }

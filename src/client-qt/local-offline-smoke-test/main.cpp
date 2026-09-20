@@ -64,7 +64,10 @@ int main(int argc, char* argv[]) {
             int aPagar = igualar - miApuesta;
             if (aPagar <= 0) cliente.enviarAccion("CHECK", 0);
             else if (aPagar < miSaldo) cliente.enviarAccion("CALL", 0);
-            else cliente.enviarAccion("ALL_IN", miSaldo);
+            // Nunca all-in: con los bots actuales (que apuestan más fuerte) el humano
+            // guionizado se quedaba sin fichas en 2 manos y el guardado ya no tenía
+            // humano al que reanudar (fallo intermitente del propio test, no del juego).
+            else cliente.enviarAccion("FOLD", 0);
         });
 
     // Fase A: tras 2 manos, guardar y salir. Fase B: seguir hasta el final.
@@ -78,6 +81,11 @@ int main(int argc, char* argv[]) {
         } else {
             cliente.votar();
         }
+    });
+
+    QObject::connect(&cliente, &LocalGameClient::errorSala, [&](QString mensaje) {
+        qCritical() << "[smoke] FALLA: errorSala:" << mensaje;
+        std::exit(1);
     });
 
     QObject::connect(&cliente, &LocalGameClient::avisoRecompra, [&](bool puede) {

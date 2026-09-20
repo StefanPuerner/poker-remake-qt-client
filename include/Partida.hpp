@@ -6,6 +6,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -86,6 +87,9 @@ class Partida {
 
   // ── Rastreo histórico para estadísticas ──────────────────────────────────
   std::map<std::string, std::string> eliminaciones_; ///< nombre → mano de eliminación.
+  /// Quienes han recomprado en esta partida: nunca pueden ser el ganador (ver
+  /// generarEstadisticas()).
+  std::set<std::string> recompraron_;
   HandResult  mejorManoPartida_;
   std::string jugadorMejorMano_;
   void        registrarEliminados();
@@ -123,6 +127,10 @@ class Partida {
   void setSalaPublica(bool publica) { salaPublica_ = publica; }
   void setSalaCodigo(const std::string& codigo) { salaCodigo_ = codigo; }
   void setManoActual(int mano) { manoActual_ = mano; }
+  /// Al reanudar un guardado: quienes ya habían recomprado (siguen sin poder ganar).
+  void setRecompraron(const std::vector<std::string>& nombres) {
+    recompraron_.insert(nombres.begin(), nombres.end());
+  }
   /// Necesario para la recompra en el constructor de red (jugadores ya
   /// construidos, sin buy-in explícito) — el constructor local lo fija solo.
   void setSaldoInicial(int saldo) { saldoInicial_ = saldo; }
