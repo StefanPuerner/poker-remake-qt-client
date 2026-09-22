@@ -509,6 +509,11 @@ class NetworkClient : public QObject {
           m["vecesPoker"] = net::jsonGetInt(payload, "veces_poker");
           m["vecesEscaleraColor"] = net::jsonGetInt(payload, "veces_escalera_color");
           m["vecesEscaleraReal"] = net::jsonGetInt(payload, "veces_escalera_real");
+          // Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22) -- para
+          // pintar el calendario y saber si el reto de hoy ya se reclamó sin una consulta aparte.
+          m["rachaUltimoDia"] = net::jsonGetInt(payload, "racha_ultimo_dia");
+          m["rachaDiaActual"] = net::jsonGetInt(payload, "racha_dia_actual");
+          m["retoDiarioUltimoDia"] = net::jsonGetInt(payload, "reto_diario_ultimo_dia");
           estadisticasCuenta_ = m;
           emit estadisticasCuentaCambiaron();
         });
@@ -637,6 +642,48 @@ class NetworkClient : public QObject {
         emit retoReclamado(codigoReto, net::jsonGetInt(payload, "treboles"));
       } else {
         emit retoReclamarError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  /// Retos > Diario (docs/plan-retos-diario-racha.md, 2026-09-22): reclama la victoria
+  /// de @p codigoReto ("reto_diario_..."), uno del pool fijo -- sin orden ni predecesor
+  /// (a diferencia de la escalera), con tope SEMANAL (3 reclamos, ver el servidor). El
+  /// cliente nunca manda cuántos Tréboles son (fijo, 10).
+  Q_INVOKABLE void reclamarRetoDiario(const QString& host, quint16 puerto, QString token,
+                                      QString codigoReto) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::RECLAMAR_RETO_DIARIO, {
+        {"token",  token.toStdString()},
+        {"codigo", codigoReto.toStdString()},
+    }), [this, codigoReto](const std::string& payload) {
+      if (payload.empty()) {
+        emit retoDiarioReclamarError(QStringLiteral("error_conexion_timeout"));
+        return;
+      }
+      if (net::jsonGetStr(payload, "evento") == "RETO_DIARIO_RECLAMADO") {
+        emit retoDiarioReclamado(codigoReto, net::jsonGetInt(payload, "treboles"));
+      } else {
+        emit retoDiarioReclamarError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+      }
+    });
+  }
+
+  /// Retos > Racha (docs/plan-retos-diario-racha.md): reclamo manual diario, sin jugar
+  /// nada -- calendario de 7 días, se rompe si falta un día. El servidor decide el día
+  /// alcanzado y los Tréboles (3, o 20 + título el día 7); el cliente no manda nada más
+  /// que el token.
+  Q_INVOKABLE void reclamarRachaSemanal(const QString& host, quint16 puerto, QString token) {
+    enviarPeticionEfimera(host, puerto, net::buildMsg(net::MsgType::RECLAMAR_RACHA_SEMANAL, {
+        {"token", token.toStdString()},
+    }), [this](const std::string& payload) {
+      if (payload.empty()) {
+        emit rachaReclamarError(QStringLiteral("error_conexion_timeout"));
+        return;
+      }
+      if (net::jsonGetStr(payload, "evento") == "RACHA_RECLAMADA") {
+        emit rachaReclamada(net::jsonGetInt(payload, "treboles"), net::jsonGetInt(payload, "dia"));
+      } else {
+        emit rachaReclamarError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
       }
     });
   }
@@ -1294,6 +1341,11 @@ class NetworkClient : public QObject {
   /// concedidos (los fija el servidor, nunca el cliente).
   void retoReclamado(QString codigoReto, int treboles);
   void retoReclamarError(QString mensaje);
+  /// Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22).
+  void retoDiarioReclamado(QString codigoReto, int treboles);
+  void retoDiarioReclamarError(QString mensaje);
+  void rachaReclamada(int treboles, int dia);
+  void rachaReclamarError(QString mensaje);
   /// Respuesta a adminConcederItem() -- herramienta de pruebas/admin
   /// (2026-09-01, ver memoria qt_progression_review_2026_09_01).
   void adminConcederOk(QString mensaje);

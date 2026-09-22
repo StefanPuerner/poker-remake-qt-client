@@ -1,4 +1,24 @@
-# PokerRemake v0.13.0 — versión EXPERIMENTAL
+# PokerRemake v0.13.1 — versión EXPERIMENTAL
+
+## Novedades de la 0.13.1
+- **"Torneos" pasa a llamarse "Retos"** (icono nuevo) y suma dos apartados junto a la
+  escalera de siempre:
+  - **Reto diario**: cada día toca uno distinto de un grupo variado (mesas rápidas,
+    cara a cara, mesas grandes...) — se destaca en la pantalla, se puede jugar sin
+    conexión y se reclama una vez reconectado. Solo se puede jugar/reclamar el de
+    ese día.
+  - **Racha semanal**: un calendario de 7 días de conexión, con recompensa creciente
+    y un título especial al completarlo.
+- **Ajustes de sonido, reorganizados**: la lista de volumen + qué grupo de sonido
+  suena o no ya no ocupa medio panel de Ajustes — ahora hay un botón que abre una
+  ventana aparte, igual que ya pasaba con los temas de color.
+- **Corregido: algunos controles de Ajustes (zoom de interfaz, interruptores) se
+  recortaban por el lado derecho** en ciertos tamaños de pantalla/ventana.
+- **Corregido: la tienda rechazaba comprar accesorios de marco a quien ya tenía el
+  marco de Hierro** si esa victoria fue contra bots (o un reto sin conexión) en vez
+  de una partida oficial — el mensaje además decía "gana tu primera partida", que
+  llevaba a confusión. Ahora basta con tener el marco, sea cual sea el camino por el
+  que se consiguió.
 
 > ## ⚠️ Versión experimental: estate atento a los errores
 > Esta versión cambia **mucho** de golpe: el showdown, las animaciones de la mesa, los

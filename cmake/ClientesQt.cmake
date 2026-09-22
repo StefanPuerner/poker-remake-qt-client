@@ -200,6 +200,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PopupAcabado.qml
             src/client-qt/qml/PopupTemas.qml
             src/client-qt/qml/PopupTapete.qml
+            src/client-qt/qml/PopupSonidos.qml
             src/client-qt/qml/CajaTitulo.qml
             src/client-qt/qml/PopupFuncionalidadesAdmin.qml
         RESOURCES
@@ -516,6 +517,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/PopupAcabado.qml
             src/client-qt/qml-mobile/PopupTemas.qml
             src/client-qt/qml-mobile/PopupTapete.qml
+            src/client-qt/qml-mobile/PopupSonidos.qml
         RESOURCES
             # Mismo motivo que PokerClientQt más arriba -- se quedó fuera
             # al principio, sin darse cuenta: sin esto, Tema.fuenteElegante

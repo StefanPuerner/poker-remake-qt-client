@@ -83,7 +83,13 @@ Rectangle {
                 id: medidor
                 visible: false
                 text: mensaje
-                font.pixelSize: 13 * Tema.escala
+                // Ver el comentario largo en main-mobile.cpp: la fuente de emoji NUNCA va
+                // en la fuente por defecto de la app (rompía los dígitos en toda la app),
+                // solo aquí -- este Text sí puede recibir un emoji de verdad tecleado por
+                // otro jugador. QML no expone font.families (no es una Q_PROPERTY de
+                // QFont), y no se puede combinar `font: x` con `font.pixelSize: y` en el
+                // mismo Item -- por eso el tamaño se pide ya puesto desde C++.
+                font: fuenteChat.construir(13 * Tema.escala)
             }
 
             Column {
@@ -110,8 +116,9 @@ Rectangle {
                         anchors.margins: 8 * Tema.escala
                         text: mensaje
                         color: Tema.colorTexto
-                        font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
+                        // Ver el comentario en main-mobile.cpp y en "medidor" arriba.
+                        font: fuenteChat.construir(13 * Tema.escala)
                     }
                 }
             }

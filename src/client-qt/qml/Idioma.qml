@@ -139,7 +139,7 @@ QtObject {
         // ── Riel de navegación (RielNavegacion.qml) ─────────────────────────
         "riel_salas": { es: "SALAS", en: "ROOMS", de: "RÄUME" },
         "riel_ranking": { es: "RANKING", en: "RANKING", de: "RANGLISTE" },
-        "riel_torneos": { es: "TORNEOS", en: "TOURNAMENTS", de: "TURNIERE" },
+        "riel_torneos": { es: "RETOS", en: "CHALLENGES", de: "HERAUSFORDERUNGEN" },
         "riel_social": { es: "SOCIAL", en: "SOCIAL", de: "SOZIAL" },
         "riel_tienda": { es: "TIENDA", en: "SHOP", de: "SHOP" },
         "riel_cuenta": { es: "CUENTA", en: "ACCOUNT", de: "KONTO" },
@@ -246,7 +246,7 @@ QtObject {
         "sufijo_tu": { es: " (tú)", en: " (you)", de: " (du)" },
 
         // ── Pantalla Torneos (placeholder + escalera Solitario) ─────────────
-        "titulo_torneos": { es: "Torneos", en: "Tournaments", de: "Turniere" },
+        "titulo_torneos": { es: "Retos", en: "Challenges", de: "Herausforderungen" },
         "torneos_proximamente_descripcion": {
             es: "Organiza partidas por eliminatorias para un grupo fijo de jugadores -- como crear una sala, pero con llave de torneo.",
             en: "Organize elimination games for a fixed group of players -- like creating a room, but with a tournament bracket.",
@@ -345,6 +345,93 @@ QtObject {
             en: "5 bots, expert difficulty -- the final rung of the ladder.",
             de: "5 Bots, Experten-Schwierigkeitsgrad -- die letzte Sprosse der Leiter."
         },
+
+        // ── Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22) ──────
+        "tab_retos_escalera": { es: "Escalera", en: "Ladder", de: "Leiter" },
+        "tab_retos_diario": { es: "Diario", en: "Daily", de: "Täglich" },
+        "tab_retos_racha": { es: "Racha", en: "Streak", de: "Serie" },
+        "reto_diario_subtitulo": {
+            es: "Cada día toca uno distinto del pool -- gánalo y reclama antes de que acabe el día.",
+            en: "A different one from the pool comes up each day -- win it and claim before the day ends.",
+            de: "Jeden Tag kommt eine andere Herausforderung aus dem Pool dran -- gewinne sie und hol dir die Belohnung, bevor der Tag endet."
+        },
+        "etiqueta_reto_de_hoy": { es: "De hoy", en: "Today's", de: "Heute" },
+        "reto_diario_mesa_rapida_nombre": { es: "Mesa rápida", en: "Quick table", de: "Schneller Tisch" },
+        "reto_diario_mesa_rapida_descripcion": {
+            es: "2 bots, dificultad fácil, 10 manos.",
+            en: "2 bots, easy difficulty, 10 hands.",
+            de: "2 Bots, leichter Schwierigkeitsgrad, 10 Hände."
+        },
+        "reto_diario_cara_a_cara_nombre": { es: "Cara a cara", en: "Face to face", de: "Von Angesicht zu Angesicht" },
+        "reto_diario_cara_a_cara_descripcion": {
+            es: "1 solo bot, dificultad normal, 10 manos.",
+            en: "Just 1 bot, normal difficulty, 10 hands.",
+            de: "Nur 1 Bot, normaler Schwierigkeitsgrad, 10 Hände."
+        },
+        "reto_diario_duelo_nombre": { es: "Duelo", en: "Duel", de: "Duell" },
+        "reto_diario_duelo_descripcion": {
+            es: "1 solo bot, dificultad experta -- mano a mano hasta que alguien se quede con todas las fichas.",
+            en: "Just 1 bot, expert difficulty -- heads-up until someone takes all the chips.",
+            de: "Nur 1 Bot, Experten-Schwierigkeitsgrad -- eins gegen eins, bis jemand alle Chips hat."
+        },
+        "reto_diario_mesa_llena_nombre": { es: "Mesa llena", en: "Full table", de: "Voller Tisch" },
+        "reto_diario_mesa_llena_descripcion": {
+            es: "5 bots, dificultad fácil, 12 manos.",
+            en: "5 bots, easy difficulty, 12 hands.",
+            de: "5 Bots, leichter Schwierigkeitsgrad, 12 Hände."
+        },
+        "reto_diario_gran_mesa_nombre": { es: "Mesa grande", en: "Big table", de: "Großer Tisch" },
+        "reto_diario_gran_mesa_descripcion": {
+            es: "5 bots, dificultad normal -- hasta que alguien se quede con todas las fichas.",
+            en: "5 bots, normal difficulty -- until someone takes all the chips.",
+            de: "5 Bots, normaler Schwierigkeitsgrad -- bis jemand alle Chips hat."
+        },
+        "reto_diario_contra_expertos_nombre": { es: "Contra expertos", en: "Against experts", de: "Gegen Experten" },
+        "reto_diario_contra_expertos_descripcion": {
+            es: "3 bots, dificultad experta, 12 manos.",
+            en: "3 bots, expert difficulty, 12 hands.",
+            de: "3 Bots, Experten-Schwierigkeitsgrad, 12 Hände."
+        },
+        "reto_diario_maraton_nombre": { es: "Maratón", en: "Marathon", de: "Marathon" },
+        "reto_diario_maraton_descripcion": {
+            es: "4 bots, dificultad normal, 15 manos.",
+            en: "4 bots, normal difficulty, 15 hands.",
+            de: "4 Bots, normaler Schwierigkeitsgrad, 15 Hände."
+        },
+        "racha_subtitulo": {
+            es: "Reclama cada día -- si fallas uno, vuelves al día 1.",
+            en: "Claim every day -- miss one and you're back to day 1.",
+            de: "Hol dir die Belohnung jeden Tag -- verpasst du einen, geht es bei Tag 1 wieder los."
+        },
+        "etiqueta_racha_dia": { es: "Día {0}", en: "Day {0}", de: "Tag {0}" },
+        "boton_reclamar_hoy": { es: "Reclamar hoy", en: "Claim today", de: "Heute abholen" },
+        "etiqueta_racha_ya_reclamada": {
+            es: "Ya reclamado hoy -- vuelve mañana.",
+            en: "Already claimed today -- come back tomorrow.",
+            de: "Heute schon abgeholt -- komm morgen wieder."
+        },
+        "error_reto_diario_no_es_el_de_hoy": {
+            es: "Ese reto no es el de hoy -- solo se puede jugar el destacado.",
+            en: "That challenge isn't today's -- only the featured one can be played.",
+            de: "Diese Herausforderung ist nicht die heutige -- nur die hervorgehobene ist spielbar."
+        },
+        "error_reto_diario_ya_reclamado_hoy": {
+            es: "Ya reclamaste el reto de hoy -- vuelve mañana.",
+            en: "You've already claimed today's challenge -- come back tomorrow.",
+            de: "Du hast die heutige Herausforderung schon abgeholt -- komm morgen wieder."
+        },
+        "error_racha_ya_reclamada_hoy": {
+            es: "Ya reclamaste la racha de hoy -- vuelve mañana.",
+            en: "You've already claimed today's streak -- come back tomorrow.",
+            de: "Du hast die heutige Serie schon abgeholt -- komm morgen wieder."
+        },
+        "logro_jugador_constante_nombre": { es: "Jugador constante", en: "Steady player", de: "Beständiger Spieler" },
+        "logro_jugador_constante_descripcion": {
+            es: "Completa el calendario de 7 días de Retos > Racha sin fallar ninguno.",
+            en: "Complete the 7-day Challenges > Streak calendar without missing a day.",
+            de: "Schließe den 7-Tage-Kalender von Herausforderungen > Serie ohne Lücke ab."
+        },
+        "objeto_titulo_jugador_constante_nombre": { es: "Jugador constante", en: "Steady player", de: "Beständiger Spieler" },
 
         // ── Pantalla Social ──────────────────────────────────────────────────
         "titulo_social": { es: "Social", en: "Social", de: "Sozial" },
@@ -818,6 +905,7 @@ QtObject {
         "ajustes_sonidos_titulo": { es: "SONIDOS", en: "SOUNDS", de: "TÖNE" },
         "ajustes_sonidos_activar": { es: "Activar sonidos", en: "Enable sounds", de: "Töne aktivieren" },
         "ajustes_sonidos_volumen": { es: "Volumen", en: "Volume", de: "Lautstärke" },
+        "boton_ajustes_sonido": { es: "Ajustes de sonido", en: "Sound settings", de: "Toneinstellungen" },
         "sonido_grupo_cartas": { es: "Cartas (repartir, comunitarias)", en: "Cards (dealing, community)", de: "Karten (Geben, Gemeinschaftskarten)" },
         "sonido_grupo_fichas": { es: "Fichas (apuestas, cobro)", en: "Chips (bets, payout)", de: "Chips (Einsätze, Auszahlung)" },
         "sonido_grupo_allin": { es: "All-in", en: "All-in", de: "All-in" },
@@ -1175,9 +1263,9 @@ QtObject {
             de: "Konto ohne Statistiken -- versuche es erneut."
         },
         "error_marco_no_desbloqueado": {
-            es: "Gana tu primera partida para desbloquear accesorios de marco.",
-            en: "Win your first game to unlock frame accessories.",
-            de: "Gewinne deine erste Partie, um Rahmen-Zubehör freizuschalten."
+            es: "Gana una partida (vale contra bots) para desbloquear accesorios de marco.",
+            en: "Win a game (against bots counts) to unlock frame accessories.",
+            de: "Gewinne eine Partie (auch gegen Bots), um Rahmen-Zubehör freizuschalten."
         },
         "error_nivel_insuficiente": {
             es: "Necesitas nivel {0} para este objeto.", en: "You need level {0} for this item.",

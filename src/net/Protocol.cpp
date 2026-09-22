@@ -138,6 +138,10 @@ const char* msgTypeStr(MsgType t) {
       return "RECLAMAR_RECOMPENSA_RETO";
     case MsgType::RECLAMAR_LOGRO:
       return "RECLAMAR_LOGRO";
+    case MsgType::RECLAMAR_RETO_DIARIO:
+      return "RECLAMAR_RETO_DIARIO";
+    case MsgType::RECLAMAR_RACHA_SEMANAL:
+      return "RECLAMAR_RACHA_SEMANAL";
     case MsgType::SOLICITUD_AMISTAD_ENTRANTE:
       return "SOLICITUD_AMISTAD_ENTRANTE";
     case MsgType::CONSULTAR_LOADOUT:
@@ -216,6 +220,8 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "EQUIPAR_OBJETO") return MsgType::EQUIPAR_OBJETO;
   if (s == "RECLAMAR_RECOMPENSA_RETO") return MsgType::RECLAMAR_RECOMPENSA_RETO;
   if (s == "RECLAMAR_LOGRO") return MsgType::RECLAMAR_LOGRO;
+  if (s == "RECLAMAR_RETO_DIARIO") return MsgType::RECLAMAR_RETO_DIARIO;
+  if (s == "RECLAMAR_RACHA_SEMANAL") return MsgType::RECLAMAR_RACHA_SEMANAL;
   if (s == "SOLICITUD_AMISTAD_ENTRANTE") return MsgType::SOLICITUD_AMISTAD_ENTRANTE;
   if (s == "CONSULTAR_LOADOUT") return MsgType::CONSULTAR_LOADOUT;
   if (s == "LOADOUT_ACTUAL") return MsgType::LOADOUT_ACTUAL;

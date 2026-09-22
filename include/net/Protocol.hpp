@@ -162,6 +162,9 @@ enum class MsgType {
     CONSULTAR_LOADOUT,           ///< "token" -- el marco equipado de la propia cuenta.
     LOADOUT_ACTUAL,              ///< Respuesta a CONSULTAR_LOADOUT -- campos JSON sueltos (textura/efecto/decoracion_lateral_1/decoracion_lateral_2/decoracion_superior/titulo).
     RECLAMAR_RECOMPENSA_RETO,   ///< "token","codigo" (reto_solitario_N, Torneos > Solitario) -- ack vía GAME_EVENT (RETO_RECLAMADO/RETO_RECLAMAR_ERROR).
+    // Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22).
+    RECLAMAR_RETO_DIARIO,       ///< "token","codigo" (reto_diario_..., sin orden, tope semanal de 3) -- ack vía GAME_EVENT (RETO_DIARIO_RECLAMADO/RETO_DIARIO_RECLAMAR_ERROR).
+    RECLAMAR_RACHA_SEMANAL,     ///< "token" (sin código: calendario de 7 días, un reclamo por día) -- ack vía GAME_EVENT (RACHA_RECLAMADA/RACHA_RECLAMAR_ERROR).
     RECLAMAR_LOGRO,             ///< "token","codigo" -- reclama un logro ya desbloqueado (XP, título...) -- ack vía GAME_EVENT (LOGRO_RECLAMADO/LOGRO_RECLAMAR_ERROR).
     SOLICITUD_AMISTAD_ENTRANTE, ///< Push por presencia: "from_account_id","from_username" -- alguien te ha enviado una solicitud de amistad.
 

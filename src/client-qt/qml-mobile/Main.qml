@@ -199,6 +199,48 @@ ApplicationWindow {
           numBots: 5, dificultadBots: 2, saldo: 500, numManos: 200,
           treboles: 70, xp: 400, rareza: "oro", decoracionNombre: Idioma.t("objeto_corona_real_nombre") },
     ]
+    // Retos > Diario (docs/plan-retos-diario-racha.md, 2026-09-22) -- ver el comentario
+    // largo gemelo en qml/Main.qml. Mismos campos que retosSolitario, iniciarReto() sirve
+    // tal cual para lanzarlos (SIN orden ni predecesor -- codigoPredecesor: "" en todos).
+    // SOLO se puede jugar/reclamar el que toca HOY -- ver retoDiarioDeHoyIndice().
+    // ⚠️ EL ORDEN IMPORTA: tiene que coincidir carácter a carácter con kRetosDiarios[]
+    // en AccountManager.cpp Y con qml/Main.qml (mismo índice = mismo reto en los 3).
+    readonly property var retosDiarios: [
+        { codigo: "reto_diario_mesa_rapida", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_mesa_rapida_nombre"),
+          descripcion: Idioma.t("reto_diario_mesa_rapida_descripcion"),
+          numBots: 2, dificultadBots: 0, saldo: 300, numManos: 10, treboles: 10 },
+        { codigo: "reto_diario_cara_a_cara", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_cara_a_cara_nombre"),
+          descripcion: Idioma.t("reto_diario_cara_a_cara_descripcion"),
+          numBots: 1, dificultadBots: 1, saldo: 400, numManos: 10, treboles: 10 },
+        { codigo: "reto_diario_duelo", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_duelo_nombre"),
+          descripcion: Idioma.t("reto_diario_duelo_descripcion"),
+          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 10 },
+        { codigo: "reto_diario_mesa_llena", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_mesa_llena_nombre"),
+          descripcion: Idioma.t("reto_diario_mesa_llena_descripcion"),
+          numBots: 5, dificultadBots: 0, saldo: 300, numManos: 12, treboles: 10 },
+        { codigo: "reto_diario_gran_mesa", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_gran_mesa_nombre"),
+          descripcion: Idioma.t("reto_diario_gran_mesa_descripcion"),
+          numBots: 5, dificultadBots: 1, saldo: 500, numManos: 200, treboles: 10 },
+        { codigo: "reto_diario_contra_expertos", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_contra_expertos_nombre"),
+          descripcion: Idioma.t("reto_diario_contra_expertos_descripcion"),
+          numBots: 3, dificultadBots: 2, saldo: 500, numManos: 12, treboles: 10 },
+        { codigo: "reto_diario_maraton", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_maraton_nombre"),
+          descripcion: Idioma.t("reto_diario_maraton_descripcion"),
+          numBots: 4, dificultadBots: 1, saldo: 500, numManos: 15, treboles: 10 },
+    ]
+    // "El de hoy" es el ÚNICO jugable/reclamable -- ver el comentario gemelo en
+    // qml/Main.qml, mismo cálculo determinista en los dos árboles.
+    function retoDiarioDeHoyIndice() {
+        var diaEpoca = Math.floor(Date.now() / 86400000);
+        return ((diaEpoca * 2654435761) % retosDiarios.length + retosDiarios.length) % retosDiarios.length;
+    }
     // Arranca @p reto (una entrada de retosSolitario) -- comparte lo mismo
     // pulse tanto el botón "Jugar" como el enlace "Jugar de nuevo".
     function iniciarReto(reto, continuar) {
@@ -231,6 +273,19 @@ ApplicationWindow {
             reto.dificultadBots, /*permitirRecompra=*/false,
             /*preguntarExtension=*/false);
     }
+    // Herramienta de desarrollo (--llamar iniciarDemoRetos): abre Retos > Diario sin
+    // conexión, para comprobar el aspecto de las pestañas nuevas
+    // (docs/plan-retos-diario-racha.md) sin servidor -- ver el gemelo en qml/Main.qml.
+    function iniciarDemoRetos() {
+        ventana.entrarSinConexion(false);
+        ventana.pantalla = "Torneos";
+        Qt.callLater(function() { columnaRetosMovil.pestanaRetos = 1; });
+    }
+    function iniciarDemoRacha() {
+        ventana.entrarSinConexion(false);
+        ventana.pantalla = "Torneos";
+        Qt.callLater(function() { columnaRetosMovil.pestanaRetos = 2; });
+    }
     // Herramientas de desarrollo (main-mobile.cpp: --demo-local, --demo-sin-voto): la partida local
     // se juega sola, para comprobar la mesa con eventos reales del motor sin servidor.
     property bool demoAuto: false
@@ -239,6 +294,15 @@ ApplicationWindow {
         ventana.entrarSinConexion(false);
         ventana.modoOfflineActivo = true;
         redcliente.iniciarPartidaLocal(ventana.nombreJugador, 3, 30, 20, 500, 0, false, 0, 0, false, false);
+    }
+    // Herramienta de desarrollo (--llamar iniciarDemoAjustesSonido): abre el cajón de
+    // Ajustes con el sonido activado y el popup nuevo, ver el comentario gemelo en
+    // qml/Main.qml (2026-09-22).
+    function iniciarDemoAjustesSonido() {
+        ventana.entrarSinConexion(false);
+        ventana.sonidoActivado = true;
+        ventana.ajustesAbiertos = true;
+        popupSonidos.abrir();
     }
     // Vigilante de la demo: cada 5 s escribe el estado (console.warn sí sale en release) para
     // detectar partidas que se quedan paradas.
@@ -780,7 +844,8 @@ ApplicationWindow {
             "Cazador de mesa llena": "reto_solitario_2",
             "Duelista": "reto_solitario_3",
             "Rápido y certero": "reto_solitario_4",
-            "Rey del Solitario": "reto_solitario_5"
+            "Rey del Solitario": "reto_solitario_5",
+            "Jugador constante": "jugador_constante"
         };
         return mapa[nombreEs] || "";
     }
@@ -1600,6 +1665,23 @@ ApplicationWindow {
         function onRetoReclamarError(mensaje) {
             // "mensaje" ya es una CLAVE -- ver el comentario gemelo en
             // qml/Main.qml.
+            ventana.mensajeTorneos = mensaje;
+        }
+        // ── Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22) ──
+        function onRetoDiarioReclamado(codigoReto, treboles) {
+            ventana.quitarRetoGanadoPendiente(codigoReto);
+            ventana.mensajeTorneos = Idioma.tf("reto_reclamado_treboles", [treboles]);
+            redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+        function onRetoDiarioReclamarError(mensaje) {
+            ventana.mensajeTorneos = mensaje;
+        }
+        function onRachaReclamada(treboles, dia) {
+            ventana.mensajeTorneos = Idioma.tf("reto_reclamado_treboles", [treboles]);
+            if (dia === 7) redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+            redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+        }
+        function onRachaReclamarError(mensaje) {
             ventana.mensajeTorneos = mensaje;
         }
         function onSesionInvalida(mensaje) {
@@ -3015,8 +3097,12 @@ ApplicationWindow {
                 // Refresca logros por si se reclamó algo desde otro
                 // dispositivo -- ya se pidió al iniciar sesión
                 // (pedirDatosDeCuenta()), esto solo lo pone al día.
+                // Estadísticas también -- Retos > Racha (docs/plan-retos-diario-racha.md)
+                // pinta el calendario de 7 días y el contador semanal del reto diario a
+                // partir de ahí, y necesitan llegar frescos al entrar en la pantalla.
                 if (ventana.tokenSesion !== "") {
                     redcliente.consultarLogros(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+                    redcliente.consultarEstadisticas(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
                 }
             }
             if (nombre === "Tienda") {
@@ -4053,11 +4139,22 @@ ApplicationWindow {
                 bottomPadding: 16 * Tema.escala
 
             Column {
+                id: columnaRetosMovil
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 16 * Tema.escala
                 width: 300 * Tema.escala
+                // 0 = Escalera / 1 = Diario / 2 = Racha -- ver docs/plan-retos-diario-racha.md.
+                property int pestanaRetos: 0
+
+                SelectorSegmentado {
+                    width: parent.width
+                    opciones: [Idioma.t("tab_retos_escalera"), Idioma.t("tab_retos_diario"), Idioma.t("tab_retos_racha")]
+                    seleccionado: columnaRetosMovil.pestanaRetos
+                    onElegido: (indice) => columnaRetosMovil.pestanaRetos = indice
+                }
 
                 Row {
+                    visible: columnaRetosMovil.pestanaRetos === 0
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 6 * Tema.escala
                     Text {
@@ -4090,6 +4187,7 @@ ApplicationWindow {
                     }
                 }
                 Text {
+                    visible: columnaRetosMovil.pestanaRetos === 0
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -4098,6 +4196,7 @@ ApplicationWindow {
                     text: Idioma.t("torneos_solitario_subtitulo")
                 }
                 Text {
+                    visible: columnaRetosMovil.pestanaRetos === 0
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -4107,15 +4206,40 @@ ApplicationWindow {
                     text: Idioma.t("torneos_solitario_aviso_experimental")
                 }
                 Text {
+                    visible: columnaRetosMovil.pestanaRetos === 1
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 12 * Tema.escala
+                    text: Idioma.t("reto_diario_subtitulo")
+                    font.family: Tema.fuenteElegante
+                }
+                Text {
+                    visible: columnaRetosMovil.pestanaRetos === 2
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: Tema.colorTextoTenue
+                    font.pixelSize: 12 * Tema.escala
+                    font.family: Tema.fuenteElegante
+                    text: Idioma.t("racha_subtitulo")
+                }
+                Text {
                     visible: ventana.mensajeTorneos !== ""
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     color: Tema.colorAccent
                     font.pixelSize: 12 * Tema.escala
+                    font.family: Tema.fuenteElegante
                     text: Idioma.t(ventana.mensajeTorneos)
                 }
 
+                Column {
+                    visible: columnaRetosMovil.pestanaRetos === 0
+                    width: parent.width
+                    spacing: 16 * Tema.escala
                 Repeater {
                     model: ventana.retosSolitario
                     // Rediseño 2026-09-16 -- ver el comentario largo en
@@ -4326,8 +4450,309 @@ ApplicationWindow {
                     }
                 }
                 }
+
+                // ── Retos > Diario (docs/plan-retos-diario-racha.md) ────────────
+                Column {
+                    visible: columnaRetosMovil.pestanaRetos === 1
+                    width: parent.width
+                    spacing: 12 * Tema.escala
+
+                    Repeater {
+                        model: ventana.retosDiarios
+                        delegate: Item {
+                            id: tarjetaRetoDiarioMovil
+                            required property var modelData
+                            required property int index
+                            readonly property bool esHoy: index === ventana.retoDiarioDeHoyIndice()
+                            readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
+                            readonly property bool guardado: ventana.retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
+                            readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
+
+                            width: parent.width
+                            height: fondoRetoDiarioMovil.height + 8 * Tema.escala
+
+                            // "Ficha de casino" -- ver el comentario gemelo en qml/Main.qml
+                            // (pedido explícito del usuario 2026-09-22).
+                            Rectangle {
+                                anchors.top: fondoRetoDiarioMovil.top
+                                anchors.topMargin: 3 * Tema.escala
+                                anchors.left: fondoRetoDiarioMovil.left
+                                anchors.right: fondoRetoDiarioMovil.right
+                                height: fondoRetoDiarioMovil.height
+                                radius: fondoRetoDiarioMovil.radius
+                                color: "black"
+                                opacity: 0.35
+                            }
+
+                            Rectangle {
+                                id: fondoRetoDiarioMovil
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: contenidoRetoDiarioMovil.height + 20 * Tema.escala
+                                radius: 10 * Tema.escala
+                                // Solo el de hoy es jugable/reclamable -- ver el comentario gemelo
+                                // en qml/Main.qml.
+                                opacity: tarjetaRetoDiarioMovil.esHoy ? 1.0 : 0.55
+                                border.width: tarjetaRetoDiarioMovil.esHoy ? 2 : 1
+                                border.color: tarjetaRetoDiarioMovil.esHoy ? Tema.colorAccent : Tema.colorBorde
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                                }
+                                layer.enabled: true
+                                layer.effect: ShaderEffect {
+                                    property variant source
+                                    property real amplitud: 30.0
+                                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                }
+
+                                // Hilo interior -- el "doble bisel" de ficha de casino.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 2 * Tema.escala
+                                    radius: parent.radius - 2 * Tema.escala
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                           tarjetaRetoDiarioMovil.esHoy ? 0.6 : 0.2)
+                                }
+
+                            Column {
+                                id: contenidoRetoDiarioMovil
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 10 * Tema.escala
+                                spacing: 6 * Tema.escala
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 6 * Tema.escala
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: tarjetaRetoDiarioMovil.modelData.nombre
+                                        color: Tema.colorAccent
+                                        font.bold: true
+                                        font.pixelSize: 13 * Tema.escala
+                                    }
+                                    Rectangle {
+                                        visible: tarjetaRetoDiarioMovil.esHoy
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        radius: height / 2
+                                        color: "transparent"
+                                        border.width: 1
+                                        border.color: Tema.colorAccent
+                                        width: etiquetaDeHoyMovil.implicitWidth + 12 * Tema.escala
+                                        height: etiquetaDeHoyMovil.implicitHeight + 4 * Tema.escala
+                                        Text {
+                                            id: etiquetaDeHoyMovil
+                                            anchors.centerIn: parent
+                                            text: Idioma.t("etiqueta_reto_de_hoy")
+                                            color: Tema.colorAccent
+                                            font.bold: true
+                                            font.pixelSize: 9 * Tema.escala
+                                            font.capitalization: Font.AllUppercase
+                                        }
+                                    }
+                                }
+                                Text {
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: tarjetaRetoDiarioMovil.modelData.descripcion
+                                    color: Tema.colorTexto
+                                    font.pixelSize: 11 * Tema.escala
+                                    font.family: Tema.fuenteElegante
+                                }
+                                Row {
+                                    spacing: 5 * Tema.escala
+                                    IconoTrebol {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 10 * Tema.escala
+                                        height: width
+                                        colorTrebol: Tema.colorTextoTenue
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: tarjetaRetoDiarioMovil.modelData.treboles
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 10 * Tema.escala
+                                        font.family: Tema.fuenteElegante
+                                    }
+                                }
+
+                                BotonRelleno {
+                                    visible: tarjetaRetoDiarioMovil.esHoy && tarjetaRetoDiarioMovil.ganadoPendiente
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    enabled: tarjetaRetoDiarioMovil.puedeReclamar
+                                    text: tarjetaRetoDiarioMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                    onClicked: redcliente.reclamarRetoDiario(
+                                        ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, tarjetaRetoDiarioMovil.modelData.codigo)
+                                }
+                                BotonRelleno {
+                                    visible: tarjetaRetoDiarioMovil.esHoy && !tarjetaRetoDiarioMovil.ganadoPendiente && tarjetaRetoDiarioMovil.guardado
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.t("boton_continuar_reto")
+                                    onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, true)
+                                }
+                                BotonRelleno {
+                                    visible: tarjetaRetoDiarioMovil.esHoy && !tarjetaRetoDiarioMovil.ganadoPendiente && !tarjetaRetoDiarioMovil.guardado
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: Idioma.t("boton_jugar")
+                                    onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, false)
+                                }
+                                Text {
+                                    visible: tarjetaRetoDiarioMovil.esHoy && (tarjetaRetoDiarioMovil.ganadoPendiente || tarjetaRetoDiarioMovil.guardado)
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: tarjetaRetoDiarioMovil.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
+                                    color: Tema.colorAccent
+                                    font.pixelSize: 11 * Tema.escala
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, false)
+                                    }
+                                }
+                            }
+                            }
+                        }
+                    }
+                }
+
+                // ── Retos > Racha (docs/plan-retos-diario-racha.md) ─────────────
+                Column {
+                    visible: columnaRetosMovil.pestanaRetos === 2
+                    width: parent.width
+                    spacing: 14 * Tema.escala
+
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 5 * Tema.escala
+                        readonly property int diaActual: redcliente.estadisticasCuenta.rachaDiaActual || 0
+                        Repeater {
+                            model: 7
+                            delegate: Item {
+                                id: casillaRachaMovil
+                                required property int index
+                                readonly property int numeroDia: index + 1
+                                readonly property bool alcanzado: numeroDia <= parent.diaActual
+                                readonly property bool esHoy: numeroDia === parent.diaActual
+                                width: 34 * Tema.escala
+                                height: fondoCasillaMovil.height + 5 * Tema.escala
+
+                                // "Ficha de casino" -- ver el comentario gemelo en qml/Main.qml
+                                // (pedido explícito del usuario 2026-09-22).
+                                Rectangle {
+                                    anchors.top: fondoCasillaMovil.top
+                                    anchors.topMargin: 2 * Tema.escala
+                                    anchors.left: fondoCasillaMovil.left
+                                    anchors.right: fondoCasillaMovil.right
+                                    height: fondoCasillaMovil.height
+                                    radius: fondoCasillaMovil.radius
+                                    color: "black"
+                                    opacity: 0.35
+                                }
+
+                                Rectangle {
+                                    id: fondoCasillaMovil
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    height: 44 * Tema.escala
+                                    radius: 7 * Tema.escala
+                                    opacity: casillaRachaMovil.alcanzado || casillaRachaMovil.esHoy ? 1.0 : 0.6
+                                    border.width: casillaRachaMovil.esHoy ? 2 : 1
+                                    border.color: casillaRachaMovil.esHoy ? Tema.colorAccent : Tema.colorBorde
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                                    }
+                                    layer.enabled: true
+                                    layer.effect: ShaderEffect {
+                                        property variant source
+                                        property real amplitud: 30.0
+                                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                    }
+
+                                    // Hilo interior -- el "doble bisel" de ficha de casino.
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: 2 * Tema.escala
+                                        radius: parent.radius - 2 * Tema.escala
+                                        color: "transparent"
+                                        border.width: 1
+                                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                               casillaRachaMovil.alcanzado ? 0.55 : (casillaRachaMovil.esHoy ? 0.35 : 0.15))
+                                    }
+
+                                    Column {
+                                        anchors.centerIn: parent
+                                        spacing: 2 * Tema.escala
+                                        Text {
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: casillaRachaMovil.numeroDia
+                                            color: casillaRachaMovil.alcanzado ? Tema.colorAccent : Tema.colorTextoTenue
+                                            font.bold: true
+                                            font.pixelSize: 12 * Tema.escala
+                                            font.family: Tema.fuenteElegante
+                                        }
+                                        Text {
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: casillaRachaMovil.numeroDia === 7 ? "+20" : "+3"
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 8 * Tema.escala
+                                            font.family: Tema.fuenteElegante
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // "Cinta" de estado -- ver el comentario gemelo en qml/Main.qml (pedido
+                    // explícito del usuario 2026-09-22).
+                    Rectangle {
+                        readonly property bool yaReclamadaHoy: (redcliente.estadisticasCuenta.rachaUltimoDia || 0)
+                                                                === Math.floor(Date.now() / 86400000)
+                        visible: yaReclamadaHoy
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(textoCintaRachaMovil.implicitWidth + 28 * Tema.escala, parent.width)
+                        height: textoCintaRachaMovil.implicitHeight + 14 * Tema.escala
+                        radius: height / 2
+                        border.width: 1
+                        border.color: Qt.darker(Tema.colorAccent, 1.3)
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorAccent, 1.35) }
+                            GradientStop { position: 0.5; color: Tema.colorAccent }
+                            GradientStop { position: 1.0; color: Qt.darker(Tema.colorAccent, 1.2) }
+                        }
+                        Text {
+                            id: textoCintaRachaMovil
+                            anchors.centerIn: parent
+                            width: parent.width - 20 * Tema.escala
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: Idioma.t("etiqueta_racha_ya_reclamada")
+                            color: Tema.colorPanel
+                            font.bold: true
+                            font.pixelSize: 11 * Tema.escala
+                            font.family: Tema.fuenteElegante
+                        }
+                    }
+                    BotonRelleno {
+                        readonly property bool yaReclamadaHoy: (redcliente.estadisticasCuenta.rachaUltimoDia || 0)
+                                                                === Math.floor(Date.now() / 86400000)
+                        visible: !yaReclamadaHoy
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        enabled: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
+                        text: (ventana.conectadoAlServidor && ventana.tokenSesion !== "") ? Idioma.t("boton_reclamar_hoy") : Idioma.t("boton_reclamar_necesita_conexion")
+                        onClicked: redcliente.reclamarRachaSemanal(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion)
+                    }
+                }
             }
         }
+    }
     }
 
 
@@ -6939,6 +7364,18 @@ ApplicationWindow {
         id: popupTemas
     }
 
+    PopupSonidos {
+        id: popupSonidos
+        volumen: ventana.volumenSonidos
+        sonidosSilenciados: ventana.sonidosSilenciados
+        diagListos: bancoSonidos.listos
+        diagErrores: bancoSonidos.errores
+        diagReproducidos: bancoSonidos.reproducidos
+        onVolumenCambiado: (valor) => ventana.volumenSonidos = valor
+        onGrupoAlternado: (grupo) => ventana.alternarGrupoSonido(grupo)
+        onProbarSonido: ventana.sonar("ganar", {})
+    }
+
     PopupAcabado {
         id: popupAcabado
         onAcabadoElegido: (slot, codigo, acabado) =>
@@ -8116,8 +8553,12 @@ ApplicationWindow {
                         seleccionado: Idioma.idiomasDisponibles.indexOf(Idioma.actual)
                         onElegido: (indice) => Idioma.actual = Idioma.idiomasDisponibles[indice]
                     }
-                    // ── Sonidos de la mesa: interruptor general (apagado por defecto), volumen y, por
-                    // grupo, qué escuchar y qué no. Los eventos suenan solo con el general encendido.
+                    // ── Sonidos de la mesa: interruptor general (apagado por defecto) + un botón
+                    // que abre PopupSonidos con el volumen, el diagnóstico y, por grupo, qué
+                    // escuchar y qué no -- antes esto se desplegaba entero aquí mismo y dejaba
+                    // el resto del panel muy apretado con el sonido activado (pedido explícito
+                    // del usuario, 2026-09-22) -- mismo criterio ya usado para los temas de
+                    // color (PopupTemas).
                     Text {
                         width: parent.width
                         text: Idioma.t("ajustes_sonidos_titulo")
@@ -8142,66 +8583,11 @@ ApplicationWindow {
                             onAlternado: ventana.sonidoActivado = !ventana.sonidoActivado
                         }
                     }
-                    Row {
+                    BotonRelleno {
                         visible: ventana.sonidoActivado
                         width: parent.width
-                        spacing: 10 * Tema.escala
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("ajustes_sonidos_volumen")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        Slider {
-                            width: parent.width - 100 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            from: 0
-                            to: 1
-                            value: ventana.volumenSonidos
-                            onMoved: ventana.volumenSonidos = value
-                        }
-                    }
-                    // Diagnóstico y prueba: cuántas mezclas cargaron, con error, y cuántas han sonado.
-                    Row {
-                        visible: ventana.sonidoActivado
-                        width: parent.width
-                        spacing: 10 * Tema.escala
-                        Text {
-                            width: parent.width - botonProbarSonidoMovil.width - parent.spacing
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.tf("ajustes_sonidos_diagnostico", [bancoSonidos.listos, bancoSonidos.errores, bancoSonidos.reproducidos])
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 11 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        BotonContorno {
-                            id: botonProbarSonidoMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("ajustes_sonidos_probar")
-                            onClicked: ventana.sonar("ganar", {})
-                        }
-                    }
-                    Repeater {
-                        model: ["cartas", "fichas", "allin", "resultado", "retirarse", "turno"]
-                        delegate: Row {
-                            id: filaGrupoSonidoMovil
-                            required property string modelData
-                            visible: ventana.sonidoActivado
-                            width: parent.width
-                            Text {
-                                width: parent.width - 46 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("sonido_grupo_" + filaGrupoSonidoMovil.modelData)
-                                color: Tema.colorTextoTenue
-                                font.pixelSize: 13 * Tema.escala
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                anchors.verticalCenter: parent.verticalCenter
-                                activo: !ventana.grupoSilenciado(filaGrupoSonidoMovil.modelData)
-                                onAlternado: ventana.alternarGrupoSonido(filaGrupoSonidoMovil.modelData)
-                            }
-                        }
+                        text: Idioma.t("boton_ajustes_sonido")
+                        onClicked: popupSonidos.abrir()
                     }
                     // ── Animaciones de la mesa: completas (todo), reducidas (solo fichas y avisos) o
                     // desactivadas. Con las desactivadas, el modo local tampoco espera entre fases.

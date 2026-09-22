@@ -370,6 +370,61 @@ ApplicationWindow {
             reto.dificultadBots, /*permitirRecompra=*/false,
             /*preguntarExtension=*/false);
     }
+    // Retos > Diario (docs/plan-retos-diario-racha.md, 2026-09-22) -- catálogo fijo,
+    // SIN orden ni predecesor (codigoPredecesor: "" en todos, así retoDisponible() los
+    // deja siempre jugables): SOLO se puede jugar/reclamar el que toca HOY (pedido
+    // explícito del usuario, corrige el diseño anterior de "cualquiera de los 5, tope
+    // de 3/semana") -- ver retoDiarioDeHoyIndice() más abajo. Mismos campos que
+    // retosSolitario -- iniciarReto() es genérico y sirve tal cual para lanzar estos
+    // también. Los Tréboles son SOLO decorativos (fijos, 10 todos): el servidor nunca
+    // se fía de este número (ver kRetosDiarios, AccountManager.cpp) y valida por su
+    // cuenta que el código reclamado sea el de hoy y no se haya reclamado ya -- esta
+    // pantalla se entera del rechazo por onRetoDiarioReclamarError() si algo no cuadra.
+    // ⚠️ EL ORDEN IMPORTA: tiene que coincidir carácter a carácter con kRetosDiarios[]
+    // en AccountManager.cpp (mismo índice = mismo reto para el servidor). Variedad a
+    // propósito: mezcla mesas cortas (10-15 manos, gana quien más fichas tenga al
+    // final) con dos "hasta que alguien se quede con todas las fichas" (200 manos,
+    // como la escalera) -- un duelo cara a cara y una mesa grande -- y dificultades
+    // distintas, no todo fácil.
+    readonly property var retosDiarios: [
+        { codigo: "reto_diario_mesa_rapida", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_mesa_rapida_nombre"),
+          descripcion: Idioma.t("reto_diario_mesa_rapida_descripcion"),
+          numBots: 2, dificultadBots: 0, saldo: 300, numManos: 10, treboles: 10 },
+        { codigo: "reto_diario_cara_a_cara", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_cara_a_cara_nombre"),
+          descripcion: Idioma.t("reto_diario_cara_a_cara_descripcion"),
+          numBots: 1, dificultadBots: 1, saldo: 400, numManos: 10, treboles: 10 },
+        { codigo: "reto_diario_duelo", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_duelo_nombre"),
+          descripcion: Idioma.t("reto_diario_duelo_descripcion"),
+          numBots: 1, dificultadBots: 2, saldo: 1000, numManos: 200, treboles: 10 },
+        { codigo: "reto_diario_mesa_llena", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_mesa_llena_nombre"),
+          descripcion: Idioma.t("reto_diario_mesa_llena_descripcion"),
+          numBots: 5, dificultadBots: 0, saldo: 300, numManos: 12, treboles: 10 },
+        { codigo: "reto_diario_gran_mesa", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_gran_mesa_nombre"),
+          descripcion: Idioma.t("reto_diario_gran_mesa_descripcion"),
+          numBots: 5, dificultadBots: 1, saldo: 500, numManos: 200, treboles: 10 },
+        { codigo: "reto_diario_contra_expertos", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_contra_expertos_nombre"),
+          descripcion: Idioma.t("reto_diario_contra_expertos_descripcion"),
+          numBots: 3, dificultadBots: 2, saldo: 500, numManos: 12, treboles: 10 },
+        { codigo: "reto_diario_maraton", codigoPredecesor: "",
+          nombre: Idioma.t("reto_diario_maraton_nombre"),
+          descripcion: Idioma.t("reto_diario_maraton_descripcion"),
+          numBots: 4, dificultadBots: 1, saldo: 500, numManos: 15, treboles: 10 },
+    ]
+    // El de hoy es el ÚNICO jugable/reclamable (ver el comentario de arriba) -- mismo
+    // día-época para todos los jugadores (determinista, sin ida y vuelta al
+    // servidor): días desde época * constante impar, módulo el tamaño del pool.
+    // Fórmula calcada en AccountManager.cpp (indiceRetoDiarioDeHoy) -- cambiar una sin
+    // la otra desincroniza qué reto acepta el servidor cada día.
+    function retoDiarioDeHoyIndice() {
+        var diaEpoca = Math.floor(Date.now() / 86400000);
+        return ((diaEpoca * 2654435761) % retosDiarios.length + retosDiarios.length) % retosDiarios.length;
+    }
     // Identidad con la que se entró sin conexión: true = cuenta cacheada de
     // la última sesión con servidor, false = invitado (sandbox puro, sin
     // nada persistido). Ver LocalGameClient::hayIdentidadCacheada().
@@ -455,10 +510,33 @@ ApplicationWindow {
                                   + " cabecera=" + (listaRanking.headerItem ? listaRanking.headerItem.height : -1)
                                   + " podio=" + ventana.rankingPodio.length + " filas=" + rankingModel.count)
     }
+    // Herramienta de desarrollo (--llamar iniciarDemoRetos): abre Retos > Diario/Racha
+    // sin conexión, para comprobar el aspecto de las pestañas nuevas
+    // (docs/plan-retos-diario-racha.md) sin servidor. Los botones de reclamar no hacen
+    // nada real offline (mismo motivo que la escalera: exige conexión).
+    function iniciarDemoRetos() {
+        ventana.entrarSinConexion(false);
+        ventana.pantalla = "Torneos";
+        Qt.callLater(function() { columnaRetos.pestanaRetos = 1; });
+    }
+    function iniciarDemoRacha() {
+        ventana.entrarSinConexion(false);
+        ventana.pantalla = "Torneos";
+        Qt.callLater(function() { columnaRetos.pestanaRetos = 2; });
+    }
     function iniciarDemoLocal() {
         ventana.entrarSinConexion(false);
         ventana.modoOfflineActivo = true;
         redcliente.iniciarPartidaLocal(nombreUsuario.text, 3, 30, 20, 500, 0, false, 0, 0, false, false);
+    }
+    // Herramienta de desarrollo (--llamar iniciarDemoAjustesSonido): abre el cajón de
+    // Ajustes con el sonido activado, para comprobar el botón nuevo "Ajustes de sonido"
+    // y el popup que abre (2026-09-22, antes era una lista fija que se desplegaba aquí).
+    function iniciarDemoAjustesSonido() {
+        ventana.entrarSinConexion(false);
+        ventana.sonidoActivado = true;
+        ventana.ajustesAbiertos = true;
+        popupSonidos.abrir();
     }
     // Vigilante de la demo: cada 5 s escribe el estado (console.warn sí sale en release) para detectar
     // partidas que se quedan paradas.
@@ -761,7 +839,8 @@ ApplicationWindow {
             "Cazador de mesa llena": "reto_solitario_2",
             "Duelista": "reto_solitario_3",
             "Rápido y certero": "reto_solitario_4",
-            "Rey del Solitario": "reto_solitario_5"
+            "Rey del Solitario": "reto_solitario_5",
+            "Jugador constante": "jugador_constante"
         };
         return mapa[nombreEs] || "";
     }
@@ -1819,8 +1898,12 @@ ApplicationWindow {
                     // Refresca logros por si se reclamó algo desde otro
                     // dispositivo -- ya se pidió al iniciar sesión
                     // (pedirDatosDeCuenta()), esto solo lo pone al día.
+                    // Estadísticas también -- Retos > Racha (docs/plan-retos-diario-racha.md)
+                    // pinta el calendario de 7 días y el contador semanal del reto diario a
+                    // partir de ahí, y necesitan llegar frescos al entrar en la pantalla.
                     if (tokenSesion !== "") {
                         redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+                        redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
                     }
                 }
                 if (nombre === "Tienda") {
@@ -3436,11 +3519,24 @@ ApplicationWindow {
                     bottomPadding: 20 * Tema.escala
 
                 Column {
+                    id: columnaRetos
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 20 * Tema.escala
                     width: 340 * Tema.escala
+                    // 0 = Escalera (lo que ya había) / 1 = Diario / 2 = Racha -- ver
+                    // docs/plan-retos-diario-racha.md. Transitorio (no persiste entre
+                    // sesiones), vuelve a Escalera cada vez que se reabre la pantalla.
+                    property int pestanaRetos: 0
+
+                    SelectorSegmentado {
+                        width: parent.width
+                        opciones: [Idioma.t("tab_retos_escalera"), Idioma.t("tab_retos_diario"), Idioma.t("tab_retos_racha")]
+                        seleccionado: columnaRetos.pestanaRetos
+                        onElegido: (indice) => columnaRetos.pestanaRetos = indice
+                    }
 
                     Row {
+                        visible: columnaRetos.pestanaRetos === 0
                         anchors.horizontalCenter: parent.horizontalCenter
                         spacing: 8 * Tema.escala
                         Text {
@@ -3476,6 +3572,7 @@ ApplicationWindow {
                         }
                     }
                     Text {
+                        visible: columnaRetos.pestanaRetos === 0
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
@@ -3484,6 +3581,7 @@ ApplicationWindow {
                         text: Idioma.t("torneos_solitario_subtitulo")
                     }
                     Text {
+                        visible: columnaRetos.pestanaRetos === 0
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
@@ -3492,6 +3590,29 @@ ApplicationWindow {
                         font.italic: true
                         text: Idioma.t("torneos_solitario_aviso_experimental")
                     }
+                    // Subtítulos ligeros de Diario/Racha -- el mismo hueco que ocupaba el
+                    // de la Escalera arriba, sin repetir la insignia "Experimental" (ya
+                    // se ve en el título común a las 3 pestañas).
+                    Text {
+                        visible: columnaRetos.pestanaRetos === 1
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                        text: Idioma.t("reto_diario_subtitulo")
+                    }
+                    Text {
+                        visible: columnaRetos.pestanaRetos === 2
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                        text: Idioma.t("racha_subtitulo")
+                    }
                     Text {
                         visible: mensajeTorneos !== ""
                         width: parent.width
@@ -3499,9 +3620,17 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         color: Tema.colorAccent
                         font.pixelSize: 12 * Tema.escala
+                        font.family: Tema.fuenteElegante
                         text: Idioma.t(mensajeTorneos)
                     }
 
+                    Column {
+                        // La escalera entera va en su propio Column visible/invisible --
+                        // Repeater.visible NO oculta de fiar sus delegates (no es garantía
+                        // en QML), un contenedor sí.
+                        visible: columnaRetos.pestanaRetos === 0
+                        width: parent.width
+                        spacing: 20 * Tema.escala
                     Repeater {
                         model: retosSolitario
                         // Rediseño 2026-09-16 (pedido explícito del usuario:
@@ -3744,9 +3873,329 @@ ApplicationWindow {
                             }
                         }
                     }
-                }
+                    }
+
+                    // ── Retos > Diario (docs/plan-retos-diario-racha.md) ────────────
+                    Column {
+                        visible: columnaRetos.pestanaRetos === 1
+                        width: parent.width
+                        spacing: 14 * Tema.escala
+
+                        Repeater {
+                            model: retosDiarios
+                            delegate: Item {
+                                id: tarjetaRetoDiario
+                                required property var modelData
+                                required property int index
+                                readonly property bool esHoy: index === retoDiarioDeHoyIndice()
+                                readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
+                                readonly property bool guardado: retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
+                                readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
+
+                                width: parent.width
+                                height: fondoRetoDiario.height + 9 * Tema.escala
+
+                                // "Ficha de casino" -- mismo recipe que Tienda/escalera (ver
+                                // celdaTienda/tarjetaReto): sombra desplazada, degradado +
+                                // dithering, doble bisel. Pedido explícito del usuario
+                                // (2026-09-22: "hazlo similar a las tarjetas de tienda o
+                                // amigos") -- antes era un Rectangle plano.
+                                Rectangle {
+                                    anchors.top: fondoRetoDiario.top
+                                    anchors.topMargin: 3 * Tema.escala
+                                    anchors.left: fondoRetoDiario.left
+                                    anchors.right: fondoRetoDiario.right
+                                    height: fondoRetoDiario.height
+                                    radius: fondoRetoDiario.radius
+                                    color: "black"
+                                    opacity: 0.35
+                                }
+
+                                Rectangle {
+                                    id: fondoRetoDiario
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    height: contenidoRetoDiario.height + 24 * Tema.escala
+                                    radius: 10 * Tema.escala
+                                    // Solo el de hoy es jugable/reclamable (ver el comentario de
+                                    // retosDiarios más arriba) -- el resto del pool se ve atenuado,
+                                    // mismo criterio "bloqueado" que la escalera (opacity 0.55, sin
+                                    // Rectangle nuevo).
+                                    opacity: tarjetaRetoDiario.esHoy ? 1.0 : 0.55
+                                    border.width: tarjetaRetoDiario.esHoy ? 2 : 1
+                                    border.color: tarjetaRetoDiario.esHoy ? Tema.colorAccent : Tema.colorBorde
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                                    }
+                                    layer.enabled: true
+                                    layer.effect: ShaderEffect {
+                                        property variant source
+                                        property real amplitud: 30.0
+                                        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                                    }
+
+                                    // Hilo interior -- el "doble bisel" de ficha de casino.
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: 2 * Tema.escala
+                                        radius: parent.radius - 2 * Tema.escala
+                                        color: "transparent"
+                                        border.width: 1
+                                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                               tarjetaRetoDiario.esHoy ? 0.6 : 0.2)
+                                    }
+
+                                Column {
+                                    id: contenidoRetoDiario
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 12 * Tema.escala
+                                    spacing: 8 * Tema.escala
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 8 * Tema.escala
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: tarjetaRetoDiario.modelData.nombre
+                                            color: Tema.colorAccent
+                                            font.bold: true
+                                            font.pixelSize: 14 * Tema.escala
+                                        }
+                                        Rectangle {
+                                            visible: tarjetaRetoDiario.esHoy
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            radius: height / 2
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: Tema.colorAccent
+                                            width: etiquetaDeHoy.implicitWidth + 14 * Tema.escala
+                                            height: etiquetaDeHoy.implicitHeight + 4 * Tema.escala
+                                            Text {
+                                                id: etiquetaDeHoy
+                                                anchors.centerIn: parent
+                                                text: Idioma.t("etiqueta_reto_de_hoy")
+                                                color: Tema.colorAccent
+                                                font.bold: true
+                                                font.pixelSize: 10 * Tema.escala
+                                                font.capitalization: Font.AllUppercase
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: tarjetaRetoDiario.modelData.descripcion
+                                        color: Tema.colorTexto
+                                        font.pixelSize: 12 * Tema.escala
+                                        font.family: Tema.fuenteElegante
+                                    }
+                                    Row {
+                                        spacing: 6 * Tema.escala
+                                        IconoTrebol {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 11 * Tema.escala
+                                            height: width
+                                            colorTrebol: Tema.colorTextoTenue
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: tarjetaRetoDiario.modelData.treboles
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 11 * Tema.escala
+                                            font.family: Tema.fuenteElegante
+                                        }
+                                    }
+
+                                    // Las 4 acciones de abajo exigen esHoy -- el resto del pool
+                                    // se ve (variedad, flavor) pero no se puede jugar ni
+                                    // reclamar hasta que le toque su día (ver el comentario de
+                                    // retosDiarios).
+                                    BotonRelleno {
+                                        visible: tarjetaRetoDiario.esHoy && tarjetaRetoDiario.ganadoPendiente
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        enabled: tarjetaRetoDiario.puedeReclamar
+                                        text: tarjetaRetoDiario.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                        onClicked: redcliente.reclamarRetoDiario(
+                                            servidorHost, servidorPuerto, tokenSesion, tarjetaRetoDiario.modelData.codigo)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaRetoDiario.esHoy && !tarjetaRetoDiario.ganadoPendiente && tarjetaRetoDiario.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_continuar_reto")
+                                        onClicked: iniciarReto(tarjetaRetoDiario.modelData, true)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaRetoDiario.esHoy && !tarjetaRetoDiario.ganadoPendiente && !tarjetaRetoDiario.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_jugar")
+                                        onClicked: iniciarReto(tarjetaRetoDiario.modelData, false)
+                                    }
+                                    Text {
+                                        visible: tarjetaRetoDiario.esHoy && (tarjetaRetoDiario.ganadoPendiente || tarjetaRetoDiario.guardado)
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: tarjetaRetoDiario.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
+                                        color: Tema.colorAccent
+                                        font.pixelSize: 12 * Tema.escala
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: iniciarReto(tarjetaRetoDiario.modelData, false)
+                                        }
+                                    }
+                                }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Retos > Racha (docs/plan-retos-diario-racha.md) ─────────────
+                    Column {
+                        visible: columnaRetos.pestanaRetos === 2
+                        width: parent.width
+                        spacing: 16 * Tema.escala
+
+                        // Calendario de 7 días: la casilla del día alcanzado se resalta,
+                        // las anteriores se ven ya reclamadas, las siguientes en gris.
+                        // rachaDiaActual/rachaUltimoDia llegan con las estadísticas de
+                        // siempre (consultarEstadisticas ya pedida al entrar en Retos).
+                        Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 6 * Tema.escala
+                            readonly property int diaActual: redcliente.estadisticasCuenta.rachaDiaActual || 0
+                            Repeater {
+                                model: 7
+                                delegate: Item {
+                                    id: casillaRacha
+                                    required property int index
+                                    readonly property int numeroDia: index + 1
+                                    readonly property bool alcanzado: numeroDia <= parent.diaActual
+                                    readonly property bool esHoy: numeroDia === parent.diaActual
+                                    width: 38 * Tema.escala
+                                    height: fondoCasilla.height + 5 * Tema.escala
+
+                                    // "Ficha de casino" -- mismo recipe que Tienda/escalera/Diario
+                                    // (ver celdaTienda/tarjetaReto), a escala de una casilla de
+                                    // calendario. Pedido explícito del usuario (2026-09-22: "una
+                                    // tarjeta por día, con borde doble y textura como es habitual").
+                                    Rectangle {
+                                        anchors.top: fondoCasilla.top
+                                        anchors.topMargin: 2 * Tema.escala
+                                        anchors.left: fondoCasilla.left
+                                        anchors.right: fondoCasilla.right
+                                        height: fondoCasilla.height
+                                        radius: fondoCasilla.radius
+                                        color: "black"
+                                        opacity: 0.35
+                                    }
+
+                                    Rectangle {
+                                        id: fondoCasilla
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 48 * Tema.escala
+                                        radius: 8 * Tema.escala
+                                        opacity: casillaRacha.alcanzado || casillaRacha.esHoy ? 1.0 : 0.6
+                                        border.width: casillaRacha.esHoy ? 2 : 1
+                                        border.color: casillaRacha.esHoy ? Tema.colorAccent : Tema.colorBorde
+                                        gradient: Gradient {
+                                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                            GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                            GradientStop { position: 1.0; color: Tema.colorPanel }
+                                        }
+                                        layer.enabled: true
+                                        layer.effect: ShaderEffect {
+                                            property variant source
+                                            property real amplitud: 30.0
+                                            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                                        }
+
+                                        // Hilo interior -- el "doble bisel" de ficha de casino.
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            anchors.margins: 2 * Tema.escala
+                                            radius: parent.radius - 2 * Tema.escala
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                                   casillaRacha.alcanzado ? 0.55 : (casillaRacha.esHoy ? 0.35 : 0.15))
+                                        }
+
+                                        Column {
+                                            anchors.centerIn: parent
+                                            spacing: 2 * Tema.escala
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                text: casillaRacha.numeroDia
+                                                color: casillaRacha.alcanzado ? Tema.colorAccent : Tema.colorTextoTenue
+                                                font.bold: true
+                                                font.pixelSize: 14 * Tema.escala
+                                                font.family: Tema.fuenteElegante
+                                            }
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                text: casillaRacha.numeroDia === 7 ? "+20" : "+3"
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 9 * Tema.escala
+                                                font.family: Tema.fuenteElegante
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // "Cinta" de estado -- pedido explícito del usuario (2026-09-22: "el
+                        // mensaje de vuelve mañana, en una cinta en combinación con el tema de
+                        // la app"). Mismo degradado dorado de 3 paradas que BotonRelleno, SIN
+                        // dithering (regla ya fijada: un dorado pequeño no lleva ruido, se ve
+                        // como fieltro y pierde el aspecto de metal).
+                        Rectangle {
+                            readonly property bool yaReclamadaHoy: (redcliente.estadisticasCuenta.rachaUltimoDia || 0)
+                                                                    === Math.floor(Date.now() / 86400000)
+                            visible: yaReclamadaHoy
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(textoCintaRacha.implicitWidth + 32 * Tema.escala, parent.width)
+                            height: textoCintaRacha.implicitHeight + 16 * Tema.escala
+                            radius: height / 2
+                            border.width: 1
+                            border.color: Qt.darker(Tema.colorAccent, 1.3)
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorAccent, 1.35) }
+                                GradientStop { position: 0.5; color: Tema.colorAccent }
+                                GradientStop { position: 1.0; color: Qt.darker(Tema.colorAccent, 1.2) }
+                            }
+                            Text {
+                                id: textoCintaRacha
+                                anchors.centerIn: parent
+                                width: parent.width - 24 * Tema.escala
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                text: Idioma.t("etiqueta_racha_ya_reclamada")
+                                color: Tema.colorPanel
+                                font.bold: true
+                                font.pixelSize: 12 * Tema.escala
+                                font.family: Tema.fuenteElegante
+                            }
+                        }
+                        BotonRelleno {
+                            readonly property bool yaReclamadaHoy: (redcliente.estadisticasCuenta.rachaUltimoDia || 0)
+                                                                    === Math.floor(Date.now() / 86400000)
+                            visible: !yaReclamadaHoy
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            enabled: conectadoAlServidor && tokenSesion !== ""
+                            text: (conectadoAlServidor && tokenSesion !== "") ? Idioma.t("boton_reclamar_hoy") : Idioma.t("boton_reclamar_necesita_conexion")
+                            onClicked: redcliente.reclamarRachaSemanal(servidorHost, servidorPuerto, tokenSesion)
+                        }
+                    }
                 }
             }
+        }
         }
 
         BarraSuperior {
@@ -6371,6 +6820,25 @@ ApplicationWindow {
                 // AccountManager.cpp) -- se guarda tal cual, la traduce
                 // Idioma.t() en el sitio donde se muestra (mismo criterio
                 // que mensajeErrorLogin/mensajeErrorConexion).
+                mensajeTorneos = mensaje;
+            }
+            // ── Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22) ────
+            function onRetoDiarioReclamado(codigoReto, treboles) {
+                quitarRetoGanadoPendiente(codigoReto);
+                mensajeTorneos = Idioma.tf("reto_reclamado_treboles", [treboles]);
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+            }
+            function onRetoDiarioReclamarError(mensaje) {
+                mensajeTorneos = mensaje;
+            }
+            function onRachaReclamada(treboles, dia) {
+                mensajeTorneos = Idioma.tf("reto_reclamado_treboles", [treboles]);
+                // Día 7: el logro/título "Jugador constante" ya está desbloqueado
+                // server-side -- refrescar logros, igual que onRetoReclamado().
+                if (dia === 7) redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
+                redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
+            }
+            function onRachaReclamarError(mensaje) {
                 mensajeTorneos = mensaje;
             }
             // ── Social ────────────────────────────────────────────────────
@@ -9374,6 +9842,14 @@ ApplicationWindow {
         id: popupTemas
     }
 
+    PopupSonidos {
+        id: popupSonidos
+        volumen: ventana.volumenSonidos
+        sonidosSilenciados: ventana.sonidosSilenciados
+        onVolumenCambiado: (valor) => ventana.volumenSonidos = valor
+        onGrupoAlternado: (grupo) => ventana.alternarGrupoSonido(grupo)
+    }
+
     PopupAcabado {
         id: popupAcabado
         onAcabadoElegido: (slot, codigo, acabado) =>
@@ -9581,8 +10057,12 @@ ApplicationWindow {
                     onElegido: (indice) => Idioma.actual = Idioma.idiomasDisponibles[indice]
                 }
 
-                // ── Sonidos de la mesa: interruptor general (apagado por defecto), volumen y, por
-                // grupo, qué escuchar y qué no. Los eventos suenan solo con el general encendido.
+                // ── Sonidos de la mesa: interruptor general (apagado por defecto) + un botón
+                // que abre PopupSonidos con el volumen y, por grupo, qué escuchar y qué no --
+                // antes esto se desplegaba entero aquí mismo (volumen + 6 interruptores) y
+                // dejaba el resto del panel muy apretado con el sonido activado (pedido
+                // explícito del usuario, 2026-09-22) -- mismo criterio ya usado para los
+                // temas de color (PopupTemas).
                 Text {
                     width: parent.width
                     text: Idioma.t("ajustes_sonidos_titulo")
@@ -9594,7 +10074,7 @@ ApplicationWindow {
                 Row {
                     width: parent.width
                     Text {
-                        width: parent.width - 46
+                        width: parent.width - 46 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         text: Idioma.t("ajustes_sonidos_activar")
                         color: Tema.colorTextoTenue
@@ -9607,46 +10087,11 @@ ApplicationWindow {
                         onAlternado: sonidoActivado = !sonidoActivado
                     }
                 }
-                Row {
+                BotonRelleno {
                     visible: sonidoActivado
                     width: parent.width
-                    spacing: 10 * Tema.escala
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Idioma.t("ajustes_sonidos_volumen")
-                        color: Tema.colorTextoTenue
-                        font.pixelSize: 13 * Tema.escala
-                    }
-                    Slider {
-                        width: parent.width - 100 * Tema.escala
-                        anchors.verticalCenter: parent.verticalCenter
-                        from: 0
-                        to: 1
-                        value: ventana.volumenSonidos
-                        onMoved: ventana.volumenSonidos = value
-                    }
-                }
-                Repeater {
-                    model: ["cartas", "fichas", "allin", "resultado", "retirarse", "turno"]
-                    delegate: Row {
-                        id: filaGrupoSonido
-                        required property string modelData
-                        visible: sonidoActivado
-                        width: parent.width
-                        Text {
-                            width: parent.width - 46
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("sonido_grupo_" + filaGrupoSonido.modelData)
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            anchors.verticalCenter: parent.verticalCenter
-                            activo: !ventana.grupoSilenciado(filaGrupoSonido.modelData)
-                            onAlternado: ventana.alternarGrupoSonido(filaGrupoSonido.modelData)
-                        }
-                    }
+                    text: Idioma.t("boton_ajustes_sonido")
+                    onClicked: popupSonidos.abrir()
                 }
                 // ── Animaciones de la mesa: completas (todo), reducidas (solo fichas y avisos) o
                 // desactivadas. Con las desactivadas, el modo local tampoco espera entre fases.
@@ -9670,7 +10115,7 @@ ApplicationWindow {
                 Row {
                     width: parent.width
                     Text {
-                        width: parent.width - 46
+                        width: parent.width - 46 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         text: Idioma.t("texto_confirmar_allin")
                         color: Tema.colorTextoTenue
@@ -9686,50 +10131,57 @@ ApplicationWindow {
                 Row {
                     width: parent.width
                     spacing: 8 * Tema.escala
+                    // 118 y luego 150*escala como presupuesto FIJO para los controles
+                    // (2 botones + porcentaje) se seguían recortando en pantallas/escala
+                    // reales (reportado en vivo, 2026-09-22): un presupuesto fijo no
+                    // sigue el ancho DE VERDAD de BotonContorno (que crece con
+                    // Tema.escala). Arreglo real: los controles se miden a sí mismos
+                    // (su Row propio, controlesZoom) y la etiqueta se queda con lo que
+                    // sobra -- nunca puede empujarlos fuera del cajón.
                     Text {
-                        // 118 le dejaba muy poco margen a "−"/"%"/"+" (se
-                        // recortaban) -- ensanchar el cajón por sí solo no
-                        // arreglaba esto: esta resta es un presupuesto FIJO,
-                        // así que todo el ancho de más se lo llevaba la
-                        // etiqueta en vez de los botones.
-                        width: parent.width - 150 * Tema.escala
+                        width: parent.width - controlesZoom.width - parent.spacing
                         anchors.verticalCenter: parent.verticalCenter
                         text: Idioma.t("texto_tamano_interfaz")
                         color: Tema.colorTextoTenue
                         font.pixelSize: 13 * Tema.escala
                         wrapMode: Text.WordWrap
                     }
-                    // Mismo control que Ctrl+/Ctrl-/Ctrl+0 (ver Main.qml,
-                    // Shortcut) — para quien no conozca el atajo de
-                    // teclado o esté en una máquina donde no funcione.
-                    // Sin width/height explícitos: igual que cualquier
-                    // otro BotonContorno, su tamaño lo da el padding/font
-                    // ya escalados — fijarlo a 32x32 recortaría el glifo
-                    // a zoom alto, porque el texto interior sí crece.
-                    BotonContorno {
+                    Row {
+                        id: controlesZoom
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "−"
-                        onClicked: Tema.bajarZoom()
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 40
-                        horizontalAlignment: Text.AlignHCenter
-                        text: Math.round(Tema.zoomManual * 100) + "%"
-                        color: Tema.colorAccent
-                        font.bold: true
-                        font.pixelSize: 13 * Tema.escala
-                    }
-                    BotonContorno {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "+"
-                        onClicked: Tema.subirZoom()
+                        spacing: 8 * Tema.escala
+                        // Mismo control que Ctrl+/Ctrl-/Ctrl+0 (ver Main.qml,
+                        // Shortcut) — para quien no conozca el atajo de
+                        // teclado o esté en una máquina donde no funcione.
+                        // Sin width/height explícitos: igual que cualquier
+                        // otro BotonContorno, su tamaño lo da el padding/font
+                        // ya escalados — fijarlo a 32x32 recortaría el glifo
+                        // a zoom alto, porque el texto interior sí crece.
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "−"
+                            onClicked: Tema.bajarZoom()
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 40 * Tema.escala
+                            horizontalAlignment: Text.AlignHCenter
+                            text: Math.round(Tema.zoomManual * 100) + "%"
+                            color: Tema.colorAccent
+                            font.bold: true
+                            font.pixelSize: 13 * Tema.escala
+                        }
+                        BotonContorno {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "+"
+                            onClicked: Tema.subirZoom()
+                        }
                     }
                 }
                 Row {
                     width: parent.width
                     Text {
-                        width: parent.width - 46
+                        width: parent.width - 46 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         text: Idioma.tf("texto_pantalla_completa", [atajoPantallaCompleta.nativeText])
                         color: Tema.colorTextoTenue
@@ -9748,7 +10200,7 @@ ApplicationWindow {
                     width: parent.width
                     opacity: ventana.miTapete === "" ? 0.5 : 1
                     Text {
-                        width: parent.width - 46
+                        width: parent.width - 46 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         text: ventana.miTapete === "" ? Idioma.t("texto_tapete_sin_equipado")
                               : Idioma.t("texto_ver_mi_tapete")

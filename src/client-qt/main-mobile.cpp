@@ -113,6 +113,29 @@ void extenderBajoElRecorte() {
 }
 #endif
 
+/// Construye la QFont del chat (familia normal + apoyo de emoji, ver el comentario
+/// largo en main()) con el tamaño en píxeles que pida QML cada vez -- necesario porque
+/// QML no expone `font.families` (no es una Q_PROPERTY de QFont, a diferencia de
+/// `family`) y tampoco se puede combinar `font: unaQFont` con `font.pixelSize: ...` en
+/// el mismo Item (error de compilación QML: "Property has already been assigned a
+/// value") -- así que el tamaño tiene que venir YA puesto en la QFont que entrega esto,
+/// no añadido aparte desde QML. Reactivo de verdad: al ser una llamada dentro del
+/// binding (`font: fuenteChat.construir(13 * Tema.escala)`), QML la reevalúa solo
+/// cuando cambia Tema.escala, igual que cualquier otra función llamada en un binding.
+class FuenteChat : public QObject {
+  Q_OBJECT
+ public:
+  explicit FuenteChat(QFont base, QObject* padre = nullptr) : QObject(padre), base_(std::move(base)) {}
+  Q_INVOKABLE QFont construir(qreal pixelSize) const {
+    QFont f = base_;
+    f.setPixelSize(static_cast<int>(pixelSize));
+    return f;
+  }
+
+ private:
+  QFont base_;
+};
+
 int main(int argc, char* argv[]) {
   QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
       Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
@@ -165,23 +188,39 @@ int main(int argc, char* argv[]) {
   QGuiApplication::setApplicationName("PokerClientMobile");
 
   // Soporte de emoji -- ver el comentario en cmake/ClientesQt.cmake (RESOURCES)
-  // para el porqué de esta fuente en concreto. Se añade como familia EXTRA de
-  // la fuente por defecto de la app (no la reemplaza): con setFamilies(), Qt
-  // prueba cada familia en orden CARÁCTER A CARÁCTER, así que el resto del
-  // texto (que ya tiene glifo en la fuente normal del sistema) no cambia de
-  // aspecto -- solo entra en juego para los caracteres que faltan, como un
-  // emoji de verdad tecleado por otro jugador en el chat.
+  // para el porqué de esta fuente en concreto. Reportado 2026-09-22 (bug real
+  // en dispositivo, no solo offscreen): meterla como familia EXTRA de la
+  // fuente POR DEFECTO de toda la app (vía QGuiApplication::setFont(), como
+  // se hacía antes) dejaba sin pintar los DÍGITOS (0-9) de cualquier Text que
+  // no fijara su propio font.family -- que es la inmensa mayoría de la app
+  // (versión instalada, estadísticas, fecha de mejor mano...). No es un
+  // problema del renderizador offscreen de desarrollo: se confirmó también en
+  // un teléfono real. Causa exacta sin confirmar del todo, pero el patrón es
+  // claro: una QFont con VARIAS familias (la normal + esta, de color/COLR)
+  // falla al pintar dígitos en algún punto del cauce de shaping/render de Qt;
+  // una QFont de una sola familia (a mano, `font.family: Tema.fuenteElegante`
+  // en vez de heredar la de la app) siempre funciona -- así se fueron
+  // parcheando casos sueltos antes de encontrar la causa real.
+  // Arreglo real: NO tocar la fuente por defecto de la app. Cargar esta
+  // fuente pero dejarla FUERA del family chain global -- se construye una
+  // QFont APARTE (fuenteChatBase, expuesta a QML más abajo) con la familia
+  // de siempre + esta como apoyo, y solo el ÚNICO sitio que de verdad puede
+  // recibir un emoji tecleado por otro jugador (el texto de los mensajes de
+  // chat, ChatBox.qml) la usa -- el resto de la app ni se entera. Nota: QML
+  // no expone `font.families` (QFont::families() no es una Q_PROPERTY, a
+  // diferencia de `family`) -- por eso esto se construye aquí, como una
+  // QFont completa, y ChatBox.qml la usa entera vía `font: fuenteChatBase`
+  // en vez de intentar montarla campo a campo desde QML.
   const int idFuenteEmoji = QFontDatabase::addApplicationFont(
       QStringLiteral(":/qt/qml/PokerQuickMobile/assets/fonts/TwemojiMozilla.ttf"));
+  QFont fuenteChatBase = QGuiApplication::font();
   if (idFuenteEmoji != -1) {
     const QStringList familiasEmoji = QFontDatabase::applicationFontFamilies(idFuenteEmoji);
     if (!familiasEmoji.isEmpty()) {
-      QFont fuentePorDefecto = QGuiApplication::font();
-      QStringList familias = fuentePorDefecto.families();
-      if (familias.isEmpty()) familias << fuentePorDefecto.family();
-      familias << familiasEmoji.first();
-      fuentePorDefecto.setFamilies(familias);
-      QGuiApplication::setFont(fuentePorDefecto);
+      QStringList familiasChat = fuenteChatBase.families();
+      if (familiasChat.isEmpty()) familiasChat << fuenteChatBase.family();
+      familiasChat << familiasEmoji.first();
+      fuenteChatBase.setFamilies(familiasChat);
     }
   } else {
     qWarning() << "No se pudo cargar la fuente de apoyo para emoji (Twemoji Mozilla) -- "
@@ -208,6 +247,12 @@ int main(int argc, char* argv[]) {
                                             QString::fromUtf8(net::SERVER_HOST));
   engine->rootContext()->setContextProperty("SERVER_PORT_DEFAULT",
                                             static_cast<int>(net::SERVER_PORT));
+  // Ver el comentario largo de más arriba (carga de TwemojiMozilla.ttf) -- el único
+  // consumidor pensado es el texto de los mensajes de ChatBox.qml, vía
+  // `font: fuenteChat.construir(tamañoEnPíxeles)`. Propiedad del engine (como
+  // "client"/"modoJuego" más abajo) para que viva mientras la app viva.
+  auto* fuenteChat = new FuenteChat(fuenteChatBase, engine.get());
+  engine->rootContext()->setContextProperty("fuenteChat", fuenteChat);
 
 #ifdef Q_OS_ANDROID
   aplicarPantallaInmersiva();
@@ -307,3 +352,8 @@ int main(int argc, char* argv[]) {
   engine.reset();
   return codigo;
 }
+
+// FuenteChat tiene Q_OBJECT y está definida aquí mismo (no en un header) -- AUTOMOC
+// necesita este include explícito para generar su moc (mismo patrón que exige CMake
+// para cualquier Q_OBJECT declarado directamente en un .cpp).
+#include "main-mobile.moc"

@@ -132,29 +132,32 @@ Rectangle {
                         color: glifo.colorIcono
                     }
 
-                    // Torneos (2): llave de eliminatorias.
+                    // Retos (2): diana -- dos aros concéntricos huecos + el centro relleno,
+                    // "objetivo conseguido" (reemplaza la llave de eliminatorias, 2026-09-22:
+                    // la sección pasó de "Torneos" a "Retos" -- escalera + reto diario + racha).
                     Rectangle {
                         visible: cajaIcono.index === 2
-                        x: 0; y: 4 * Tema.escala
-                        width: 9 * Tema.escala; height: 2 * Tema.escala
-                        color: glifo.colorIcono
+                        x: 1 * Tema.escala; y: 1 * Tema.escala
+                        width: 20 * Tema.escala; height: 20 * Tema.escala
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: 1.6
+                        border.color: glifo.colorIcono
                     }
                     Rectangle {
                         visible: cajaIcono.index === 2
-                        x: 0; y: 16 * Tema.escala
-                        width: 9 * Tema.escala; height: 2 * Tema.escala
-                        color: glifo.colorIcono
+                        x: 5 * Tema.escala; y: 5 * Tema.escala
+                        width: 12 * Tema.escala; height: 12 * Tema.escala
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: 1.6
+                        border.color: glifo.colorIcono
                     }
                     Rectangle {
                         visible: cajaIcono.index === 2
-                        x: 9 * Tema.escala; y: 4 * Tema.escala
-                        width: 2 * Tema.escala; height: 14 * Tema.escala
-                        color: glifo.colorIcono
-                    }
-                    Rectangle {
-                        visible: cajaIcono.index === 2
-                        x: 9 * Tema.escala; y: 10 * Tema.escala
-                        width: 13 * Tema.escala; height: 2 * Tema.escala
+                        x: 9 * Tema.escala; y: 9 * Tema.escala
+                        width: 4 * Tema.escala; height: 4 * Tema.escala
+                        radius: width / 2
                         color: glifo.colorIcono
                     }
 

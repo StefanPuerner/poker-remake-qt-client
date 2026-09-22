@@ -70,9 +70,8 @@ jobs:
 
       # Paso 4: compilar de verdad. --target PokerClientQt: el CMakeLists
       # también define PokerClientMobile (binario de escritorio normal
-      # cuando no se cross-compila para Android), que este workflow no
-      # empaqueta ni sube a ningún lado -- sin acotar el target se
-      # compilaba igualmente, tirando minutos de CI.
+      # cuando no se cross-compila para Android) -- SÍ se compila y empaqueta
+      # aparte, al final del job, pero como artefacto de nicho, no aquí.
       - name: Compilar
         run: cmake --build build --target PokerClientQt --config RelWithDebInfo
 
@@ -161,4 +160,69 @@ jobs:
           # Descripción del release: NOVEDADES.md, en la raíz del repo. Se
           # actualiza a mano antes de cada etiqueta. Los tres workflows la
           # ponen igual, así que da igual cuál cree el release primero.
+          body_path: NOVEDADES.md
+
+      # ── PokerClientMobile como binario de Windows (pasos aparte, tras el Release de escritorio) ──
+      #  No es un cliente de escritorio de verdad -- es el mismo binario táctil
+      #  landscape del móvil (el CMakeLists ya lo compila así cuando no se
+      #  cross-compila para Android, ver el comentario en main-mobile.cpp), pensado
+      #  para correr en un PC que hace de host de streaming (Moonlight/Sunshine)
+      #  hacia un teléfono -- así se puede jugar desde un iPhone, donde no hay APK.
+      #  Mismo Qt ya instalado en el paso 2, sin steps nuevos de setup.
+      #  A propósito NO se menciona en NOVEDADES.md ni se destaca junto al .zip de
+      #  escritorio -- es un añadido de nicho para quien lo necesite (se ve entre
+      #  los assets del Release, con nombre propio), no la forma normal de jugar en PC.
+      - name: Compilar PokerClientMobile
+        run: cmake --build build --target PokerClientMobile --config RelWithDebInfo
+
+      # PokerClientQt y PokerClientMobile caen en LA MISMA carpeta de salida
+      # (build\RelWithDebInfo\, CMAKE_RUNTIME_OUTPUT_DIRECTORY es uno solo para
+      # todo el proyecto -- ver cmake/Comun.cmake). Copiar el .exe del móvil a una
+      # carpeta propia ANTES de windeployqt evita que su .zip acabe llevándose
+      # también PokerClientQt.exe y el módulo QML de escritorio (windeployqt
+      # despliega junto al .exe que se le pasa, así que con esto despliega solo
+      # lo que el móvil necesita, en su propia carpeta).
+      - name: Aislar el ejecutable del móvil en su propia carpeta
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build\PaqueteMovil | Out-Null
+          Copy-Item build\RelWithDebInfo\PokerClientMobile.exe build\PaqueteMovil\ -Force
+
+      # --qmldir apunta a qml-mobile (el árbol QML del móvil, NO qml/): PokerClientMobile
+      # carga NO_CACHEGEN (interpretado, no bytecode -- ver cmake/ClientesQt.cmake), así
+      # que windeployqt necesita mirar ESE árbol para resolver sus imports de verdad.
+      - name: Empaquetar dependencias de Qt (móvil, windeployqt)
+        run: windeployqt --qmldir src\client-qt\qml-mobile build\PaqueteMovil\PokerClientMobile.exe
+
+      # Mismo motivo que el paso gemelo de PokerClientQt más arriba (QTBUG-135079).
+      - name: Asegurar el plugin TLS (Schannel) en el paquete final (móvil)
+        shell: pwsh
+        run: |
+          $windeployqt = (Get-Command windeployqt.exe).Source
+          $qtRoot = Split-Path (Split-Path $windeployqt -Parent) -Parent
+          $tlsSrc = Join-Path $qtRoot "plugins\tls"
+          if (-not (Test-Path $tlsSrc)) {
+            throw "No se encontró plugins\tls en la instalación de Qt ($tlsSrc) -- no se puede garantizar TLS."
+          }
+          $tlsDst = "build\PaqueteMovil\tls"
+          New-Item -ItemType Directory -Force -Path $tlsDst | Out-Null
+          Copy-Item "$tlsSrc\*.dll" $tlsDst -Force
+          Write-Host "Backend(s) TLS copiados a $tlsDst :"
+          Get-ChildItem $tlsDst
+
+      - name: Comprimir en .zip portable (móvil)
+        run: Compress-Archive -Path build\PaqueteMovil\* -DestinationPath PokerRemake-Windows-Movil-x86_64.zip
+
+      - name: Subir el .zip como artefacto (móvil)
+        uses: actions/upload-artifact@v7
+        with:
+          path: PokerRemake-Windows-Movil-x86_64.zip
+          archive: false
+          if-no-files-found: error
+
+      - name: Adjuntar al Release de GitHub (móvil)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PokerRemake-Windows-Movil-x86_64.zip
           body_path: NOVEDADES.md

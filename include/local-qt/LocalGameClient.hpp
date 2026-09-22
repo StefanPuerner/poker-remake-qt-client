@@ -312,6 +312,9 @@ class LocalGameClient : public QObject {
     // limpiado todavía, esperar a que termine antes de arrancar la nueva
     // -- ver el comentario de la clase sobre esta simplificación.
     if (hiloMotor_.joinable()) hiloMotor_.join();
+    // Una partida NUEVA nunca hereda el "reto activo" de una sesión anterior (ver
+    // continuarReto()/conectarSenales()) -- solo continuarReto() lo vuelve a fijar.
+    archivoRetoActivo_.clear();
 
     std::string nombreStd = nombre.toStdString();
 
@@ -426,6 +429,10 @@ class LocalGameClient : public QObject {
   // llamarse (la pantalla de Torneos oculta el botón "Reclamar" sin
   // conexión), pero el stub existe por paridad de API con NetworkClient.
   Q_INVOKABLE void reclamarRecompensaReto(const QString&, quint16, QString, QString) {}
+  // Retos > Diario y Racha (docs/plan-retos-diario-racha.md, 2026-09-22): mismo motivo
+  // que reclamarRecompensaReto() justo arriba -- los Tréboles nunca son offline.
+  Q_INVOKABLE void reclamarRetoDiario(const QString&, quint16, QString, QString) {}
+  Q_INVOKABLE void reclamarRachaSemanal(const QString&, quint16, QString) {}
   Q_INVOKABLE void reclamarLogro(const QString&, quint16, QString, QString) {}
   // Ranking / social / perfiles ajenos
   Q_INVOKABLE void consultarRanking(const QString&, quint16) {}
@@ -516,6 +523,13 @@ class LocalGameClient : public QObject {
       emit errorSala(QString("No se pudo cargar el reto: ") + QString::fromUtf8(e.what()));
       return;
     }
+    // Retos > Diario (docs/plan-retos-diario-racha.md, 2026-09-22): a diferencia de la
+    // escalera, aquí SÍ se cierra el hueco de "punto de guardado" -- guardar y volver a
+    // jugar es normal, pero abandonar una partida reanudada así borra el guardado (ver
+    // el relay de "abandonaste" en conectarSenales()), para que no se pueda recargar el
+    // mismo punto tantas veces como se quiera. Solo se marca para los retos DIARIOS
+    // (prefijo "reto_diario_"); la escalera de Solitario sigue como estaba, sin tocar.
+    archivoRetoActivo_ = codigo.startsWith("reto_diario_") ? rutaRetoGuardado(codigo) : QString();
     // Un reto nunca pregunta por alargar la partida (el .pok no guarda ese
     // ajuste y su valor por defecto sí preguntaría).
     arrancarPartida(snap, rutaRetoGuardado(codigo), /*preguntarExtension=*/false, saldoInicial);
@@ -532,6 +546,9 @@ class LocalGameClient : public QObject {
       emit errorSala(QString("No se pudo cargar la partida: ") + QString::fromUtf8(e.what()));
       return;
     }
+    // Una partida guardada NORMAL nunca es un reto diario -- ver el comentario gemelo en
+    // iniciarPartidaLocal().
+    archivoRetoActivo_.clear();
     arrancarPartida(snap, rutaGuardado(archivo));
   }
   // Herramienta admin
@@ -682,6 +699,10 @@ class LocalGameClient : public QObject {
                                    int boteSinShowdownAcreditado, QString mensaje);
   void retoReclamado(QString codigoReto, int treboles);
   void retoReclamarError(QString mensaje);
+  void retoDiarioReclamado(QString codigoReto, int treboles);
+  void retoDiarioReclamarError(QString mensaje);
+  void rachaReclamada(int treboles, int dia);
+  void rachaReclamarError(QString mensaje);
   void reautenticacionSinRespuesta();
   void usernameCambiado(QString nuevoUsername);
   void usernameError(QString mensaje);
@@ -941,7 +962,20 @@ class LocalGameClient : public QObject {
     connect(observador_, &LocalGameObserver::saldosActualizados, this,
             &LocalGameClient::saldosActualizados);
     connect(observador_, &LocalGameObserver::partidaGuardada, this, &LocalGameClient::partidaGuardada);
-    connect(observador_, &LocalGameObserver::abandonaste, this, &LocalGameClient::abandonaste);
+    // Retos > Diario (docs/plan-retos-diario-racha.md §2.4): si la partida en curso es un
+    // reto diario REANUDADO (archivoRetoActivo_ no vacío, ver continuarReto()) y termina
+    // en abandono, se borra el guardado ahí mismo -- cierra el hueco de "crear un punto
+    // de guardado y recargarlo tantas veces como se quiera" (guardar y salir NO borra
+    // nada, eso sigue funcionando con normalidad; solo abandonar). "Abandonar" no deja
+    // el reto indisponible -- solo se pierde el progreso guardado, se puede volver a
+    // jugar (y guardar) cuando se quiera.
+    connect(observador_, &LocalGameObserver::abandonaste, this, [this](QString mensaje) {
+      if (!archivoRetoActivo_.isEmpty()) {
+        QFile::remove(archivoRetoActivo_);
+        archivoRetoActivo_.clear();
+      }
+      emit abandonaste(mensaje);
+    });
     // No es un relay 1:1: el XP de la partida se SUMA a la bolsa pendiente y
     // se persiste, para entregarlo cuando vuelva a haber servidor.
     connect(observador_, &LocalGameObserver::xpOfflineGanado, this, [this](int xp) {
@@ -1018,6 +1052,12 @@ class LocalGameClient : public QObject {
   bool ganoPartidaPendienteOffline_ = false;
   QStringList logrosPendientesOffline_;
   QString retoEnCurso_;  ///< Código del reto cuya partida se va a iniciar (ver setRetoEnCurso()).
+  /// Ruta del .pok en juego AHORA MISMO, solo si es un reto DIARIO reanudado con
+  /// continuarReto() -- vacío en cualquier otro caso (partida nueva, reto de la
+  /// escalera, partida guardada normal). Si esta sesión termina en abandono (no en
+  /// guardar, no en victoria), conectarSenales() borra ese fichero -- ver el plan
+  /// docs/plan-retos-diario-racha.md §2.4.
+  QString archivoRetoActivo_;
   QMap<QString, int> manosMostradasPendientes_;  ///< combinación -> veces, pendiente de sincronizar
   void guardarManosMostradasPendientes() {
     QStringList partes;
