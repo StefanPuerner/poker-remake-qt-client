@@ -1,0 +1,226 @@
+# Build de PRUEBA (iOS .ipa) — a mano, no publica nada.
+#
+# ⚠️ Distinto a propósito de los otros tres workflows de este repo público
+# (build-android.yml/build-windows.yml/build-linux.yml, que disparan con un
+# tag "v*" y cuelgan el resultado de una Release pública): un .ipa firmado
+# con una cuenta Apple gratuita ("Personal Team") caduca a los 7 DÍAS -- no
+# tiene ningún sentido como asset permanente de una Release. Sigue el mismo
+# patrón que los "-dev" del repo privado: solo workflow_dispatch, solo un
+# artefacto de Actions, nunca una Release.
+#
+# Por qué existe esto pese al límite de 7 días: ver docs/plan-ios.md (repo
+# privado) para el plan completo, la guía de un solo uso y la guía
+# recurrente de cada semana. Resumen de la limitación real: una cuenta
+# Personal Team solo da firma "Development" (nunca Ad Hoc/App Store), y no
+# hay forma de renovar el certificado/perfil sin abrir Xcode a mano con el
+# Apple ID -- no hay API key de App Store Connect para cuentas gratuitas.
+# Este workflow SOLO puede EMPAQUETAR con un certificado+perfil que ya estén
+# vigentes (subidos como secretos) -- nunca renovarlos él solo.
+#
+# Igual que build-android-dev.yml la primera vez que se escribió: no hay
+# forma de probar esta cadena de herramientas (Xcode+firma+Qt-para-iOS) en
+# local en esta máquina (sin Mac) -- puede necesitar varias vueltas de
+# ajuste contra el log real del runner antes de dar un .ipa instalable de
+# verdad. Cada arreglo que salga de un fallo real se comenta aquí mismo,
+# qué pasó y por qué -- mismo criterio que ya sigue build-android-dev.yml.
+#
+# Secretos que hacen falta (Settings → Secrets and variables → Actions de
+# ESTE repo, el público -- ver la guía de un solo uso del plan para cómo
+# sacarlos de Xcode):
+#   IOS_P12_BASE64              certificado + clave privada, en base64
+#   IOS_P12_PASSWORD            contraseña puesta al exportar el .p12
+#   IOS_MOBILEPROVISION_BASE64  perfil de aprovisionamiento, en base64
+#   IOS_TEAM_ID                 Team ID de la cuenta Apple (no es secreto
+#                                de verdad, pero se guarda igual por comodidad)
+#   IOS_KEYCHAIN_PASSWORD       contraseña de usar y tirar, solo para el
+#                                llavero efímero de este mismo run -- puede
+#                                ser cualquier cosa, no hace falta que
+#                                coincida con nada de fuera
+
+name: Build iOS IPA (prueba)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    # Mismo motivo que el "env:" a nivel de job de build-android-dev.yml:
+    # quien de verdad lee estos valores es "security"/"xcodebuild", no el
+    # configure de CMake. GitHub enmascara los secrets.* en el log salga
+    # donde salga.
+    env:
+      IOS_P12_PATH: /tmp/ios-signing.p12
+      IOS_PROFILE_PATH: /tmp/ios-profile.mobileprovision
+      IOS_KEYCHAIN_PATH: /tmp/ios-build.keychain-db
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Decodificar el certificado (.p12) y el perfil de aprovisionamiento desde los secretos
+        run: |
+          echo "${{ secrets.IOS_P12_BASE64 }}" | base64 -d -o "$IOS_P12_PATH"
+          echo "${{ secrets.IOS_MOBILEPROVISION_BASE64 }}" | base64 -d -o "$IOS_PROFILE_PATH"
+
+      # Receta estándar de firma de iOS en CI -- llavero EFÍMERO, solo para
+      # este run, nunca el de inicio de sesión del runner (que ni existe de
+      # forma persistente en macos-latest). El paso "set-key-partition-list"
+      # es el que de verdad importa y el más fácil de olvidar: sin él,
+      # "codesign" se queda esperando un permiso de Acceso a Llaveros que
+      # nadie va a pulsar -- falla (o cuelga) en el paso de exportar/firmar
+      # más abajo sin un motivo claro en el log. Referencia: es el mismo
+      # "gotcha" que documentan prácticamente todas las guías de firma de
+      # iOS en GitHub Actions -- no es una rareza de este proyecto.
+      - name: Crear un llavero temporal e importar el certificado
+        run: |
+          security create-keychain -p "${{ secrets.IOS_KEYCHAIN_PASSWORD }}" "$IOS_KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$IOS_KEYCHAIN_PATH"
+          security unlock-keychain -p "${{ secrets.IOS_KEYCHAIN_PASSWORD }}" "$IOS_KEYCHAIN_PATH"
+          security import "$IOS_P12_PATH" -k "$IOS_KEYCHAIN_PATH" \
+            -P "${{ secrets.IOS_P12_PASSWORD }}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -k "${{ secrets.IOS_KEYCHAIN_PASSWORD }}" "$IOS_KEYCHAIN_PATH"
+          # Añadir el llavero nuevo a la lista de búsqueda SIN quitar los que
+          # ya hubiera (login.keychain-db, System.keychain) -- si se
+          # sustituye la lista entera, xcodebuild deja de encontrar los
+          # certificados raíz de Apple para validar la cadena de firma.
+          security list-keychains -d user -s "$IOS_KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+      # xcodebuild busca los perfiles por su UUID de fichero, no por su
+      # nombre -- "security cms -D -i" descifra el CMS del .mobileprovision
+      # (viene firmado, no es XML plano) y de ahí se saca el UUID real.
+      - name: Instalar el perfil de aprovisionamiento donde Xcode lo busca
+        run: |
+          mkdir -p ~/Library/MobileDevice/"Provisioning Profiles"
+          UUID=$(security cms -D -i "$IOS_PROFILE_PATH" | plutil -extract UUID xml1 -o - - | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
+          if [ -z "$UUID" ]; then
+            echo "::error::No se pudo extraer el UUID del perfil de aprovisionamiento."
+            exit 1
+          fi
+          echo "UUID del perfil: $UUID"
+          cp "$IOS_PROFILE_PATH" ~/Library/MobileDevice/"Provisioning Profiles"/"$UUID".mobileprovision
+
+      # Dos instalaciones de Qt, mismo motivo que el dual host+target de
+      # build-android-dev.yml: moc/rcc tienen que correr en el runner (host
+      # macOS), pero el binario final se cross-compila para iOS -- confirmado
+      # que aqtinstall soporta host=mac/target=ios, pero exige la instalación
+      # de escritorio al lado para funcionar (mismo patrón, no una rareza
+      # solo de Android). Versión de Qt sin fijar todavía a una concreta más
+      # allá de "6" -- si aqtinstall no reconoce la última para target=ios
+      # (le pasó a Android con todo lo posterior a 6.7.3), fijar aquí la
+      # versión exacta que si reconozca, con un comentario explicando por qué,
+      # igual que hizo build-android-dev.yml.
+      - name: Instalar Qt6 para escritorio macOS (moc/rcc/qmlcachegen -- corren en el runner)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          host: 'mac'
+          target: 'desktop'
+          modules: 'qtmultimedia qtshadertools'
+          dir: '${{ github.workspace }}/qt'
+          set-env: false
+
+      - name: Instalar Qt6 para iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          host: 'mac'
+          target: 'ios'
+          modules: 'qtmultimedia qtshadertools'
+          dir: '${{ github.workspace }}/qt'
+
+      # POKER_BUILD_TESTS=OFF: Catch2 no cross-compila para iOS y no hace
+      # falta aquí, solo queremos el cliente móvil. POKER_IOS_TEAM_ID llega
+      # del secreto -- ver el bloque if(IOS) en cmake/ClientesQt.cmake para
+      # qué hace con él (firma manual + identidad del bundle).
+      - name: Configurar CMake (cross-compilando para iOS, proyecto Xcode)
+        run: |
+          QT_HOST_DIR="$(find "${{ github.workspace }}/qt/Qt" -maxdepth 2 -type d -name "macos" | sort -V | tail -1)"
+          if [ -z "$QT_HOST_DIR" ] || [ ! -d "$QT_HOST_DIR" ]; then
+            echo "No se encontró ningún kit de escritorio macOS bajo ${{ github.workspace }}/qt/Qt -- contenido real:"
+            find "${{ github.workspace }}/qt" -maxdepth 4 -type d
+            exit 1
+          fi
+          echo "QT_HOST_DIR resuelto a: $QT_HOST_DIR"
+          "$QT_ROOT_DIR/bin/qt-cmake" -G Xcode -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPOKER_BUILD_TESTS=OFF \
+            -DPOKER_IOS_TEAM_ID="${{ secrets.IOS_TEAM_ID }}" \
+            -DQT_HOST_PATH="$QT_HOST_DIR"
+
+      - name: Compilar y archivar PokerClientMobile
+        run: |
+          # El .xcodeproj lo nombra CMake a partir de project() (CMakeLists.txt:
+          # PokerRemakeQtClient), no "PokerRemake" -- buscado con "find" en vez de
+          # escrito a fuego para no depender de que ese nombre no cambie nunca
+          # (mismo criterio que usa build-android-dev.yml para localizar el .apk).
+          XCODEPROJ=$(find build -maxdepth 1 -iname "*.xcodeproj" | head -1)
+          if [ -z "$XCODEPROJ" ]; then
+            echo "No se encontró ningún .xcodeproj bajo build/ -- contenido real:"
+            find build -maxdepth 1
+            exit 1
+          fi
+          echo "Proyecto Xcode resuelto a: $XCODEPROJ"
+          xcodebuild archive \
+            -project "$XCODEPROJ" \
+            -scheme PokerClientMobile \
+            -configuration RelWithDebInfo \
+            -archivePath build/PokerClientMobile.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$(security cms -D -i "$IOS_PROFILE_PATH" | plutil -extract Name xml1 -o - - | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')" \
+            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}"
+
+      # exportOptions.plist generado aquí mismo (no un fichero del repo):
+      # depende de secretos que no pueden vivir comiteados.
+      - name: Exportar el .ipa firmado
+        run: |
+          cat > /tmp/exportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>teamID</key>
+              <string>${{ secrets.IOS_TEAM_ID }}</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Development</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath build/PokerClientMobile.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist /tmp/exportOptions.plist
+
+      - name: Localizar el .ipa generado y darle un nombre fijo
+        run: |
+          IPA=$(find build/ipa -iname "*.ipa" | head -1)
+          if [ -z "$IPA" ]; then echo "No se encontró ningún .ipa bajo build/ipa/"; exit 1; fi
+          mkdir -p dist-ios
+          cp "$IPA" dist-ios/PokerRemake-iOS-prueba.ipa
+
+      # Sin .zip, igual que el .apk de Android (pedido explícito de
+      # entonces, mismo criterio aquí): archive: false entrega el fichero
+      # exactamente como se llama, sin envolverlo -- solo existe desde la
+      # v7 de upload-artifact (ver el comentario gemelo en
+      # build-android-dev.yml: en la v4 esa opción no existe y GitHub
+      # ignora el "Unexpected input" sin fallar, entregando un .zip igual).
+      - name: Subir el .ipa como artefacto (no publica nada)
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-ios/PokerRemake-iOS-prueba.ipa
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      # El llavero temporal no sobrevive al runner efímero de todos modos,
+      # pero borrarlo explícitamente (incluso si un paso de arriba falló)
+      # es la misma disciplina que ya se sigue en el resto del proyecto con
+      # secretos descargados a /tmp.
+      - name: Borrar el llavero temporal
+        if: always()
+        run: security delete-keychain "$IOS_KEYCHAIN_PATH" || true

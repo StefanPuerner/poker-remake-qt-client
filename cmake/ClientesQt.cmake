@@ -78,6 +78,17 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     endif()
     message(STATUS "Pestaña Torneos en los clientes: ${POKER_TORNEOS}")
 
+    # ── Team ID de Apple para firmar PokerClientMobile en iOS ────────────
+    #  Vacío por defecto (escritorio/Android no lo usan en absoluto) -- lo
+    #  pasa el workflow de iOS por -D en el configure, con el Team ID real
+    #  de la cuenta gratuita usada para firmar (ver docs/plan-ios.md).
+    #  Mismo patrón que POKER_TORNEOS: set()+if(NOT DEFINED), nunca
+    #  option(), por la misma razón de compatibilidad con CMake 3.10 ya
+    #  documentada ahí arriba.
+    if(NOT DEFINED POKER_IOS_TEAM_ID)
+        set(POKER_IOS_TEAM_ID "")
+    endif()
+
     set(ICONOS_METALICOS corona_inicial corona_laurel corona_real cinta_ondulada constelacion ojo_vigilante)
     set(ICONOS_ACABADO)
     foreach(icono IN LISTS ICONOS_METALICOS)
@@ -434,6 +445,37 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         )
     endif()
 
+    # Mismo papel que el bloque if(ANDROID) de justo arriba, pero para
+    # generar un .xcodeproj firmable (docs/plan-ios.md, 2026-09-23) --
+    # bloqueo a horizontal, identidad del bundle y equipo de firma, más el
+    # icono único de 1024×1024 (Xcode 14+ ya no exige el juego de tamaños
+    # de antes). MACOSX_BUNDLE_INFO_PLIST/XCODE_ATTRIBUTE_* son propiedades
+    # que CMake solo lee de verdad generando para Xcode -- en cualquier
+    # otra plataforma esto no se usa para nada, igual que
+    # QT_ANDROID_PACKAGE_SOURCE_DIR no pinta nada fuera de Android.
+    if(IOS)
+        set(IOS_INFO_PLIST_GENERADO ${CMAKE_CURRENT_BINARY_DIR}/ios/Info.plist)
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/client-qt/ios/Info.plist.in
+                       ${IOS_INFO_PLIST_GENERADO} @ONLY)
+        set_target_properties(PokerClientMobile PROPERTIES
+            MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_INFO_PLIST ${IOS_INFO_PLIST_GENERADO}
+            # Mismo identificador que Android (com.pokerremake.clientmobile,
+            # ver build-android-dev.yml) -- tiene que coincidir con el App ID
+            # que Xcode registró en la cuenta Apple al firmar por primera vez
+            # (ver la guía de un solo uso del plan).
+            XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.pokerremake.clientmobile"
+            XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${POKER_IOS_TEAM_ID}"
+            # Firma MANUAL a propósito: en CI no hay sesión de Apple ID para
+            # que Xcode "gestione automáticamente" nada -- el perfil concreto
+            # ya subido como secreto es el que manda (ver el workflow).
+            XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Manual"
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
+            RESOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/client-qt/ios/Assets.xcassets
+            XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+        )
+    endif()
+
     # Mismo motivo que el Tema.qml de escritorio más arriba: sin esto
     # qmllint no reconoce el singleton y "Member ... not found on type
     # Tema" sale como falso positivo en cualquier fichero que lo use.
@@ -746,7 +788,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     #  Tema.qml y Avatar.qml de qml/ (mismo fichero, mismo URI de origen)
     #  para que los colores/proporciones sean EXACTAMENTE los reales, no
     #  una aproximación aparte que se pueda desincronizar.
-    if(NOT ANDROID)
+    if(NOT ANDROID AND NOT IOS)
         set_source_files_properties(src/client-qt/qml/Tema.qml PROPERTIES
             QT_QML_SINGLETON_TYPE TRUE
         )
@@ -791,7 +833,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     # ── AnimTest -- banco de pruebas de sonidos y animaciones de la mesa
     #  (ver docs/plan-animaciones-partida.md): se afinan AQUÍ, aislados de
     #  la partida, antes de integrarlos. Solo escritorio, como AvatarTest.
-    if(NOT ANDROID)
+    if(NOT ANDROID AND NOT IOS)
         set_source_files_properties(src/client-qt/qml/Tema.qml src/client-qt/qml/Idioma.qml PROPERTIES
             QT_QML_SINGLETON_TYPE TRUE
         )
@@ -853,7 +895,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
     #  ciclo bloqueante GUI<->motor no se queda colgado -- Qt6::Core basta
     #  (sin Quick/QML, no hay nada que dibujar). SOLO escritorio (dev tool),
     #  mismo motivo que AvatarTest.
-    if(NOT ANDROID)
+    if(NOT ANDROID AND NOT IOS)
         find_package(Qt6 REQUIRED COMPONENTS Core)
         add_executable(LocalOfflineSmokeTest
             src/client-qt/local-offline-smoke-test/main.cpp

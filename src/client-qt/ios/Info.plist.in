@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist.in — plantilla mínima para PokerClientMobile en iOS.
+  Sustituido por CMake (configure_file, @ONLY) -- ver el bloque if(IOS)
+  en cmake/ClientesQt.cmake. Mismo espíritu que el AndroidManifest.xml
+  del hermano Android (src/client-qt/android/): bloqueo a landscape y
+  metadatos mínimos de empaquetado, nada más. Sin claves de
+  NSAppTransportSecurity a propósito: la app habla TCP/TLS crudo
+  (QSslSocket), no URLs http(s) -- ATS gobierna NSURLSession, no aplica
+  aquí, así que no se añade ninguna excepción especulativa.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>es</string>
+    <key>CFBundleDisplayName</key>
+    <string>PokerRemake</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>PokerRemake</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@POKER_APP_VERSION_STRING@</string>
+    <key>CFBundleVersion</key>
+    <string>@POKER_APP_VERSION_STRING@</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <!-- Mismo bloqueo a horizontal que Android
+         (android:screenOrientation="landscape" en AndroidManifest.xml,
+         inyectado por build-android-dev.yml) -- las dos direcciones de
+         landscape, para que gire con el sensor igual que en Android. -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UIRequiresFullScreen</key>
+    <true/>
+    <!-- Pantalla de arranque en blanco generada por el propio sistema --
+         sin esto, iOS moderno exige un storyboard de verdad; un dict
+         vacío es la forma mínima soportada (iOS 13+) sin crear uno. -->
+    <key>UILaunchScreen</key>
+    <dict/>
+</dict>
+</plist>
