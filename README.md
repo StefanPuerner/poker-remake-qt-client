@@ -1,18 +1,48 @@
 # PokerRemake — cliente Qt
 
-Clientes gráficos (Qt Quick/QML) para jugar Texas Hold'em en red contra un
-servidor [PokerRemake](https://github.com/StefanPuerner/poker-remake), o sin
-conexión contra bots. Este repo contiene **los clientes** — de escritorio y
-móvil — y todo lo que hace falta para compilarlos, incluido el motor de
-juego, que va embebido para el modo sin conexión. No incluye el servidor.
+<p align="center">
+  <img src="assets/screenshots/inicio.png" width="600" alt="Pantalla de inicio de PokerRemake">
+</p>
+
+Cliente gráfico (Qt Quick/QML) de Texas Hold'em multijugador en red, pensado
+para jugar con amigos contra un servidor propio — o sin conexión, contra
+bots, si no hay ninguno a mano. Este repo trae **los dos clientes** —
+escritorio y móvil — y todo lo necesario para compilarlos, incluido el motor
+de juego (va embebido, para que el modo sin conexión funcione sin servidor).
+**No incluye el servidor**, que vive en
+[poker-remake](https://github.com/StefanPuerner/poker-remake).
+
+## Capturas
+
+<table>
+<tr>
+<td width="50%"><img src="assets/screenshots/mesa_escritorio.png" alt="Mesa en escritorio, showdown"><br><sub>Escritorio — showdown en la propia mesa</sub></td>
+<td width="50%"><img src="assets/screenshots/mesa_movil.png" alt="Mesa en móvil"><br><sub>Móvil — misma partida, interfaz táctil</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/screenshots/ranking.png" alt="Ranking global"><br><sub>Ranking global, con los cosméticos de cada jugador</sub></td>
+<td width="50%"><img src="assets/screenshots/tienda.png" alt="Tienda de tapetes y reversos de carta"><br><sub>Tienda — tapetes, bordes y reversos de carta</sub></td>
+</tr>
+</table>
+
+## Qué incluye
 
 - **Partidas**: crea o lista salas (públicas o privadas por código), juega,
   guarda y carga partidas, y ve las estadísticas al terminar (manos
   disputadas, mejor mano, racha de eliminaciones).
 - **Progresión**: Tréboles (la moneda del juego), nivel y experiencia, Elo en
-  el Ranking, marcos de avatar que se ganan jugando, tienda de cosméticos y
-  logros con títulos.
-- **Social**: amigos, chat directo, invitaciones a sala y perfil de jugador.
+  el Ranking, marcos de avatar que se ganan jugando, tienda de cosméticos
+  (marco, mesa y perfil) y logros con títulos y recompensas.
+- **Retos** (pestaña "Retos", marcada experimental): una escalera de 5
+  desafíos en solitario contra bots, más un reto diario y una racha semanal
+  de conexión con recompensa creciente.
+- **Social**: amigos, chat directo, invitaciones a sala y perfil público de
+  cada jugador.
+- **Bot con IA** (interruptor experimental en Crear Sala): los bots de la
+  sala pueden decidir su jugada llamando a una IA externa en vez del motor
+  local. Solo tiene efecto si el servidor al que te conectas lo tiene
+  configurado — contra cualquier otro servidor, el interruptor simplemente
+  no hace nada.
 - **Sin conexión**: partidas contra bots aunque no haya servidor, con tu
   cuenta o como invitado; la experiencia ganada se suma al volver a conectar.
 
@@ -113,7 +143,7 @@ solo un cliente: `cmake --build build --target PokerClientQt`.
 En "Inicio", entra con tu cuenta, crea una o juega como invitado. Con
 servidor, "Salas" lista las públicas, deja crear una nueva o unirse a una
 privada por código. Si no hay conexión con el servidor, Inicio ofrece jugar
-sin conexión contra bots. La pestaña Torneos está en "Próximamente".
+sin conexión contra bots.
 
 ## Estructura
 
@@ -136,6 +166,7 @@ include/local-qt/                — modo sin conexión: el motor en su propio h
 include/*.hpp, src/*.cpp         — motor de juego (reglas, bote, bots, evaluación de manos)
 cmake/                           — reglas de compilación de los clientes (ver abajo)
 assets/iconos/, assets/shaders/  — cosméticos del avatar y dithering de degradados
+assets/screenshots/              — capturas usadas en este README
 assets/fonts/                    — EB Garamond (SIL Open Font License)
 docs/guia/                       — guía de Qt Quick/QML usada para construir este cliente
 NOVEDADES.md                     — descripción del próximo Release (la usan los workflows)
@@ -148,8 +179,8 @@ desde allí con un script. El código y `cmake/` se editan allí, no aquí: la
 siguiente sincronización pisaría cualquier cambio hecho en este repo.
 `.sincronizado-desde-privado` lista los ficheros sueltos que trae el
 script. Lo propio de este repo es el README, `NOVEDADES.md`, la licencia,
-los workflows de release y el `CMakeLists.txt`, que se limita a incluir
-`cmake/`.
+los workflows de release, las capturas de `assets/screenshots/` y el
+`CMakeLists.txt`, que se limita a incluir `cmake/`.
 
 ## Documentación
 

@@ -1078,6 +1078,14 @@ QtObject {
         "dificultad_facil": { es: "Fácil", en: "Easy", de: "Leicht" },
         "dificultad_normal": { es: "Normal", en: "Normal", de: "Normal" },
         "dificultad_experto": { es: "Experto", en: "Expert", de: "Experte" },
+        "etiqueta_bots_ia": {
+            es: "Bots con IA (experimental)", en: "AI bots (experimental)", de: "KI-Bots (experimentell)"
+        },
+        "texto_ayuda_bots_ia": {
+            es: "Prototipo: los bots de esta sala deciden su jugada llamando a una IA externa en vez del motor local. Necesita que el servidor tenga configurada una clave de API; si falla, cae automáticamente al motor normal.",
+            en: "Prototype: bots in this room decide their move by calling an external AI instead of the local engine. Requires the server to have an API key configured; if it fails, it automatically falls back to the normal engine.",
+            de: "Prototyp: Bots in diesem Raum entscheiden ihren Zug über eine externe KI statt über die lokale Engine. Der Server benötigt einen konfigurierten API-Schlüssel; bei einem Fehler wird automatisch auf die normale Engine zurückgegriffen."
+        },
         "etiqueta_monte_fijo": { es: "Cantidad fija por raise", en: "Fixed raise amount", de: "Fester Erhöhungsbetrag" },
         "etiqueta_min_raise_obligatorio": {
             es: "Min-raise obligatorio", en: "Mandatory min-raise", de: "Mindest-Erhöhung Pflicht"
@@ -1364,6 +1372,17 @@ QtObject {
             en: "The game no longer exists: it ended while you were disconnected.",
             de: "Die Partie existiert nicht mehr: sie endete, während du getrennt warst."
         },
+        // Distinto del anterior a propósito (2026-09-30, bug real reportado): la
+        // partida SIGUE en marcha, solo que ya sin este jugador -- expulsado tras
+        // 60s sin volver, su asiento puede llevarlo ahora un bot. Antes se
+        // reutilizaba error_partida_ya_no_existe para esto también, y el jugador
+        // veía "la partida ya había terminado" de una partida que sus amigos
+        // seguían jugando en ese mismo instante.
+        "error_ya_no_estas_en_partida": {
+            es: "Ya no tienes sitio en esa partida: te expulsó por no volver a tiempo. Sigue en marcha sin ti.",
+            en: "You no longer have a seat in that game: you were removed for not returning in time. It's still going on without you.",
+            de: "Du hast keinen Platz mehr in dieser Partie: du wurdest entfernt, weil du nicht rechtzeitig zurückgekehrt bist. Sie läuft ohne dich weiter."
+        },
         "error_conexion_perdida": {
             es: "Se perdió la conexión con el servidor.", en: "Connection to the server was lost.",
             de: "Die Verbindung zum Server wurde unterbrochen."
@@ -1489,6 +1508,36 @@ QtObject {
         "logro_centurion_descripcion": {
             es: "Gana 100 manos en total.", en: "Win 100 hands in total.", de: "Gewinne insgesamt 100 Hände."
         },
+        // Bloque cosmético rápido (2026-10-01): tres "harder" + dos
+        // "negativos" (logros de humor, pedido explícito del usuario).
+        "logro_milenario_nombre": { es: "Milenario", en: "Millennial", de: "Millenar" },
+        "logro_milenario_descripcion": {
+            es: "Juega 1000 manos en total.", en: "Play 1000 hands in total.", de: "Spiele insgesamt 1000 Hände."
+        },
+        "logro_racha_invencible_nombre": { es: "Racha invencible", en: "Invincible Streak", de: "Unbesiegbare Serie" },
+        "logro_racha_invencible_descripcion": {
+            es: "Gana 10 manos oficiales seguidas sin retirarte.",
+            en: "Win 10 official hands in a row without folding.",
+            de: "Gewinne 10 offizielle Hände in Folge, ohne zu passen."
+        },
+        "logro_racha_faroles_nombre": { es: "Racha de faroles", en: "Bluffing Streak", de: "Bluff-Serie" },
+        "logro_racha_faroles_descripcion": {
+            es: "Gana 10 manos oficiales seguidas sin llegar a showdown.",
+            en: "Win 10 official hands in a row without reaching showdown.",
+            de: "Gewinne 10 offizielle Hände in Folge, ohne dass es zum Showdown kommt."
+        },
+        "logro_cobarde_detectado_nombre": { es: "Cobarde detectado", en: "Coward Detected", de: "Feigling entdeckt" },
+        "logro_cobarde_detectado_descripcion": {
+            es: "Retírate (fold) 200 veces en total.",
+            en: "Fold 200 times in total.",
+            de: "Passe insgesamt 200 Mal."
+        },
+        "logro_se_fue_por_tabaco_nombre": { es: "Se fue por tabaco", en: "Gone for Smokes", de: "Zigaretten holen gegangen" },
+        "logro_se_fue_por_tabaco_descripcion": {
+            es: "Abandona 10 partidas oficiales sin volver.",
+            en: "Abandon 10 official games without returning.",
+            de: "Verlasse 10 offizielle Partien, ohne zurückzukehren."
+        },
         "logro_reto_solitario_1_nombre": { es: "Aprendiz de mesa", en: "Table Apprentice", de: "Tischlehrling" },
         "logro_reto_solitario_1_descripcion": {
             es: "Gana el primer reto de Torneos Solitario (2 bots, fácil).",
@@ -1568,12 +1617,22 @@ QtObject {
         "objeto_titulo_rey_solitario_nombre": {
             es: "Rey del Solitario", en: "King of Solo Play", de: "König des Solospiels"
         },
+        // Bloque cosmético rápido (2026-10-01): 5 logros nuevos, 5 títulos.
+        "objeto_titulo_milenario_nombre": { es: "Milenario", en: "Millennial", de: "Millenar" },
+        "objeto_titulo_invencible_nombre": { es: "Invencible", en: "Invincible", de: "Unbesiegbar" },
+        "objeto_titulo_farol_seguido_nombre": {
+            es: "Un farol detrás de otro", en: "One Bluff After Another", de: "Ein Bluff nach dem anderen"
+        },
+        "objeto_titulo_cobarde_nombre": { es: "Cobarde", en: "Coward", de: "Feigling" },
+        "objeto_titulo_tabaco_nombre": { es: "El del tabaco", en: "Gone for Smokes", de: "Zigaretten holen" },
         // Comprables sueltos (sin logro detrás).
         "objeto_trenzado_nombre": { es: "Trenzado", en: "Braided", de: "Geflochten" },
         "objeto_grabado_nombre": { es: "Grabado", en: "Engraved", de: "Graviert" },
         "objeto_facetado_nombre": { es: "Facetado", en: "Faceted", de: "Facettiert" },
         "objeto_canto_ficha_nombre": { es: "Canto de ficha", en: "Chip Edge", de: "Chip-Kante" },
         "objeto_pulso_nombre": { es: "Pulso", en: "Pulse", de: "Puls" },
+        "objeto_destello_nombre": { es: "Destello", en: "Flash", de: "Blitz" },
+        "objeto_onda_nombre": { es: "Onda", en: "Ripple", de: "Welle" },
         "objeto_gema_roja_nombre": { es: "Gema engastada (roja)", en: "Set Gem (red)", de: "Gefasster Edelstein (rot)" },
         "objeto_gema_azul_nombre": {
             es: "Gema engastada (azul)", en: "Set Gem (blue)", de: "Gefasster Edelstein (blau)"
@@ -1602,6 +1661,8 @@ QtObject {
         "objeto_reverso_carmesi_nombre": { es: "Carmesí", en: "Crimson", de: "Karmesinrot" },
         "objeto_reverso_obsidiana_nombre": { es: "Obsidiana", en: "Obsidian", de: "Obsidian" },
         "objeto_reverso_taberna_nombre": { es: "Taberna", en: "Tavern", de: "Taverne" },
+        "objeto_reverso_porcelana_nombre": { es: "Porcelana dorada", en: "Golden Porcelain", de: "Goldenes Porzellan" },
+        "objeto_reverso_plata_nombre": { es: "Plata", en: "Silver", de: "Silber" },
         // Tapetes de mesa (2026-09-19).
         "objeto_tapete_rombos_nombre": { es: "Rombos", en: "Diamonds", de: "Rauten" },
         "objeto_tapete_palos_nombre": { es: "Palos", en: "Suits", de: "Farben" },
@@ -1610,6 +1671,8 @@ QtObject {
         "objeto_tapete_rayas_nombre": { es: "Rayas", en: "Stripes", de: "Streifen" },
         "objeto_tapete_casino_nombre": { es: "Casino", en: "Casino", de: "Casino" },
         "objeto_tapete_madera_nombre": { es: "Madera", en: "Wood", de: "Holz" },
+        // Borde de tapete (capas de tapete, 2026-09-30).
+        "objeto_borde_madera_nombre": { es: "Borde de madera", en: "Wood border", de: "Holzrand" },
         "tapete_variante_verde": { es: "Verde", en: "Green", de: "Grün" },
         "tapete_variante_granate": { es: "Granate", en: "Garnet", de: "Granat" },
         "tapete_variante_azul": { es: "Azul", en: "Blue", de: "Blau" },
@@ -1622,6 +1685,7 @@ QtObject {
         "tapete_variante_roble_oscuro": { es: "Roble oscuro", en: "Dark oak", de: "Dunkle Eiche" },
         "tapete_variante_nogal": { es: "Nogal", en: "Walnut", de: "Nussbaum" },
         "popup_tapete_descripcion_pano": { es: "Elige el color del paño. Puedes cambiarlo cuando quieras, sin coste.", en: "Pick the felt colour. You can change it any time, at no cost.", de: "Wähle die Farbe des Tuchs. Du kannst sie jederzeit kostenlos ändern." },
+        "popup_palo_descripcion": { es: "Elige el palo con el que se compone tu mano. Puedes cambiarlo cuando quieras, sin coste.", en: "Pick the suit your hand is made of. You can change it any time, at no cost.", de: "Wähle die Farbe, mit der deine Hand zusammengestellt wird. Du kannst sie jederzeit kostenlos ändern." },
         "popup_tapete_descripcion_madera": { es: "Elige el tipo de madera. Puedes cambiarlo cuando quieras, sin coste.", en: "Pick the wood. You can change it any time, at no cost.", de: "Wähle das Holz. Du kannst es jederzeit kostenlos ändern." },
         "texto_ver_mi_tapete": {
             es: "Ver mi tapete (si no, el del anfitrión)", en: "Show my table (otherwise the host's)",

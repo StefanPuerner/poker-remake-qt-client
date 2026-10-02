@@ -42,8 +42,17 @@ Item {
     // Tus cartas reales: se pintan en tu asiento (aquí no hay barra inferior).
     property string miCarta1: ""
     property string miCarta2: ""
+    // Mostrar/ocultar tus propias cartas (2026-10-01) -- control puramente
+    // local, ver el comentario gemelo en qml/Main.qml.
+    property bool cartasOcultas: false
+    // Pulsar tus cartas dentro del asiento pide alternar el interruptor de
+    // arriba (2026-10-02) -- Mesa solo relaya la señal de Asiento hacia
+    // quien de verdad posee el estado (Main.qml).
+    signal alternarCartasOcultas()
     // Tapete a pintar ("" = el del tema) -- lo resuelve Main.qml.
     property string tapete: ""
+    // Borde de tapete (capas de tapete, 2026-09-30) -- mismo criterio.
+    property string tapeteBorde: ""
 
     // Índice del propio jugador dentro de "jugadores" — se usa para
     // rotar todos los asientos de forma que el propio siempre caiga
@@ -467,11 +476,24 @@ Item {
         }
         mesa.muestras = m;
     }
+    // Bug real (2026-09-30, "sin animación de empate", mismo arreglo que
+    // escritorio): el servidor manda un GANADOR_BOTE por CADA ganador de un
+    // empate -- esta función se llama una vez por cabeza. Antes apagaba a
+    // todos los demás en cada llamada, así que con un empate solo quedaba
+    // resaltado el último en llegar. Ahora acumula (enciende, nunca apaga;
+    // eso lo hace recogerCartas()/reiniciarSinAnimar() al empezar la mano
+    // siguiente) y hace lo mismo con "mejores", por el mismo motivo y
+    // porque un jugador puede ganar varios botes con combinaciones
+    // distintas en la misma mano.
     function marcarGanador(nombre, mejores) {
         var m = Object.assign({}, mesa.muestras);
-        for (var k in m) m[k] = Object.assign({}, m[k], { ganador: k === nombre });
+        if (m[nombre]) m[nombre] = Object.assign({}, m[nombre], { ganador: true });
         mesa.muestras = m;
-        mesa.mejoresGanadora = mejores || [];
+        var combinadas = mesa.mejoresGanadora.slice();
+        for (var i = 0; i < (mejores || []).length; i++) {
+            if (combinadas.indexOf(mejores[i]) < 0) combinadas.push(mejores[i]);
+        }
+        mesa.mejoresGanadora = combinadas;
     }
     // Limpia el showdown y el estado de la mano SIN animar (mano nueva con las animaciones apagadas,
     // o tras reconectar/resincronizar): los asientos vuelven a su aspecto normal de golpe.
@@ -635,6 +657,7 @@ Item {
     Tapete {
         anchors.fill: parent
         preset: mesa.tapete
+        bordePreset: mesa.tapeteBorde
     }
 
     // Posición y tamaño del bloque central (comunitarias + bote + botes del showdown). Por defecto va
@@ -989,9 +1012,10 @@ Item {
                 esBb: posicionador.nombre === mesa.bbMostrado
                 esPropio: posicionador.nombre === mesa.miNombreJugador
                 reversoActivo: mesa.reversoActivo()
-                miReversoSkin: mesa.miReversoSkin
                 miCarta1: mesa.miCarta1
                 miCarta2: mesa.miCarta2
+                cartasOcultas: mesa.cartasOcultas
+                onAlternarCartasOcultas: mesa.alternarCartasOcultas()
                 muestra: posicionador.muestra
                 allIn: mesa.allIns.indexOf(posicionador.nombre) >= 0
                 eliminado: mesa.eliminados.indexOf(posicionador.nombre) >= 0

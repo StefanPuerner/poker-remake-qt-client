@@ -124,7 +124,13 @@ class NetworkClient : public QObject {
                              int tipoLimite, bool aplicarMinRaise, int monteFijo,
                              int dificultadBots, bool permitirRecompra,
                              bool rellenarConBots, bool abiertaTrasInicio,
-                             bool preguntarExtension, bool temporizadorVoto) {
+                             bool preguntarExtension, bool temporizadorVoto,
+                             // Prototipo experimental (ver BotLLM/TipoBots en el
+                             // servidor): true = los bots de esta sala deciden
+                             // vía una IA externa en vez del motor local. Al
+                             // final y con default para no romper ninguna otra
+                             // llamada existente a crearSala().
+                             bool tipoBotsIA = false) {
     // El sala_id de verdad no se conoce hasta que llegue SALA_CREADA (más
     // abajo, en el bucle de readyRead) -- limpiar aquí lo de una sesión
     // anterior evita usarlo por error si la conexión se cae ANTES de esa
@@ -148,6 +154,7 @@ class NetworkClient : public QObject {
         {"abierta_tras_inicio", abiertaTrasInicio ? "1" : "0"},
         {"preguntar_extension", preguntarExtension ? "1" : "0"},
         {"temporizador_voto",  temporizadorVoto ? "1" : "0"},
+        {"tipo_bots",          tipoBotsIA ? "1" : "0"},
         {"token",              token_.toStdString()},
     }));
   }
@@ -514,6 +521,12 @@ class NetworkClient : public QObject {
           m["rachaUltimoDia"] = net::jsonGetInt(payload, "racha_ultimo_dia");
           m["rachaDiaActual"] = net::jsonGetInt(payload, "racha_dia_actual");
           m["retoDiarioUltimoDia"] = net::jsonGetInt(payload, "reto_diario_ultimo_dia");
+          // Bloque de logros 2026-10-01, expuestas 2026-10-02 para "cuánto
+          // te queda" en Logros (Milenario/Racha invencible/Racha de
+          // faroles/Cobarde detectado/Se fue por tabaco).
+          m["rachaFaroles"] = net::jsonGetInt(payload, "racha_faroles");
+          m["vecesRetirado"] = net::jsonGetInt(payload, "veces_retirado");
+          m["vecesAbandonada"] = net::jsonGetInt(payload, "veces_abandonada");
           estadisticasCuenta_ = m;
           emit estadisticasCuentaCambiaron();
         });
@@ -705,6 +718,7 @@ class NetworkClient : public QObject {
           m["acabadoSuperior"] = QString::fromStdString(net::jsonGetStr(payload, "acabado_superior"));
           m["reversoCarta"] = QString::fromStdString(net::jsonGetStr(payload, "reverso_carta"));
           m["tapete"] = QString::fromStdString(net::jsonGetStr(payload, "tapete"));
+          m["tapeteBorde"] = QString::fromStdString(net::jsonGetStr(payload, "tapete_borde"));
           loadoutMarco_ = m;
           emit loadoutMarcoCambiaron();
         });
@@ -1194,8 +1208,10 @@ class NetworkClient : public QObject {
   /// Tapete de mesa del ANFITRIÓN, tal como lo manda GAME_STATE ("" = ninguno).
   /// Señal aparte para no ensanchar estadoMesaActualizado(), que atraviesa
   /// también el modo offline (LocalGameClient la declara igual, sin emitirla:
-  /// paridad de API, ver docs/plan-modo-offline.md).
-  void tapeteAnfitrionActualizado(QString tapete);
+  /// paridad de API, ver docs/plan-modo-offline.md). "borde": capas de
+  /// tapete (2026-09-30) -- segundo valor en la MISMA señal en vez de una
+  /// nueva, mismo criterio que otros campos añadidos después (solo_vs_bots).
+  void tapeteAnfitrionActualizado(QString tapete, QString borde);
   /**
    * @brief Una línea para el historial de partida.
    * @param tipo Categoría para colorear el punto de la entrada en Main.qml:
@@ -2334,6 +2350,19 @@ class NetworkClient : public QObject {
                                 " manos", "sistema");
               emit partidaExtendida(manos, nuevoObjetivo);
             } else if (evento == "FIN_PARTIDA" || evento == "FIN_PARTIDA_LIMITE") {
+              // Bug real reportado (2026-09-30): al terminar la partida el
+              // servidor no cierra el socket, simplemente abandona la
+              // conexión al salir el hilo de la sala (ver ejecutarSala()) --
+              // pero este evento SÍ es el aviso de que lo que viene a
+              // continuación (el cierre real) es esperado, igual que
+              // GUARDANDO_PARTIDA/ABANDONASTE ya hacen. Sin esto,
+              // desconexionEsperada_ se quedaba en false tras un fin de
+              // partida normal, y el siguiente error de socket (o el
+              // vigilante de latido, a los 20s) lanzaba una reconexión de
+              // verdad -- que el servidor rechazaba con "la partida ya
+              // había terminado" unos segundos después de haber salido ya
+              // con normalidad.
+              desconexionEsperada_ = true;
               QString ganador =
                   QString::fromStdString(net::jsonGetStr(payload, "ganador"));
               int saldo = net::jsonGetInt(payload, "saldo");
@@ -2446,7 +2475,8 @@ class NetworkClient : public QObject {
             emit estadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
                                        dealer, sb, bb, soloVsBots);
             emit tapeteAnfitrionActualizado(
-                QString::fromStdString(net::jsonGetStr(payload, "tapete")));
+                QString::fromStdString(net::jsonGetStr(payload, "tapete")),
+                QString::fromStdString(net::jsonGetStr(payload, "tapete_borde")));
           } else if (tipo == "TU_TURNO") {
             int bote = net::jsonGetInt(payload, "bote");
             int igualar = net::jsonGetInt(payload, "igualar");

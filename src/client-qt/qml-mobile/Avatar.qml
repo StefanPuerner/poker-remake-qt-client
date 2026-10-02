@@ -333,6 +333,84 @@ Item {
         }
     }
 
+    // ── Efecto "Destello" (rediseñado 2026-10-02 -- la versión original
+    // (2026-10-01) solo variaba la OPACIDAD del mismo aro que Pulso, con
+    // otro ritmo: "una versión rara de Pulso" (feedback del usuario).
+    // Esta versión tiene movimiento espacial de verdad: una chispa (+ una
+    // segunda más tenue, un paso por detrás) da una vuelta rápida al
+    // anillo y se detiene, en vez de todo el anillo cambiando de brillo
+    // a la vez -- mismo mecanismo que el barrido de Platino (un Item
+    // centrado que rota), pero un punto que recorre el borde, no un
+    // gradiente ancho y continuo.
+    Item {
+        id: destelloChispa
+        visible: avatar.efecto === "destello"
+        anchors.centerIn: parent
+        width: avatar.tamano * 1.24
+        height: width
+        transformOrigin: Item.Center
+        SequentialAnimation on rotation {
+            running: avatar.efecto === "destello"
+            loops: Animation.Infinite
+            NumberAnimation { from: 0; to: 360; duration: 900; easing.type: Easing.InOutQuad }
+            PauseAnimation { duration: 1800 }
+        }
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: -height / 2
+            width: avatar.tamano * 0.12
+            height: width
+            radius: width / 2
+            color: avatar.tierActualColores[1]
+        }
+    }
+    Item {
+        visible: avatar.efecto === "destello"
+        anchors.centerIn: parent
+        width: destelloChispa.width
+        height: width
+        rotation: destelloChispa.rotation - 22
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: -height / 2
+            width: avatar.tamano * 0.08
+            height: width
+            radius: width / 2
+            color: avatar.tierActualColores[1]
+            opacity: 0.45
+        }
+    }
+
+    // ── Efecto "Onda" (2026-10-01) -- un aro que crece hacia fuera
+    // mientras se desvanece y vuelve a su tamaño para repetir, como un
+    // pin de sonar -- lenguaje de movimiento/expansión, distinto de
+    // Pulso (opacidad quieta) y del barrido giratorio de Platino
+    // (rotación, automático, no se compra).
+    Rectangle {
+        visible: avatar.efecto === "onda"
+        anchors.centerIn: parent
+        width: avatar.tamano * 1.24
+        height: width
+        radius: width / 2
+        color: "transparent"
+        border.width: Math.max(2, avatar.tamano * 0.05)
+        border.color: avatar.tierActualColores[1]
+        SequentialAnimation on scale {
+            running: avatar.efecto === "onda"
+            loops: Animation.Infinite
+            NumberAnimation { from: 1.0; to: 1.5; duration: 1400; easing.type: Easing.OutSine }
+            PropertyAction { value: 1.0 }
+            PauseAnimation { duration: 200 }
+        }
+        SequentialAnimation on opacity {
+            running: avatar.efecto === "onda"
+            loops: Animation.Infinite
+            NumberAnimation { from: 0.6; to: 0.0; duration: 1400; easing.type: Easing.OutSine }
+            PropertyAction { value: 0.6 }
+            PauseAnimation { duration: 200 }
+        }
+    }
+
     // ── Brillo exclusivo de Platino -- lo distingue de Plata a simple
     // vista sin necesitar la parafernalia de campeón (sin halo, sin
     // insignia): un barrido lento y sutil sobre el propio anillo.
@@ -897,15 +975,24 @@ Item {
     // sin tocar nada de aquí abajo. Reutiliza los mismos 52 PNG de la
     // baraja (carta_<rango>_<palo>.png) -- ningún icono nuevo hace falta
     // para una decoración de este tipo.
+    // Rangos fijos por decoración (2026-10-01, "elegir palo") -- la
+    // identidad de la mano es la secuencia de rangos, no el palo.
+    // "mano_real"/"escalera_diamantes" eligen palo al equiparse
+    // (acabadoSuperior, ver PopupPalo.qml) -- "" = el de siempre (picas/
+    // diamantes), para que una cuenta ya equipada de antes no cambie de
+    // aspecto sin que nadie lo pida. "cuatro_ases" no tiene un palo que
+    // elegir (ya es multi-palo por diseño: un as de cada uno), su s:
+    // sigue fijo.
+    readonly property var rangosCartas: ({
+        "mano_real": ["10", "jack", "queen", "king", "ace"],
+        "escalera_diamantes": ["3", "4", "5", "6", "7"]
+    })
+    readonly property var paloPorDefecto: ({"mano_real": "picas", "escalera_diamantes": "diamantes"})
     readonly property var composicionesCartas: ({
-        "mano_real": [
-            {r: "10", s: "picas"}, {r: "jack", s: "picas"}, {r: "queen", s: "picas"},
-            {r: "king", s: "picas"}, {r: "ace", s: "picas"}
-        ],
-        "escalera_diamantes": [
-            {r: "3", s: "diamantes"}, {r: "4", s: "diamantes"}, {r: "5", s: "diamantes"},
-            {r: "6", s: "diamantes"}, {r: "7", s: "diamantes"}
-        ],
+        "mano_real": avatar.rangosCartas["mano_real"].map(r => (
+            {r: r, s: avatar.acabadoSuperior || avatar.paloPorDefecto["mano_real"]})),
+        "escalera_diamantes": avatar.rangosCartas["escalera_diamantes"].map(r => (
+            {r: r, s: avatar.acabadoSuperior || avatar.paloPorDefecto["escalera_diamantes"]})),
         "cuatro_ases": [
             {r: "ace", s: "treboles"}, {r: "ace", s: "diamantes"},
             {r: "ace", s: "corazones"}, {r: "ace", s: "picas"}

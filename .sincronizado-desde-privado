@@ -21,13 +21,16 @@ include/Analyzer.hpp
 include/Baraja.hpp
 include/Bote.hpp
 include/Bot.hpp
+include/BotLLM.hpp
 include/Carta.hpp
 include/DecisionEngine.hpp
 include/FileManager.hpp
 include/GameTypes.hpp
 include/HandPredictor.hpp
 include/IGameObserver.hpp
+include/ILlmClient.hpp
 include/Interfaz.hpp
+include/LlmHttpClient.hpp
 include/LocalObserver.hpp
 include/Logger.hpp
 include/Mesa.hpp

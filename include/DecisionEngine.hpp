@@ -44,11 +44,31 @@ struct ContextoBot {
   const std::map<std::string, PerfilJugador>* perfiles = nullptr;  ///< Solo EXPERTO.
 };
 
+/// Resultado numérico "duro" que el motor ya calcula para decidir, expuesto
+/// sin decidir una acción -- para caminos de decisión externos (ver BotLLM)
+/// que quieren este contexto en vez de recalcularlo a su manera. Usa
+/// exactamente los mismos helpers internos que pensar(): no es un cálculo
+/// paralelo ni puede desviarse del comportamiento real del motor.
+struct ContextoNumerico {
+  bool   esPreflop = true;
+  double percentilPreflop = 0.5;  ///< Válido si esPreflop (0-1, 1 = mejor mano inicial posible).
+  double equity = 0.5;            ///< Válido si !esPreflop: equity contra el rango ponderado del rival.
+  double fuerzaAhora = 0.5;       ///< Válido si !esPreflop: fuerza SIN ponderar sobre la mesa actual.
+  double equityRequerida = 0.0;   ///< Equity mínima para igualar (0 si no hay apuesta pendiente).
+  bool   proyecto = false;        ///< La equity supera con mucho la fuerza actual (mano por hacer).
+};
+
 class DecisionEngine {
  public:
   /// Punto de entrada principal.
   static Accion pensar(const GameState& state, const std::vector<Carta>& cartasPropias,
                        const ContextoBot& ctx);
+
+  /// Mismo cálculo que pensar() (equity vs rango ponderado, pot odds,
+  /// percentil preflop) pero sin decidir una acción -- ver ContextoNumerico.
+  static ContextoNumerico evaluarContexto(const GameState& state,
+                                          const std::vector<Carta>& cartasPropias,
+                                          const ContextoBot& ctx);
 
   /// Compatibilidad: usa state.reglas.dificultadBots como dificultad.
   static Accion pensarAccion(const GameState& state, Comportamiento nivel, int saldo,

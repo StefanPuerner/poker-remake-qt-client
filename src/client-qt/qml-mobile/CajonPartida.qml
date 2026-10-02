@@ -66,6 +66,13 @@ Rectangle {
     property bool puedeMostrarCartas: false
     signal mostrarCartasPedido()
     signal votoCerrado()
+    // Mostrar/ocultar tus propias cartas (2026-10-01) -- distinto de
+    // puedeMostrarCartas/mostrarCartasPedido (esas son "enseñar la mano a
+    // los demás" al retirarte/ganar sin showdown); esto es privacidad
+    // LOCAL, nunca sale de tu pantalla. Mismo patrón "señal, Main.qml
+    // actualiza la fuente de verdad" que decisionEnviada()/recompraPedida().
+    property bool cartasOcultas: false
+    signal alternarCartasOcultas()
 
     // Código estable (no el texto mostrado, que se traduce vía
     // nombrePestana()) -- ver el comentario largo junto a
@@ -208,10 +215,20 @@ Rectangle {
                 onAbrirAjustes: cajon.abrirAjustes()
             }
             IconoChuleta {
+                id: iconoChuletaCajon
                 anchors.right: iconoAjustesCajon.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: 8 * Tema.escala
                 onAbrirChuleta: cajon.abrirChuleta()
+            }
+            // Mostrar/ocultar tus propias cartas (2026-10-01) -- control
+            // puramente local, ver el comentario gemelo en qml/Main.qml.
+            IconoOjo {
+                anchors.right: iconoChuletaCajon.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: 8 * Tema.escala
+                oculto: cajon.cartasOcultas
+                onToggled: cajon.alternarCartasOcultas()
             }
         }
 
@@ -327,7 +344,11 @@ Rectangle {
                             font.pixelSize: 9 * Tema.escala
                         }
                         Text {
-                            text: modelData.val !== "" ? modelData.val : "—"
+                            // "cartasOcultas" (2026-10-01): la estimación delata la mano tanto
+                            // como verla -- mismo criterio que esconder el HUD de combo en
+                            // escritorio (ahí sí se oculta la fila entera; aquí la pestaña
+                            // "Estim." sigue visitable, solo cambia el valor a un placeholder).
+                            text: cajon.cartasOcultas ? "···" : (modelData.val !== "" ? modelData.val : "—")
                             color: modelData.color
                             font.bold: true
                             font.family: Tema.fuenteElegante

@@ -211,6 +211,41 @@ ApplicationWindow {
                         }
                     }
                 }
+                // Capas de tapete (2026-09-30): el anillo de madera ya no va
+                // integrado en la base (tapete_casino/tapete_madera de la
+                // lista de arriba ya no lo traen) -- es el borde
+                // independiente "borde_madera", combinable con CUALQUIER
+                // base. Sección aparte para verlo claramente.
+                Text {
+                    text: "BORDE DE TAPETE (independiente de la base, combinable con cualquiera)"
+                    color: Tema.colorAccent
+                    font.pixelSize: 12
+                    font.letterSpacing: 1
+                }
+                Flow {
+                    width: parent.width
+                    spacing: 26
+                    Repeater {
+                        model: ["tapete_rombos:verde|borde_madera:roble", "tapete_lino:violeta|borde_madera:nogal",
+                                "tapete_casino:|borde_madera:roble_oscuro", "tapete_madera:nogal|borde_madera:nogal"]
+                        delegate: Column {
+                            required property string modelData
+                            readonly property var partes: modelData.split("|")
+                            spacing: 8
+                            Tapete {
+                                width: 420
+                                height: 220
+                                preset: parent.partes[0]
+                                bordePreset: parent.partes[1]
+                            }
+                            Text {
+                                text: modelData
+                                color: Tema.colorTextoTenue
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+                }
             }
 
             // ── Acabado por material (fase 1, 2026-09-10) ────────────────

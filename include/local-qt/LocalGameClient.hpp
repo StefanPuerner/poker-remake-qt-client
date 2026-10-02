@@ -608,7 +608,7 @@ class LocalGameClient : public QObject {
                              bool soloVsBots);
   /// Paridad con NetworkClient -- nunca se emite en modo local (no hay
   /// anfitrión con tapete propio: la mesa usa el del jugador).
-  void tapeteAnfitrionActualizado(QString tapete);
+  void tapeteAnfitrionActualizado(QString tapete, QString borde);
   /// Paridad con NetworkClient -- nunca se emite en modo local (no hay reconexión).
   void resincronizado();
   void esMiTurno(int bote, int igualar, int miSaldo, int miApuesta, int timeoutMs,

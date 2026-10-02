@@ -39,6 +39,8 @@ Item {
     property string miReversoSkin: ""
     // Tapete a pintar ("" = el del tema) -- lo resuelve Main.qml.
     property string tapete: ""
+    // Borde de tapete (capas de tapete, 2026-09-30) -- mismo criterio.
+    property string tapeteBorde: ""
 
     // Índice del propio jugador dentro de "jugadores" — se usa para
     // rotar todos los asientos de forma que el propio siempre caiga
@@ -463,11 +465,27 @@ Item {
         }
         mesa.muestras = m;
     }
+    // Bug real (2026-09-30, "sin animación de empate"): el servidor manda un
+    // GANADOR_BOTE por CADA ganador de un empate (repartirBotes() reparte el
+    // mismo bote entre varios si hay empate exacto en la cima) -- esta
+    // función se llama una vez por cabeza. Antes ponía "ganador" a TODOS los
+    // demás en false en cada llamada, así que con un empate de dos o más el
+    // segundo GANADOR_BOTE le quitaba el halo al primero: solo se veía
+    // resaltado el último en llegar. Ahora acumula: solo enciende al nuevo,
+    // nunca apaga a los que ya estaban (los apaga recogerCartas()/
+    // reiniciarSinAnimar() al empezar la mano siguiente). "mejores" también
+    // se acumula en vez de pisarse, por el mismo motivo -- y porque un
+    // jugador puede ganar varios botes (side pots) con combinaciones
+    // distintas en la misma mano.
     function marcarGanador(nombre, mejores) {
         var m = Object.assign({}, mesa.muestras);
-        for (var k in m) m[k] = Object.assign({}, m[k], { ganador: k === nombre });
+        if (m[nombre]) m[nombre] = Object.assign({}, m[nombre], { ganador: true });
         mesa.muestras = m;
-        mesa.mejoresGanadora = mejores || [];
+        var combinadas = mesa.mejoresGanadora.slice();
+        for (var i = 0; i < (mejores || []).length; i++) {
+            if (combinadas.indexOf(mejores[i]) < 0) combinadas.push(mejores[i]);
+        }
+        mesa.mejoresGanadora = combinadas;
     }
     // Limpia el showdown y el estado de la mano SIN animar (mano nueva con las animaciones apagadas,
     // o tras reconectar/resincronizar): los asientos vuelven a su aspecto normal de golpe.
@@ -631,6 +649,7 @@ Item {
     Tapete {
         anchors.fill: parent
         preset: mesa.tapete
+        bordePreset: mesa.tapeteBorde
     }
 
     // Centro de la mesa: cartas comunitarias arriba, bote debajo.

@@ -814,6 +814,45 @@ Accion pensarInterno(const GameState& state, const std::vector<Carta>& cartasPro
 
 }  // namespace
 
+ContextoNumerico DecisionEngine::evaluarContexto(const GameState& state,
+                                                 const std::vector<Carta>& cartasPropias,
+                                                 const ContextoBot& ctx) {
+  ContextoNumerico out;
+  if (cartasPropias.size() < 2) return out;
+  const Rasgos rg = rasgosDe(ctx.dificultad);
+  const int aPagar = std::max(0, state.apuestaAIgualar - state.miApuestaEnRonda);
+
+  if (state.rondaActual == Rondas::PREFLOP || state.cartasComunitarias.size() < 3) {
+    out.esPreflop = true;
+    out.percentilPreflop = percentilPreflop(cartasPropias[0], cartasPropias[1]);
+    out.equity = out.fuerzaAhora = out.percentilPreflop;
+    return out;
+  }
+
+  out.esPreflop = false;
+  const std::array<int, 2> mias = {codificar(cartasPropias[0]), codificar(cartasPropias[1])};
+  std::vector<int> mesa;
+  mesa.reserve(5);
+  for (const Carta& c : state.cartasComunitarias) mesa.push_back(codificar(c));
+
+  const int N = std::max(2, state.numJugadoresActivos);
+  const int rivales = N - 1;
+  const double potPrevio = static_cast<double>(std::max(1, state.boteTotal - aPagar));
+  const double b = static_cast<double>(aPagar) / potPrevio;
+  const double gamma = calcularGamma(state, b, ctx, rg);
+
+  Evaluacion ev = evaluarContraRango(mias, mesa, rivales, gamma, rg.simulaciones);
+  out.equity = ev.equity;
+  out.fuerzaAhora = ev.fuerzaAhora;
+  out.proyecto = state.rondaActual != Rondas::RIVER && ev.equity - ev.fuerzaAhora >= 0.08 &&
+                ev.fuerzaAhora < 0.75;
+  if (aPagar > 0) {
+    const double potFinal = static_cast<double>(state.boteTotal + aPagar);
+    out.equityRequerida = static_cast<double>(aPagar) / potFinal;
+  }
+  return out;
+}
+
 Accion DecisionEngine::pensar(const GameState& state, const std::vector<Carta>& cartasPropias,
                               const ContextoBot& ctx) {
   const int saldo = state.miSaldo;

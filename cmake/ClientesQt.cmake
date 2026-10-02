@@ -211,6 +211,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PopupAcabado.qml
             src/client-qt/qml/PopupTemas.qml
             src/client-qt/qml/PopupTapete.qml
+            src/client-qt/qml/PopupPalo.qml
             src/client-qt/qml/PopupSonidos.qml
             src/client-qt/qml/CajaTitulo.qml
             src/client-qt/qml/PopupFuncionalidadesAdmin.qml
@@ -265,6 +266,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             assets/iconos/reverso_carmesi.png
             assets/iconos/reverso_obsidiana.png
             assets/iconos/reverso_taberna.png
+            assets/iconos/reverso_porcelana.png
+            assets/iconos/reverso_plata.png
             # Tapetes de mesa (2026-09-19), ver scripts/generar_iconos.sh tapetes.
             assets/tapetes/madera.png
             assets/tapetes/tesela_rombos.png
@@ -559,6 +562,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/PopupAcabado.qml
             src/client-qt/qml-mobile/PopupTemas.qml
             src/client-qt/qml-mobile/PopupTapete.qml
+            src/client-qt/qml-mobile/PopupPalo.qml
             src/client-qt/qml-mobile/PopupSonidos.qml
         RESOURCES
             # Mismo motivo que PokerClientQt más arriba -- se quedó fuera
@@ -617,6 +621,8 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             assets/iconos/reverso_carmesi.png
             assets/iconos/reverso_obsidiana.png
             assets/iconos/reverso_taberna.png
+            assets/iconos/reverso_porcelana.png
+            assets/iconos/reverso_plata.png
             # Tapetes de mesa (2026-09-19), ver scripts/generar_iconos.sh tapetes.
             assets/tapetes/madera.png
             assets/tapetes/tesela_rombos.png

@@ -45,14 +45,14 @@ class Bot : public Player {
   // ── Perfilado de rivales (solo activo en dificultad EXPERTO) ─────────────
 
   /// Marca el inicio de una nueva mano para el jugador @p nombre.
-  void iniciarManoJugador(const std::string& nombre);
+  void iniciarManoJugador(const std::string& nombre) override;
 
   /// Registra una acción de @p nombre para actualizar su perfil estadístico.
   ///
   /// @p cantidad y @p boteAntes (importe puesto y bote justo antes de esa
   /// acción) permiten medir el tamaño de sus apuestas; 0 = no disponible.
   void registrarAccion(const std::string& nombre, TipoAccion accion,
-                       Rondas ronda, bool hayApuesta, int cantidad = 0, int boteAntes = 0);
+                       Rondas ronda, bool hayApuesta, int cantidad = 0, int boteAntes = 0) override;
 
   /// @return Mapa de perfiles estadísticos indexado por nombre de jugador.
   const std::map<std::string, PerfilJugador>& getPerfiles() const {

@@ -49,6 +49,20 @@ class Player {
    */
   virtual bool esHumano() const { return false; }
 
+  /**
+   * @brief Hooks opcionales de perfilado de rivales (ver Bot/BotLLM).
+   *
+   * No-op por defecto (Persona, NetworkPlayer no los necesitan). Partida los
+   * llama para TODOS los jugadores en cada mano/acción, no solo para Bot --
+   * así cualquier Player que quiera acumular un perfil estadístico de sus
+   * rivales (como BotLLM) solo necesita sobreescribirlos, sin que Partida
+   * sepa nada de su tipo concreto.
+   */
+  virtual void iniciarManoJugador(const std::string& /*nombre*/) {}
+  virtual void registrarAccion(const std::string& /*nombre*/, TipoAccion /*accion*/,
+                               Rondas /*ronda*/, bool /*hayApuesta*/,
+                               int /*cantidad*/ = 0, int /*boteAntes*/ = 0) {}
+
   // ── Getters ───────────────────────────────────────────────────────────────
 
   [[nodiscard]] std::string getNombre() const { return nombre_; }

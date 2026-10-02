@@ -708,6 +708,25 @@ ApplicationWindow {
         triggeredOnStart: true
         onTriggered: redcliente.comprobarConexion(ventana.servidorHost, ventana.servidorPuerto)
     }
+    // Vigilante del socket de presencia -- bug real reportado 2026-09-30:
+    // "un amigo aparece/desaparece de conectado sin entrar a ninguna
+    // partida, solo estando en los menús". Causa: conectarPresencia() se
+    // llama solo en puntos concretos (login, error de sala...), NUNCA se
+    // reintenta sola si el socket se cae por su cuenta (NAT/router que
+    // tira una conexión inactiva, blip de red) -- NetworkClient se limita
+    // a poner presenciaConectada_ = false y ahí se queda, sin avisar a
+    // nadie ni reintentar, hasta el próximo evento que llame a
+    // conectarPresencia() explícitamente (que puede no llegar nunca si el
+    // jugador se queda quieto en la misma pantalla). Esta sonda cubre ese
+    // hueco: conectarPresencia() ya es un no-op si sigue conectada
+    // (ver su guarda interna), así que llamarla de más aquí es inofensivo.
+    // Mismo arreglo en escritorio (qml/Main.qml).
+    Timer {
+        interval: 20000
+        running: ventana.tokenSesion !== "" && ventana.pantalla !== "Partida" && !ventana.modoOfflineActivo
+        repeat: true
+        onTriggered: redcliente.conectarPresencia(ventana.servidorHost, ventana.servidorPuerto)
+    }
     // Compartido entre Inicio y Salas — las dos pueden iniciar una conexión
     // (refrescarSalas/unirseASala/cargarPartidaGuardada) y un fallo puede
     // llegar estando en cualquiera de las dos.
@@ -946,13 +965,29 @@ ApplicationWindow {
     // Tapete: se compra el TIPO y el color/madera se elige aquí (ver PopupTapete.qml).
     // El loadout guarda "tipo:variante".
     function abrirPopupTapete(codigo) {
-        var actual = redcliente.loadoutMarco.tapete || "";
+        var info = objetoTiendaPorCodigo(codigo);
+        // "tapete_borde" (capas de tapete, 2026-09-30) tiene sus propias
+        // maderas, guardadas por separado de la base -- mismo popup de
+        // variante, distinto slot/campo de loadout.
+        var esBorde = info && info.categoria === "tapete_borde";
+        var slot = esBorde ? "tapete_borde" : "tapete";
+        var actual = (esBorde ? redcliente.loadoutMarco.tapeteBorde : redcliente.loadoutMarco.tapete) || "";
         var partes = actual.split(":");
         var equipado = partes[0] === codigo;
-        var info = objetoTiendaPorCodigo(codigo);
-        popupTapete.abrir(codigo, info ? info.nombre : codigo, equipado && partes.length > 1 ? partes[1] : "", equipado);
+        popupTapete.abrir(slot, codigo, info ? info.nombre : codigo, equipado && partes.length > 1 ? partes[1] : "", equipado);
     }
     function equiparConAcabado(slot, codigo) {
+        // Elegir palo (2026-10-01): "Mano Real"/"Escalera de Color" abren
+        // su propio popup de palo en vez de equiparse directo -- solo al
+        // EQUIPAR (codigo real); quitar (codigo === "") sigue el camino
+        // normal de abajo, no necesita elegir nada.
+        if (codigo === "mano_real" || codigo === "escalera_diamantes") {
+            var info = objetoTiendaPorCodigo(codigo);
+            var paloActual = redcliente.loadoutMarco.decoracionSuperior === codigo
+                              ? (redcliente.loadoutMarco.acabadoSuperior || "") : "";
+            popupPalo.abrir(codigo, info ? info.nombre : codigo, paloActual);
+            return;
+        }
         if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
             return;
@@ -975,7 +1010,7 @@ ApplicationWindow {
             var pasaPestana = ventana.pestanaTiendaActual === 0
                    ? categoriasMarco.indexOf(o.categoria) >= 0
                    : ventana.pestanaTiendaActual === 1
-                   ? (o.categoria === "reverso_carta" || o.categoria === "tapete")
+                   ? (o.categoria === "reverso_carta" || o.categoria === "tapete" || o.categoria === "tapete_borde")
                    : o.categoria === "titulo";
             var pasaBusqueda = busqueda === "" || o.nombre.toLowerCase().indexOf(busqueda) >= 0;
             return pasaPestana && pasaBusqueda;
@@ -1039,8 +1074,9 @@ ApplicationWindow {
         if (indice === 3) return ["titulo"];
         // Reverso de cartas -- Fase 1 de "segunda ola de cosméticos"
         // (2026-09-17).
-        // Mesa: reverso de cartas + tapete (2026-09-19).
-        if (indice === 4) return ["reverso_carta", "tapete"];
+        // Mesa: reverso de cartas + tapete + borde de tapete (capas de
+        // tapete, 2026-09-30).
+        if (indice === 4) return ["reverso_carta", "tapete", "tapete_borde"];
         return [];
     }
     // Objetos YA POSEÍDOS de la pestaña activa -- Personalizar solo
@@ -1219,6 +1255,12 @@ ApplicationWindow {
     // progresoLogro() en la pestaña Logros ("cuánto te queda").
     property int statsVecesGanoSinShowdown: 0
     property int statsRachaManosGanadas: 0
+    // Bloque de logros 2026-10-01, expuestas 2026-10-02 (mismo motivo que
+    // escritorio -- antes solo vivían en el servidor, nunca se leían de
+    // vuelta, así que los 5 caían en "Puntual" por descuido).
+    property int statsRachaFaroles: 0
+    property int statsVecesRetirado: 0
+    property int statsVecesAbandonada: 0
     // Fase M2 del port de progresión a móvil (2026-09-01) -- saldo de
     // Tréboles (precio de la Tienda) y si la cuenta es admin (código de
     // objeto visible en las tarjetas, mismo criterio que escritorio).
@@ -1269,6 +1311,22 @@ ApplicationWindow {
         }
         if (codigo === "manos_de_hierro") {
             return Math.min(statsRachaManosGanadas, 5) + " / 5";
+        }
+        // Los 5 del bloque 2026-10-01 (mismo motivo que escritorio).
+        if (codigo === "milenario") {
+            return Math.min(statsManosJugadas, 1000) + " / 1000";
+        }
+        if (codigo === "racha_invencible") {
+            return Math.min(statsRachaManosGanadas, 10) + " / 10";
+        }
+        if (codigo === "racha_faroles") {
+            return Math.min(statsRachaFaroles, 10) + " / 10";
+        }
+        if (codigo === "cobarde_detectado") {
+            return Math.min(statsVecesRetirado, 200) + " / 200";
+        }
+        if (codigo === "se_fue_por_tabaco") {
+            return Math.min(statsVecesAbandonada, 10) + " / 10";
         }
         return Idioma.t("texto_logro_puntual");
     }
@@ -1378,15 +1436,24 @@ ApplicationWindow {
     property bool soloVsBots: true
     // Tapete de mesa (2026-09-19) -- ver el comentario gemelo en qml/Main.qml.
     property string tapeteAnfitrion: ""
+    // Borde de tapete (capas de tapete, 2026-09-30) -- mismo interruptor
+    // "verMiTapete" que la base (es "tu mesa" como conjunto).
+    property string tapeteBordeAnfitrion: ""
     property bool verMiTapete: false
     readonly property string miTapete: redcliente.loadoutMarco.tapete || ""
+    readonly property string miTapeteBorde: redcliente.loadoutMarco.tapeteBorde || ""
     readonly property string tapeteMesaActivo: miTapete === "" ? tapeteAnfitrion
         : ((verMiTapete || ventana.modoOfflineActivo) ? miTapete : tapeteAnfitrion)
+    readonly property string tapeteBordeMesaActivo: miTapete === "" ? tapeteBordeAnfitrion
+        : ((verMiTapete || ventana.modoOfflineActivo) ? miTapeteBorde : tapeteBordeAnfitrion)
     property int manoActual: 0
     property int ciegaActual: 0
     property var cartasMesa: []
     property string miCarta1: ""
     property string miCarta2: ""
+    // Mostrar/ocultar tus propias cartas (2026-10-01) -- control puramente
+    // local, ver el comentario gemelo en qml/Main.qml.
+    property bool cartasOcultas: false
     property var retirados: []
     property bool tuTurno: false
     property int igualarActual: 0
@@ -1903,8 +1970,9 @@ ApplicationWindow {
             det[numBote] = lista;
             ventana.detallesBotes = det;
         }
-        function onTapeteAnfitrionActualizado(tapete) {
+        function onTapeteAnfitrionActualizado(tapete, borde) {
             tapeteAnfitrion = tapete;
+            tapeteBordeAnfitrion = borde;
         }
         function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
                                          dealer, sb, bb, soloVsBotsNuevo) {
@@ -2428,6 +2496,9 @@ ApplicationWindow {
             ventana.statsXpTotal = m.xpTotal;
             ventana.statsVecesGanoSinShowdown = m.vecesGanoSinShowdown;
             ventana.statsRachaManosGanadas = m.rachaManosGanadas;
+            ventana.statsRachaFaroles = m.rachaFaroles;
+            ventana.statsVecesRetirado = m.vecesRetirado;
+            ventana.statsVecesAbandonada = m.vecesAbandonada;
             ventana.statsRachaActual = m.rachaActual;
             ventana.statsRachaMaxima = m.rachaMaxima;
             ventana.statsMayorBote = m.mayorBote;
@@ -3960,6 +4031,16 @@ ApplicationWindow {
                 required property int posicion
                 required property bool tieneMarcoBasico
                 required property int index
+                // Decoraciones del avatar (2026-10-02) -- mismo bug/arreglo
+                // que escritorio, ver su comentario gemelo.
+                required property string textura
+                required property string efecto
+                required property string decoracionLateral1
+                required property string decoracionLateral2
+                required property string decoracionSuperior
+                required property string acabadoLateral1
+                required property string acabadoLateral2
+                required property string acabadoSuperior
                 readonly property bool esUsuarioPropio:
                     username.toLowerCase() === ventana.nombreJugador.toLowerCase()
                 width: ListView.view.width
@@ -4044,11 +4125,19 @@ ApplicationWindow {
                             Avatar {
                                 anchors.verticalCenter: parent.verticalCenter
                                 letra: filaRankingMovil.username.length > 0 ? filaRankingMovil.username.charAt(0).toUpperCase() : "?"
-                                // Sin textura/efecto/decoraciones -- reservadas
-                                // como "premio" exclusivo del podio de arriba,
-                                // mismo criterio que escritorio.
+                                // Decoraciones añadidas 2026-10-02 (pedido
+                                // explícito: igual que en Social, no solo el
+                                // podio) -- mismo criterio que escritorio.
                                 tamano: 34 * Tema.escala
                                 marco: Tema.marcoPorPartidasGanadas(filaRankingMovil.partidasGanadas, filaRankingMovil.tieneMarcoBasico)
+                                textura: filaRankingMovil.textura
+                                efecto: filaRankingMovil.efecto
+                                decoracionLateral1: filaRankingMovil.decoracionLateral1
+                                decoracionLateral2: filaRankingMovil.decoracionLateral2
+                                decoracionSuperior: filaRankingMovil.decoracionSuperior
+                                acabadoLateral1: filaRankingMovil.acabadoLateral1
+                                acabadoLateral2: filaRankingMovil.acabadoLateral2
+                                acabadoSuperior: filaRankingMovil.acabadoSuperior
                                 colorBorde: filaRankingMovil.esUsuarioPropio ? Tema.colorAccent : Qt.rgba(1, 1, 1, 0.18)
                             }
                             Text {
@@ -6608,7 +6697,8 @@ ApplicationWindow {
                                                 ventana.marcoPropio,
                                                 redcliente.loadoutMarco.decoracionLateral1 === celdaPersonalizarMovil.codigo,
                                                 redcliente.loadoutMarco.decoracionLateral2 === celdaPersonalizarMovil.codigo);
-                                        } else if (celdaPersonalizarMovil.categoria === "tapete") {
+                                        } else if (celdaPersonalizarMovil.categoria === "tapete"
+                                                   || celdaPersonalizarMovil.categoria === "tapete_borde") {
                                             // Ventana de color/madera (equipar, cambiar o quitar).
                                             ventana.abrirPopupTapete(celdaPersonalizarMovil.codigo);
                                         } else {
@@ -6652,12 +6742,18 @@ ApplicationWindow {
                                     Item {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         visible: celdaPersonalizarMovil.categoria === "tapete"
+                                                 || celdaPersonalizarMovil.categoria === "tapete_borde"
                                         width: 64 * Tema.escala
                                         height: 32 * Tema.escala
+                                        // Un borde se enseña sobre una base neutra (rombos) para
+                                        // que se note lo que añade, no lo que ya tenías de base.
                                         Tapete {
                                             anchors.fill: parent
                                             miniatura: true
-                                            preset: celdaPersonalizarMovil.categoria === "tapete" ? celdaPersonalizarMovil.codigo : ""
+                                            preset: celdaPersonalizarMovil.categoria === "tapete_borde"
+                                                    ? "tapete_rombos" : celdaPersonalizarMovil.codigo
+                                            bordePreset: celdaPersonalizarMovil.categoria === "tapete_borde"
+                                                         ? celdaPersonalizarMovil.codigo : ""
                                         }
                                     }
                                     // Nombre normal (todo salvo títulos).
@@ -6748,6 +6844,7 @@ ApplicationWindow {
                                     width: 140 * Tema.escala
                                     height: 70 * Tema.escala
                                     preset: redcliente.loadoutMarco.tapete || ""
+                                    bordePreset: redcliente.loadoutMarco.tapeteBorde || ""
                                 }
                                 Carta {
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -7130,10 +7227,16 @@ ApplicationWindow {
                                         id: miniaturaTapeteTiendaMovil
                                         anchors.verticalCenter: parent.verticalCenter
                                         visible: celdaTiendaMovil.categoria === "tapete"
+                                                 || celdaTiendaMovil.categoria === "tapete_borde"
                                         width: visible ? 36 * Tema.escala : 0
                                         height: width * 0.5
                                         miniatura: true
-                                        preset: celdaTiendaMovil.codigo
+                                        // Un borde se enseña sobre una base neutra (rombos) para
+                                        // que se note lo que añade, no lo que ya tenías de base.
+                                        preset: celdaTiendaMovil.categoria === "tapete_borde"
+                                                ? "tapete_rombos" : celdaTiendaMovil.codigo
+                                        bordePreset: celdaTiendaMovil.categoria === "tapete_borde"
+                                                     ? celdaTiendaMovil.codigo : ""
                                     }
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
@@ -7317,6 +7420,7 @@ ApplicationWindow {
                                     width: 140 * Tema.escala
                                     height: 70 * Tema.escala
                                     preset: ventana.valorPreview("tapete", redcliente.loadoutMarco.tapete || "")
+                                    bordePreset: ventana.valorPreview("tapete_borde", redcliente.loadoutMarco.tapeteBorde || "")
                                 }
                                 Carta {
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -7356,8 +7460,14 @@ ApplicationWindow {
     PopupTapete {
         id: popupTapete
         onElegido: (codigo, variante) =>
-            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", codigo, variante)
-        onQuitado: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", "")
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, popupTapete.slot, codigo, variante)
+        onQuitado: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, popupTapete.slot, "")
+    }
+
+    PopupPalo {
+        id: popupPalo
+        onElegido: (codigo, palo) =>
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "decoracion_superior", codigo, palo)
     }
 
     PopupTemas {
@@ -7619,6 +7729,35 @@ ApplicationWindow {
                         }
                     }
 
+                    // Prototipo experimental (ver BotLLM en el servidor) -- solo
+                    // tiene efecto en una sala de red; sin conexión los bots
+                    // siempre son locales (iniciarPartidaLocal no la conoce).
+                    Row {
+                        width: parent.width
+                        visible: !ventana.sesionOffline
+                        Text {
+                            width: parent.width - interruptorBotsIaMovil.width
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Idioma.t("etiqueta_bots_ia")
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 13 * Tema.escala
+                            wrapMode: Text.WordWrap
+                        }
+                        Interruptor {
+                            id: interruptorBotsIaMovil
+                            anchors.verticalCenter: parent.verticalCenter
+                            activo: false
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        visible: !ventana.sesionOffline
+                        text: Idioma.t("texto_ayuda_bots_ia")
+                        color: Tema.colorTextoMuyTenue
+                        font.pixelSize: 10 * Tema.escala
+                        wrapMode: Text.WordWrap
+                    }
+
                     Row {
                         width: parent.width
                         Text {
@@ -7855,7 +7994,8 @@ ApplicationWindow {
                         interruptorRellenarMovil.activo,
                         interruptorAbiertaMovil.activo,
                         interruptorPreguntarExtensionMovil.activo,
-                        interruptorTemporizadorVotoMovil.activo
+                        interruptorTemporizadorVotoMovil.activo,
+                        interruptorBotsIaMovil.activo
                     );
                 }
             }
@@ -8050,8 +8190,11 @@ ApplicationWindow {
             soloVsBots: ventana.soloVsBots
             miReversoSkin: redcliente.loadoutMarco.reversoCarta || ""
             tapete: ventana.tapeteMesaActivo
+            tapeteBorde: ventana.tapeteBordeMesaActivo
             miCarta1: ventana.miCarta1
             miCarta2: ventana.miCarta2
+            cartasOcultas: ventana.cartasOcultas
+            onAlternarCartasOcultas: ventana.cartasOcultas = !ventana.cartasOcultas
             // Animaciones (reparto desde el dealer, comunitarias al vuelo, showdown en la mesa): solo
             // con eventos nuevos y con el nivel "completas".
             animar: ventana.animarMesa
@@ -8139,6 +8282,8 @@ ApplicationWindow {
                 ventana.turnoNombre = "";
             }
             onRecompraPedida: ventana.recompraSolicitada = true
+            cartasOcultas: ventana.cartasOcultas
+            onAlternarCartasOcultas: ventana.cartasOcultas = !ventana.cartasOcultas
         }
 
         // (El showdown ya no es un overlay: se hace sobre la propia mesa, ver Mesa.qml. Las decisiones de

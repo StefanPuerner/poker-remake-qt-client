@@ -61,6 +61,14 @@ enum class DificultadBots {
   EXPERTO   ///< + perfilado estadístico de rivales acumulado por partida.
 };
 
+/// Qué decide las acciones de los bots de una sala: el motor local
+/// (DecisionEngine, de toda la vida) o una llamada a un LLM externo (ver
+/// BotLLM) -- prototipo experimental que CONVIVE con los bots locales, no
+/// los sustituye. Por sala, igual que DificultadBots. Solo tiene efecto si
+/// el servidor se compiló con soporte de BotLLM (libcurl disponible); si
+/// no, se ignora y se crean bots locales normales.
+enum class TipoBots { LOCAL, IA };
+
 /**
  * @brief Historial estadístico de un rival observado (solo en dificultad EXPERTO).
  *
@@ -147,6 +155,10 @@ struct ReglasJuego {
   /// voten todos los que siguen conectados (el caído ya no bloquea, ver marcarDesconectado()).
   /// Activado por defecto: es el comportamiento de siempre.
   bool           temporizadorVoto = true;
+  /// Prototipo experimental (ver BotLLM, TipoBots) -- al final a propósito:
+  /// cualquier construcción posicional de ReglasJuego ya existente sigue
+  /// compilando igual, este campo simplemente cae al default.
+  TipoBots       tipoBots = TipoBots::LOCAL;
 };
 
 /// Tipos de acción que puede realizar un jugador en su turno.
@@ -184,6 +196,11 @@ struct GameState {
   bool    accionAnteriorFueCheck; ///< El jugador anterior pasó (señal de debilidad).
   std::string nombreActual;       ///< Nombre del jugador que debe actuar ahora.
   std::string ultimoAgresorNombre; ///< Nombre de quien hizo el último RAISE/ALL_IN en la mano ("" si nadie subió aún).
+  /// Jugadas de ESTA ronda de apuestas en orden ("Ana ➜ RAISE (40)") -- solo
+  /// contexto narrativo para quien lo necesite (hoy: BotLLM). Vacío al
+  /// empezar cada ronda nueva; Persona/NetworkPlayer/Bot no lo usan. Al
+  /// final a propósito, por la misma razón que TipoBots en ReglasJuego.
+  std::vector<std::string> historialRonda;
 };
 
 // ── Estructuras de persistencia ───────────────────────────────────────────────

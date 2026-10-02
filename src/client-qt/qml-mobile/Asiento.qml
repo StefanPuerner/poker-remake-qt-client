@@ -57,10 +57,16 @@ Column {
     // NO lleva mini-cartas (tu mano ya se ve grande en la barra inferior)
     // -- ver el bloque de abajo.
     property string reversoActivo: ""
-    // Tu propio reverso equipado: es el que ven tus cartas mientras se reparten (el "activo" de
-    // arriba es el del dealer, para las de los rivales y la mesa).
-    property string miReversoSkin: ""
     property bool esPropio: false
+    // Mostrar/ocultar tus propias cartas (2026-10-01) -- control puramente
+    // local, ver el comentario gemelo en qml/Main.qml. Solo afecta al
+    // asiento propio -- se mira dentro de "objetivo" (más abajo), no aquí.
+    property bool cartasOcultas: false
+    // Pulsar las cartas propias alterna el interruptor de arriba
+    // (2026-10-02, pedido explícito: más intuitivo que solo el icono de
+    // ojo del cajón) -- Asiento no sabe nada de "cartasOcultas" como
+    // estado propio (lo recibe de Mesa), así que solo pide alternarlo.
+    signal alternarCartasOcultas()
     property string miCarta1: ""
     property string miCarta2: ""
     // Cuántas mini-cartas del abanico se ven (0-2). 2 = siempre; Mesa.qml lo baja a 0
@@ -500,7 +506,11 @@ Column {
                     id: cartaPropia
                     required property int index
                     // Solo el asiento propio usa estas cartas (en los demás están ocultas): sin trabajo en balde.
+                    // "!asiento.cartasOcultas" (2026-10-01): misma idea que "retener" en
+                    // CartaFlip.qml de escritorio -- objetivo cae a "" y la carta enseña su
+                    // reverso, sin tocar el resto del mecanismo de volteo.
                     readonly property string objetivo: asiento.esPropio && index < asiento.cartasVisibles
+                                                       && !asiento.cartasOcultas
                                                        ? (index === 0 ? asiento.miCarta1 : asiento.miCarta2) : ""
                     property string mostrado: ""
                     // El modelo de jugadores se reconstruye en cada GAME_STATE: el asiento puede nacer
@@ -516,7 +526,11 @@ Column {
                     }
                     codigo: mostrado
                     propia: true
-                    reversoSkin: asiento.miReversoSkin
+                    // Bug real (2026-09-30, reportado también en escritorio): antes se veía
+                    // aquí el reverso PROPIO equipado, no el que toca esa mano (el del
+                    // dealer) -- "reversoActivo" ya es ese valor, resuelto por Mesa.qml, el
+                    // mismo que usan el abanico de los rivales y el mazo del dealer.
+                    reversoSkin: asiento.reversoActivo
                     width: propias.anchoCarta
                     height: propias.altoCarta
                     x: index * (propias.anchoCarta + propias.separacion)
@@ -534,6 +548,12 @@ Column {
                         NumberAnimation { target: giroPropia; property: "angle"; to: 90; duration: 130 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InQuad }
                         ScriptAction { script: cartaPropia.mostrado = cartaPropia.objetivo }
                         NumberAnimation { target: giroPropia; property: "angle"; to: 0; duration: 130 / Math.max(0.05, asiento.velocidad); easing.type: Easing.OutQuad }
+                    }
+                    // Tocar la carta alterna ocultar/mostrar (2026-10-02,
+                    // mismo pedido que escritorio) -- el icono del cajón sigue ahí.
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: asiento.alternarCartasOcultas()
                     }
                 }
             }

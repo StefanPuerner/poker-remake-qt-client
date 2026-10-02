@@ -21,6 +21,13 @@ Item {
     id: tapete
 
     property string preset: ""
+    // Borde de tapete (capas de tapete, 2026-09-30) -- "" o "codigo" o
+    // "codigo:variante", MISMO formato que "preset". Independiente de la
+    // base: se combina con CUALQUIERA de los tipos de abajo, no solo con
+    // los que antes traían el anillo integrado. Por ahora solo existe un
+    // borde ("borde_madera"), con las mismas 3 maderas que ya usaba
+    // tapete_madera -- ver bordeTipoId/conBorde más abajo.
+    property string bordePreset: ""
     // Miniatura (rejilla de Tienda/Personalizar): sin dibujo ni pespunte --
     // a 40px no se distinguirían, y cada capa de más es un efecto por tarjeta.
     property bool miniatura: false
@@ -36,9 +43,14 @@ Item {
         "tapete_puntos": { patron: "puntos", patronOpacidad: 0.15 },
         "tapete_lino":   { patron: "lino",   patronOpacidad: 0.10 },
         "tapete_rayas":  { patron: "rayas",  patronOpacidad: 0.09 },
-        // El paño de "casino" es el del tema activo: lo que cambia es el
-        // marco de madera, así que combina con cualquier paleta.
-        "tapete_casino": { riel: true },
+        // El paño de "casino" es el del tema activo, SIN variante propia
+        // -- combina con cualquier paleta. Antes traía el anillo de
+        // madera integrado (flag "riel"); desde las capas de tapete
+        // (2026-09-30) el anillo es el borde independiente "borde_madera"
+        // (ver bordePreset/conBorde más abajo), así que esta entrada ya
+        // no necesita marcarlo -- solo "temaActivo" para que "estilo" no
+        // intente buscarle un color de paño (más abajo).
+        "tapete_casino": { temaActivo: true },
         "tapete_madera": { madera: true }
     })
     readonly property var colores: ({
@@ -74,10 +86,10 @@ Item {
         if (!t) return null;
         var e = {};
         for (var k in t) e[k] = t[k];
-        if (t.madera || t.riel) {
+        if (t.madera) {
             var m = maderas[variante] || maderas["roble"];
             for (var km in m) e[km] = m[km];
-        } else {
+        } else if (!t.temaActivo) {
             var c = colores[variante] || colores["verde"];
             for (var kc in c) e[kc] = c[kc];
             e.patronOpacidad = t.patronOpacidad * (c.opacidadMult || 1.0);
@@ -85,9 +97,19 @@ Item {
         return e;
     }
 
+    // Borde -- mismo formato "codigo:variante" que la base, mismas 3
+    // maderas (borde_madera no tiene tipos propios: solo existe uno).
+    readonly property string bordeTipoId: bordePreset.indexOf(":") >= 0 ? bordePreset.split(":")[0] : bordePreset
+    readonly property string bordeVariante: bordePreset.indexOf(":") >= 0 ? bordePreset.split(":")[1] : ""
+    readonly property bool conBorde: bordeTipoId === "borde_madera"
+    readonly property var estiloBorde: conBorde ? (maderas[bordeVariante] || maderas["roble"]) : null
+
     readonly property bool esMadera: estilo !== null && estilo.madera === true
-    readonly property bool conRiel: estilo !== null && estilo.riel === true
-    readonly property bool usaMadera: esMadera || conRiel
+    readonly property bool usaMadera: esMadera || conBorde
+    // Con qué variante de madera se pinta el anillo/pastilla de madera --
+    // la propia si la base entera es de madera (tapete_madera), si no la
+    // del borde independiente (o ninguna, si no hay borde).
+    readonly property var estiloMaderaActivo: esMadera ? estilo : estiloBorde
     readonly property string patron: !miniatura && estilo && estilo.patron ? estilo.patron : ""
     readonly property color colorPespunte: estilo && estilo.pespunte ? estilo.pespunte : Tema.colorAccent
 
@@ -102,7 +124,9 @@ Item {
     // creciera con la mesa (como antes, un % de la altura) se convertía en
     // una banda enorme en pantalla grande.
     readonly property real grosorBorde: Math.min(7, Math.max(2, height * 0.03))
-    readonly property real grosorRiel: conRiel ? Math.min(height * 0.11, 64) : 0
+    // "grosorRiel" -- nombre heredado de cuando solo existía el anillo de
+    // tapete_casino; hoy es el margen de CUALQUIER borde equipado (conBorde).
+    readonly property real grosorRiel: conBorde ? Math.min(height * 0.11, 64) : 0
     readonly property color maderaOscura: "#2A1508"
 
     // Densidad: la madera (2600x1300) se muestra entre 0.12x y 0.75x -- en una
@@ -163,10 +187,10 @@ Item {
             maskSource: mascaraMadera
             // Variante de madera (roble / roble oscuro / nogal): la misma imagen,
             // más oscura o teñida.
-            brightness: tapete.estilo && tapete.estilo.brillo ? tapete.estilo.brillo : 0.0
-            saturation: tapete.estilo && tapete.estilo.saturacion ? tapete.estilo.saturacion : 0.0
-            colorization: tapete.estilo && tapete.estilo.tinteFuerza ? tapete.estilo.tinteFuerza : 0.0
-            colorizationColor: tapete.estilo && tapete.estilo.tinte ? tapete.estilo.tinte : "white"
+            brightness: tapete.estiloMaderaActivo && tapete.estiloMaderaActivo.brillo ? tapete.estiloMaderaActivo.brillo : 0.0
+            saturation: tapete.estiloMaderaActivo && tapete.estiloMaderaActivo.saturacion ? tapete.estiloMaderaActivo.saturacion : 0.0
+            colorization: tapete.estiloMaderaActivo && tapete.estiloMaderaActivo.tinteFuerza ? tapete.estiloMaderaActivo.tinteFuerza : 0.0
+            colorizationColor: tapete.estiloMaderaActivo && tapete.estiloMaderaActivo.tinte ? tapete.estiloMaderaActivo.tinte : "white"
         }
         // Volumen: luz arriba, sombra abajo -- sin esto la veta se ve plana.
         Rectangle {
@@ -215,7 +239,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            border.color: tapete.conRiel ? Qt.darker(tapete.colorOscuro, 1.5) : tapete.colorBorde
+            border.color: tapete.conBorde ? Qt.darker(tapete.colorOscuro, 1.5) : tapete.colorBorde
             border.width: 3
             gradient: Gradient {
                 GradientStop { position: 0.0; color: tapete.colorClaro }
@@ -277,7 +301,7 @@ Item {
 
         // Pespunte: línea fina inscrita, como la costura de un tapete de casino.
         Rectangle {
-            visible: !tapete.miniatura && (tapete.estilo !== null && !!tapete.estilo.pespunte || tapete.conRiel)
+            visible: !tapete.miniatura && (tapete.estilo !== null && !!tapete.estilo.pespunte || tapete.conBorde)
             anchors.fill: parent
             anchors.margins: Math.min(parent.height * 0.055, 26)
             radius: height / 2

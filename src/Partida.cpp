@@ -475,14 +475,15 @@ void Partida::procesarRecomprasPendientes() {
 void Partida::ejecutarMano() {
   limpiarEstadosMano();
 
-  // Inicializar perfiles de rivales al comienzo de cada mano (los usa solo quien
-  // juega como EXPERTO, pero la dificultad puede ser distinta por bot).
+  // Inicializar perfiles de rivales al comienzo de cada mano -- no-op para
+  // quien no lo necesite (Persona, NetworkPlayer; ver Player::
+  // iniciarManoJugador). Antes solo se llamaba a los Bot (dynamic_cast); se
+  // generalizó a todos los Player para que BotLLM reciba el mismo perfilado
+  // sin que Partida tenga que conocer su tipo concreto.
   for (Player* otro : jugadores_) {
-    if (Bot* b = dynamic_cast<Bot*>(otro)) {
-      for (Player* p : jugadores_) {
-        if (p->getEstado() != PlayerState::ELIMINADO) {
-          b->iniciarManoJugador(p->getNombre());
-        }
+    for (Player* p : jugadores_) {
+      if (p->getEstado() != PlayerState::ELIMINADO) {
+        otro->iniciarManoJugador(p->getNombre());
       }
     }
   }
@@ -684,6 +685,7 @@ void Partida::gestionarRondaDeApuestas() {
       state.accionAnteriorFueCheck = (ultimaAccionRonda_ == TipoAccion::CHECK);
       state.nombreActual = p->getNombre();
       state.ultimoAgresorNombre = ultimoAgresorNombre_;
+      state.historialRonda = historialRonda;
 
       std::vector<int> botesSaldos;
       for (const auto& b : botes_) botesSaldos.push_back(b.getSaldo());
@@ -793,16 +795,16 @@ void Partida::gestionarRondaDeApuestas() {
       }
       ultimaAccionRonda_ = a.tipo;
 
-      // Actualizar perfiles de rivales en todos los bots. Antes solo con la
-      // dificultad global EXPERTO; ahora siempre (son cuatro contadores), porque
-      // la dificultad puede ser distinta por bot y solo la usa quien es EXPERTO.
+      // Actualizar perfiles de rivales en todos los jugadores que perfilan
+      // (Bot, BotLLM; no-op en el resto). Antes solo con dynamic_cast<Bot*> y
+      // solo con la dificultad global EXPERTO; ahora siempre, generalizado a
+      // cualquier Player (ver Player::registrarAccion) -- la dificultad
+      // puede ser distinta por bot y solo la usa quien es EXPERTO.
       {
         bool hayApuesta = (state.apuestaAIgualar > 0);
         for (Player* otro : jugadores_) {
-          if (Bot* b = dynamic_cast<Bot*>(otro)) {
-            b->registrarAccion(p->getNombre(), a.tipo, state.rondaActual, hayApuesta,
-                               a.cantidad, state.boteTotal);
-          }
+          otro->registrarAccion(p->getNombre(), a.tipo, state.rondaActual, hayApuesta,
+                                a.cantidad, state.boteTotal);
         }
       }
 

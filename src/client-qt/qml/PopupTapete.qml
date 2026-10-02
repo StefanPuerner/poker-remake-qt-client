@@ -17,18 +17,30 @@ Popup {
     signal elegido(string codigo, string variante)
     signal quitado()
 
+    // Slot a equipar -- "tapete" (base) o "tapete_borde" (capas de tapete,
+    // 2026-09-30). Lo decide abrirPopupTapete() según la categoría del
+    // objeto, no este popup -- aquí solo se reenvía en elegido()/quitado()
+    // para que el llamador sepa a qué campo de loadout escribir.
+    property string slot: "tapete"
     property string codigo: ""
     property string nombre: ""
     property string variante: ""     // la elegida ahora mismo en la ventana
     property bool equipado: false
     // ⚠️ Mismas listas que varianteTapeteValida() (AccountManager.cpp) y Tapete.qml.
+    // "borde_madera" es siempre madera -- es el único borde que existe hoy.
     readonly property bool esMadera: popup.codigo === "tapete_madera" || popup.codigo === "tapete_casino"
+        || popup.codigo === "borde_madera"
     readonly property var opciones: popup.esMadera
         ? ["roble", "roble_oscuro", "nogal"]
         : ["verde", "granate", "azul", "grafito", "taberna", "porcelana", "violeta", "petroleo"]
     readonly property real anchoOpcion: 116 * Tema.escala
+    // Un borde (2026-09-30) no es una base válida para Tapete.preset --
+    // la miniatura de cada variante se enseña con una base neutra y el
+    // borde encima, en vez de intentar usar "borde_madera" como base.
+    readonly property bool esBorde: popup.slot === "tapete_borde"
 
-    function abrir(codigo, nombre, varianteActual, equipado) {
+    function abrir(slot, codigo, nombre, varianteActual, equipado) {
+        popup.slot = slot;
         popup.codigo = codigo;
         popup.nombre = nombre;
         popup.equipado = equipado;
@@ -89,7 +101,8 @@ Popup {
                             width: popup.anchoOpcion - 16 * Tema.escala
                             height: width * 0.5
                             miniatura: true
-                            preset: popup.codigo + ":" + opcion.modelData
+                            preset: popup.esBorde ? "tapete_rombos" : (popup.codigo + ":" + opcion.modelData)
+                            bordePreset: popup.esBorde ? (popup.codigo + ":" + opcion.modelData) : ""
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
