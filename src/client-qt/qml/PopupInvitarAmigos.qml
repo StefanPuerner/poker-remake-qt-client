@@ -98,6 +98,7 @@ Popup {
                 Avatar {
                     anchors.verticalCenter: parent.verticalCenter
                     letra: modelData.username.length > 0 ? modelData.username.charAt(0).toUpperCase() : "?"
+                    accountId: modelData.accountId
                     tamano: 28 * Tema.escala
                 }
                 Text {

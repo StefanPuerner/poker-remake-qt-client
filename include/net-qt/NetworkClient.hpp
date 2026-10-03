@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QList>
+#include <QSet>
 #include <QHash>
 #include <QObject>
 #include <QSettings>
@@ -59,6 +60,14 @@ class NetworkClient : public QObject {
   // estadísticas pero de una cuenta ajena, no la propia -- mirar el perfil
   // de otro no debe pisar "mis stats" mientras el panel Cuenta siga abierto.
   Q_PROPERTY(QVariantMap perfilJugador READ perfilJugador NOTIFY perfilJugadorCambiaron)
+  // Contador que sube cada vez que cambia la caché de fotos. Existe porque
+  // QML no re-evalúa un binding por llamar a un Q_INVOKABLE (fotoBase64Cacheada):
+  // Avatar.qml lee esta propiedad dentro de su binding para depender de ella.
+  Q_PROPERTY(int fotosCambios READ fotosCambios NOTIFY fotoPerfilActualizada)
+  // Modo espectador: true si la sala nos admitió como observadores (sin
+  // asiento). Lo fija SALA_UNIDA con rol "espectador"; se limpia al abrir
+  // cualquier conexión nueva y al abandonar.
+  Q_PROPERTY(bool esEspectador READ esEspectador NOTIFY esEspectadorCambio)
 
  public:
   explicit NetworkClient(QObject* parent = nullptr) : QObject(parent) {
@@ -98,6 +107,8 @@ class NetworkClient : public QObject {
   QVariantMap estadisticasCuenta() const { return estadisticasCuenta_; }
   QVariantMap loadoutMarco() const { return loadoutMarco_; }
   QVariantMap perfilJugador() const { return perfilJugador_; }
+  int fotosCambios() const { return fotosCambios_; }
+  bool esEspectador() const { return esEspectador_; }
 
   Q_INVOKABLE void conectar(const QString& host, quint16 puerto,
                             QString nombre) {
@@ -162,6 +173,23 @@ class NetworkClient : public QObject {
   /// Unirse a una sala existente (pantalla "Salas disponibles"), por id
   /// (de la lista) o por código (sala privada) — el que esté vacío se
   /// ignora en el servidor.
+  /// Observar una sala sin sentarse (modo espectador). Mismo camino que
+  /// unirseASala(), con "espectador":"1" -- el servidor responde SALA_UNIDA
+  /// con rol "espectador" y entonces esEspectador pasa a true.
+  Q_INVOKABLE void unirseComoEspectador(const QString& host, quint16 puerto, QString nombre,
+                                        QString salaId) {
+    salaIdActual_ = salaId;
+    codigoActual_.clear();
+    iniciarConexionConMensaje(host, puerto, nombre, net::buildMsg(net::MsgType::JOIN_GAME, {
+        {"nombre",    nombre.toStdString()},
+        {"sala_id",   salaId.toStdString()},
+        {"codigo",    std::string()},
+        {"espectador", "1"},
+        {"token",     token_.toStdString()},
+    }));
+    guardarSesionEnDisco();
+  }
+
   Q_INVOKABLE void unirseASala(const QString& host, quint16 puerto, QString nombre,
                                QString salaId, QString codigo) {
     // Recordados para la reconexión mientras seguimos en el lobby (ver
@@ -1024,6 +1052,147 @@ class NetworkClient : public QObject {
         });
   }
 
+  /// Foto de avatar (2026-10-02) -- pública (como consultarPerfilJugador()),
+  /// efímera, cacheada en memoria por accountId (fotosCache_) para no volver
+  /// a pedir los mismos bytes si ya se tienen (mesa reemite GAME_STATE en
+  /// cada turno, pero el fotoHash de cada asiento solo cambia si alguien
+  /// sube una foto nueva). QML no lee la respuesta como señal con payload --
+  /// mira el caché vía fotoBase64Cacheada()/fotoHashCacheada() tras recibir
+  /// fotoPerfilActualizada(accountId), mismo motivo que loadoutMarco: un
+  /// QVariantMap por cuenta sería una Q_PROPERTY más para N cuentas a la
+  /// vez, que no es lo que es esto.
+  Q_INVOKABLE void consultarFotoPerfil(const QString& host, quint16 puerto, int accountId) {
+    consultarFoto(host, puerto, accountId, false);
+  }
+
+  /// Pide la foto de @p accountId solo si todavía no se ha pedido ni está
+  /// cacheada -- lo llama cada Avatar que muestra esa cuenta, así que muchas
+  /// vistas a la vez generan una única petición. Sin foto, la respuesta vacía
+  /// también queda cacheada (no se vuelve a pedir).
+  Q_INVOKABLE void pedirFotoSiFalta(int accountId) {
+    if (accountId <= 0 || fotosCache_.contains(accountId) || fotosPendientes_.contains(accountId)) return;
+    fotosPendientes_.insert(accountId);
+    consultarFotoPerfil(QString::fromUtf8(net::SERVER_HOST), net::SERVER_PORT, accountId);
+  }
+
+  /// @return base64 cacheada de @p accountId, o "" si no se tiene (no se ha
+  /// pedido todavía, o la cuenta no tiene foto). Nunca dispara una petición
+  /// por sí sola -- quien ya conoce host/puerto (Main.qml) decide cuándo
+  /// llamar a consultarFotoPerfil(), Avatar.qml solo lee el resultado.
+  Q_INVOKABLE QString fotoBase64Cacheada(int accountId) const {
+    return fotosCache_.value(accountId).value("base64").toString();
+  }
+  Q_INVOKABLE QString fotoHashCacheada(int accountId) const {
+    return fotosCache_.value(accountId).value("hash").toString();
+  }
+
+  /// Foto de MESA (2026-10-03, docs/plan-mesa-con-foto.md) -- mismo contrato
+  /// que la de avatar, pero en su propia caché (fotosMesaCache_): un mismo
+  /// accountId puede tener las dos y no deben pisarse. Las respuestas emiten
+  /// fotoPerfilActualizada igual que las de avatar, y ambas suben fotosCambios.
+  Q_INVOKABLE void consultarFotoMesa(const QString& host, quint16 puerto, int accountId) {
+    consultarFoto(host, puerto, accountId, true);
+  }
+  Q_INVOKABLE void pedirFotoMesaSiFalta(int accountId) {
+    if (accountId <= 0 || fotosMesaCache_.contains(accountId) || fotosMesaPendientes_.contains(accountId)) return;
+    fotosMesaPendientes_.insert(accountId);
+    consultarFotoMesa(QString::fromUtf8(net::SERVER_HOST), net::SERVER_PORT, accountId);
+  }
+  Q_INVOKABLE QString fotoMesaBase64Cacheada(int accountId) const {
+    return fotosMesaCache_.value(accountId).value("base64").toString();
+  }
+  Q_INVOKABLE QString fotoMesaHashCacheada(int accountId) const {
+    return fotosMesaCache_.value(accountId).value("hash").toString();
+  }
+
+  /// Sube (o reemplaza) la foto de avatar propia -- ya recortada/
+  /// redimensionada/codificada en JPEG por FotoAvatarHelper, aquí solo se
+  /// manda. El servidor modera en bloqueante (fail-closed) antes de
+  /// aceptar -- ver SUBIR_FOTO_PERFIL en el servidor. Éxito o error llegan
+  /// por GAME_EVENT (mismo patrón que equiparObjeto/comprarObjeto).
+  Q_INVOKABLE void subirFotoPerfil(const QString& host, quint16 puerto, QString token,
+                                    QString imagenBase64) {
+    subirFoto(host, puerto, token, imagenBase64, false);
+  }
+
+  /// Sube la foto de mesa a un preset (@p slot 1-4) y la deja ACTIVA. El
+  /// servidor exige haber comprado tapete_foto; si no, rechaza con
+  /// error_tapete_no_comprado.
+  Q_INVOKABLE void subirFotoMesa(const QString& host, quint16 puerto, QString token,
+                                 QString imagenBase64, int slot) {
+    subirFoto(host, puerto, token, imagenBase64, true, slot);
+  }
+
+  /// Pide los 4 presets de la cuenta. Respuesta: fotosMesaListadas(activa,
+  /// hashes) con 4 entradas (una por hueco, "" si está vacío).
+  Q_INVOKABLE void listarFotosMesa(const QString& host, quint16 puerto, QString token) {
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::LISTAR_FOTOS_MESA, {
+            {"token", token.toStdString()},
+        }),
+        [this](const std::string& payload) {
+          if (payload.empty()) return;
+          if (net::jsonGetStr(payload, "evento") != "FOTOS_MESA_LISTA") {
+            emit fotoMesaSubidaError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+            return;
+          }
+          QStringList hashes = QString::fromStdString(net::jsonGetStr(payload, "hashes")).split(',');
+          while (hashes.size() < 4) hashes << QString();
+          emit fotosMesaListadas(net::jsonGetInt(payload, "activa"), hashes);
+        });
+  }
+
+  /// Hace activo un preset ya subido. Respuesta: fotoMesaActivada(slot) o
+  /// fotoMesaSubidaError(mensaje).
+  Q_INVOKABLE void activarFotoMesa(const QString& host, quint16 puerto, QString token, int slot) {
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::ACTIVAR_FOTO_MESA, {
+            {"token", token.toStdString()},
+            {"slot", std::to_string(slot)},
+        }),
+        [this](const std::string& payload) {
+          if (payload.empty()) {
+            emit fotoMesaSubidaError(QStringLiteral("error_conexion_timeout"));
+            return;
+          }
+          if (net::jsonGetStr(payload, "evento") == "FOTO_MESA_ACTIVADA") {
+            emit fotoMesaActivada(net::jsonGetInt(payload, "activa"));
+          } else {
+            emit fotoMesaSubidaError(QString::fromStdString(net::jsonGetStr(payload, "mensaje")));
+          }
+        });
+  }
+
+  /// Miniatura de un preset de mesa (@p slot 1-4) de @p accountId. Se cachea
+  /// por hueco; @p hash es el que anunció listarFotosMesa() y, si no coincide
+  /// con el cacheado, se vuelve a pedir. Llega como fotoPerfilActualizada.
+  Q_INVOKABLE void pedirMiniaturaMesa(int accountId, int slot, const QString& hash) {
+    if (accountId <= 0 || slot < 1 || slot > 4 || hash.isEmpty()) return;
+    const QString clave = miniaturaClave(accountId, slot);
+    if (miniaturasMesaCache_.value(clave).value("hash").toString() == hash) return;
+    if (miniaturasMesaPendientes_.contains(clave)) return;
+    miniaturasMesaPendientes_.insert(clave);
+    enviarPeticionEfimera(QString::fromUtf8(net::SERVER_HOST), net::SERVER_PORT,
+        net::buildMsg(net::MsgType::CONSULTAR_FOTO_PERFIL, {
+            {"account_id", std::to_string(accountId)},
+            {"tipo", "mesa"},
+            {"slot", std::to_string(slot)},
+        }),
+        [this, clave, accountId](const std::string& payload) {
+          miniaturasMesaPendientes_.remove(clave);
+          if (payload.empty()) return;
+          QVariantMap m;
+          m["base64"] = QString::fromStdString(net::jsonGetStr(payload, "imagen_base64"));
+          m["hash"] = QString::fromStdString(net::jsonGetStr(payload, "hash"));
+          miniaturasMesaCache_.insert(clave, m);
+          ++fotosCambios_;
+          emit fotoPerfilActualizada(accountId);
+        });
+  }
+  Q_INVOKABLE QString miniaturaMesaBase64(int accountId, int slot) const {
+    return miniaturasMesaCache_.value(miniaturaClave(accountId, slot)).value("base64").toString();
+  }
+
   /**
    * @brief Abre (si no lo estaba ya) el socket de presencia -- conexión
    * persistente separada de socket_/enviarPeticionEfimera, que se queda
@@ -1140,6 +1309,7 @@ class NetworkClient : public QObject {
 
   Q_INVOKABLE void abandonar() {
     desconexionEsperada_ = true;  // el servidor va a cerrar nuestro socket a propósito
+    marcarEspectador(false);
     enviarMensaje(net::buildMsg(net::MsgType::ACTION, {{"accion", "LEAVE"}}));
     olvidarSesionEnDisco();
   }
@@ -1212,6 +1382,9 @@ class NetworkClient : public QObject {
   /// tapete (2026-09-30) -- segundo valor en la MISMA señal en vez de una
   /// nueva, mismo criterio que otros campos añadidos después (solo_vs_bots).
   void tapeteAnfitrionActualizado(QString tapete, QString borde);
+  /// Foto de mesa del anfitrión (2026-10-03): solo el accountId, para que
+  /// Main.qml lea fotoMesaBase64Cacheada() tras fotosCambios. 0 = sin dueño.
+  void tapeteFotoAnfitrionActualizado(int accountId);
   /**
    * @brief Una línea para el historial de partida.
    * @param tipo Categoría para colorear el punto de la entrada en Main.qml:
@@ -1302,6 +1475,8 @@ class NetworkClient : public QObject {
   void nombreAsignado(QString nombre);
   /// CREATE_GAME aceptado: id de la sala nueva y código (vacío si es pública).
   void salaCreada(QString salaId, QString codigo);
+  /// Cambió esEspectador (ver la Q_PROPERTY).
+  void esEspectadorCambio();
   /// JOIN_GAME rechazado (sala inexistente, llena o ya empezada).
   void errorSala(QString mensaje);
   /// Respuesta a refrescarSalas(): "id:nombre:conectados:esperados;..." (puede ser "").
@@ -1442,6 +1617,20 @@ class NetworkClient : public QObject {
                               QString codigo, QString nombreSala);
   /// Respuesta a consultarPerfilJugador() -- ver Q_PROPERTY perfilJugador.
   void perfilJugadorCambiaron();
+  /// Respuesta a consultarFotoPerfil() -- @p accountId ya está en
+  /// fotosCache_, leer con fotoBase64Cacheada()/fotoHashCacheada().
+  void fotoPerfilActualizada(int accountId);
+  /// Respuesta a subirFotoPerfil(): éxito (hash nuevo) o rechazo (clave de
+  /// error del servidor -- fail-closed, incluye fallos de moderación).
+  void fotoPerfilSubida(QString hash);
+  void fotoPerfilSubidaError(QString mensaje);
+  /// Respuesta a subirFotoMesa() -- mismo contrato que las de avatar.
+  void fotoMesaSubida(QString hash);
+  void fotoMesaSubidaError(QString mensaje);
+  /// Respuesta a listarFotosMesa(): hueco activo (0 = ninguno) y los 4 hashes.
+  void fotosMesaListadas(int activa, QStringList hashes);
+  /// Respuesta a activarFotoMesa(): el hueco que ya es el activo.
+  void fotoMesaActivada(int slot);
   /// Respuesta a sincronizarXpOffline(). "acreditado" puede ser MENOR que
   /// "reclamado" (topes del servidor); "mensaje" explica el recorte si lo
   /// hubo, y va vacío si se acreditó todo.
@@ -1847,6 +2036,77 @@ class NetworkClient : public QObject {
   }
 
  private:
+  /// Núcleo de consultarFotoPerfil()/consultarFotoMesa(): @p mesa elige la
+  /// caché, el pendiente y la señal de respuesta.
+  void consultarFoto(const QString& host, quint16 puerto, int accountId, bool mesa) {
+    if (accountId <= 0) return;
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::CONSULTAR_FOTO_PERFIL, {
+            {"account_id", std::to_string(accountId)},
+            {"tipo", mesa ? "mesa" : "perfil"},
+        }),
+        [this, accountId, mesa](const std::string& payload) {
+          (mesa ? fotosMesaPendientes_ : fotosPendientes_).remove(accountId);
+          // Sin respuesta (red caída o lenta) no se cachea nada: la próxima
+          // vez que se pida, se vuelve a intentar.
+          if (payload.empty()) return;
+          QVariantMap m;
+          m["base64"] = QString::fromStdString(net::jsonGetStr(payload, "imagen_base64"));
+          m["hash"] = QString::fromStdString(net::jsonGetStr(payload, "hash"));
+          (mesa ? fotosMesaCache_ : fotosCache_).insert(accountId, m);
+          ++fotosCambios_;
+          emit fotoPerfilActualizada(accountId);
+        });
+  }
+
+  /// Pide la foto de mesa del anfitrión SOLO si el hash que anuncia GAME_STATE
+  /// no coincide con el cacheado: así un cambio de foto del anfitrión llega a
+  /// la mesa en el siguiente turno sin volver a pedir bytes en cada turno.
+  void sincronizarFotoMesa(int accountId, const QString& hash) {
+    if (accountId <= 0 || hash.isEmpty() || fotosMesaPendientes_.contains(accountId)) return;
+    if (fotosMesaCache_.value(accountId).value("hash").toString() == hash) return;
+    fotosMesaPendientes_.insert(accountId);
+    consultarFotoMesa(QString::fromUtf8(net::SERVER_HOST), net::SERVER_PORT, accountId);
+  }
+
+  /// Núcleo de subirFotoPerfil()/subirFotoMesa(): mismo mensaje, el campo
+  /// "tipo" decide la tabla del servidor y la señal de respuesta.
+  /// Clave de la caché de miniaturas: un hueco concreto de una cuenta.
+  static QString miniaturaClave(int accountId, int slot) {
+    return QString::number(accountId) + ":" + QString::number(slot);
+  }
+
+  void subirFoto(const QString& host, quint16 puerto, const QString& token,
+                 const QString& imagenBase64, bool mesa, int slot = 0) {
+    // Más margen que el 4 s por defecto: la imagen viaja en base64 y el
+    // servidor espera la moderación de Claude antes de contestar.
+    enviarPeticionEfimera(host, puerto,
+        net::buildMsg(net::MsgType::SUBIR_FOTO_PERFIL, {
+            {"token", token.toStdString()},
+            {"imagen_base64", imagenBase64.toStdString()},
+            {"tipo", mesa ? "mesa" : "perfil"},
+            {"slot", std::to_string(slot)},
+        }),
+        [this, mesa](const std::string& payload) {
+          if (payload.empty()) {
+            const QString error = QStringLiteral("error_conexion_timeout");
+            if (mesa) emit fotoMesaSubidaError(error);
+            else emit fotoPerfilSubidaError(error);
+            return;
+          }
+          std::string evento = net::jsonGetStr(payload, "evento");
+          if (evento == "FOTO_PERFIL_SUBIDA") {
+            const QString hash = QString::fromStdString(net::jsonGetStr(payload, "hash"));
+            if (mesa) emit fotoMesaSubida(hash);
+            else emit fotoPerfilSubida(hash);
+          } else {
+            const QString error = QString::fromStdString(net::jsonGetStr(payload, "mensaje"));
+            if (mesa) emit fotoMesaSubidaError(error);
+            else emit fotoPerfilSubidaError(error);
+          }
+        }, 30000);
+  }
+
   /// Escribe a disco (con sync() explícito, ver el porqué abajo) lo que
   /// hace falta para intentarRecuperarSesion() tras un arranque en frío:
   /// sala/código/si ya empezó la partida, y el host/puerto donde estaba
@@ -1907,6 +2167,7 @@ class NetworkClient : public QObject {
    */
   void iniciarConexionConMensaje(const QString& host, quint16 puerto,
                                  QString nombre, net::Message primerMensaje) {
+    marcarEspectador(false);
     // A partir de aquí la presencia (si la cuenta es real) la lleva el
     // propio asiento en el servidor (EN_PARTIDA, ver PresenceRegistry) --
     // el socket de presencia de menús ya no pinta nada mientras dure esta
@@ -2164,6 +2425,7 @@ class NetworkClient : public QObject {
               // que uno mismo se unió.
               QString salaId = QString::fromStdString(net::jsonGetStr(payload, "sala_id"));
               QString codigo = QString::fromStdString(net::jsonGetStr(payload, "codigo"));
+              marcarEspectador(net::jsonGetStr(payload, "rol") == "espectador");
               // Igual que en unirseASala(): recordados para poder mandar
               // JOIN_GAME (no JOIN_LOBBY) si la conexión se cae mientras
               // seguimos en el lobby de ESTA sala recién creada.
@@ -2477,6 +2739,13 @@ class NetworkClient : public QObject {
             emit tapeteAnfitrionActualizado(
                 QString::fromStdString(net::jsonGetStr(payload, "tapete")),
                 QString::fromStdString(net::jsonGetStr(payload, "tapete_borde")));
+            // Foto de mesa del anfitrión (2026-10-03): el hash decide si hay
+            // que pedir bytes (sincronizarFotoMesa), la señal solo lleva el
+            // accountId para que QML lea la caché tras fotosCambios.
+            const int fotoAccountId = net::jsonGetInt(payload, "tapete_foto_account_id");
+            sincronizarFotoMesa(fotoAccountId,
+                                QString::fromStdString(net::jsonGetStr(payload, "tapete_foto_hash")));
+            emit tapeteFotoAnfitrionActualizado(fotoAccountId);
           } else if (tipo == "TU_TURNO") {
             int bote = net::jsonGetInt(payload, "bote");
             int igualar = net::jsonGetInt(payload, "igualar");
@@ -2551,6 +2820,25 @@ class NetworkClient : public QObject {
   QVariantMap estadisticasCuenta_;
   QVariantMap loadoutMarco_;  ///< Fase 5 del sistema de progresión -- ver consultarLoadout().
   QVariantMap perfilJugador_;  ///< Perfil de OTRA cuenta -- ver el comentario del Q_PROPERTY.
+  /// Fotos de avatar cacheadas por accountId ({"base64":..., "hash":...}) --
+  /// ver consultarFotoPerfil()/fotoBase64Cacheada(). No es una Q_PROPERTY:
+  /// es un mapa por cuenta, no un dato propio único.
+  QHash<int, QVariantMap> fotosCache_;
+  int fotosCambios_ = 0;  ///< Ver la Q_PROPERTY fotosCambios.
+  bool esEspectador_ = false;  ///< Ver la Q_PROPERTY esEspectador.
+  QSet<int> fotosPendientes_;  ///< Cuentas con una petición de foto en vuelo.
+  /// Caché de la foto de MESA por accountId, mismo formato que fotosCache_.
+  QHash<int, QVariantMap> fotosMesaCache_;
+  QSet<int> fotosMesaPendientes_;
+  /// Miniaturas de cada preset de mesa, por miniaturaClave(). Mismo formato.
+  QHash<QString, QVariantMap> miniaturasMesaCache_;
+  QSet<QString> miniaturasMesaPendientes_;
+
+  void marcarEspectador(bool valor) {
+    if (esEspectador_ == valor) return;
+    esEspectador_ = valor;
+    emit esEspectadorCambio();
+  }
 
   // ── Social: socket de presencia ──────────────────────────────────────
   // Conexión persistente SEPARADA de socket_ (la de sala/partida) -- ver

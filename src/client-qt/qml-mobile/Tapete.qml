@@ -31,6 +31,11 @@ Item {
     // Miniatura (rejilla de Tienda/Personalizar): sin dibujo ni pespunte --
     // a 40px no se distinguirían, y cada capa de más es un efecto por tarjeta.
     property bool miniatura: false
+    // Foto propia como tapete (2026-10-03, docs/plan-mesa-con-foto.md): el
+    // preset "tapete_foto" pinta la imagen en vez del paño. fotoBase64 lo
+    // pone Mesa.qml (la foto del anfitrión, o la propia en Personalizar) y
+    // queda "" mientras no esté descargada: entonces se ve el paño de base.
+    property string fotoBase64: ""
 
     // "preset" = "tipo" o "tipo:variante" (p. ej. "tapete_rombos:granate",
     // "tapete_madera:nogal"). El TIPO es lo que se compra (la textura); el color
@@ -50,7 +55,6 @@ Item {
         // (ver bordePreset/conBorde más abajo), así que esta entrada ya
         // no necesita marcarlo -- solo "temaActivo" para que "estilo" no
         // intente buscarle un color de paño (más abajo).
-        "tapete_casino": { temaActivo: true },
         "tapete_madera": { madera: true }
     })
     readonly property var colores: ({
@@ -102,6 +106,8 @@ Item {
     readonly property string bordeTipoId: bordePreset.indexOf(":") >= 0 ? bordePreset.split(":")[0] : bordePreset
     readonly property string bordeVariante: bordePreset.indexOf(":") >= 0 ? bordePreset.split(":")[1] : ""
     readonly property bool conBorde: bordeTipoId === "borde_madera"
+    readonly property bool esFoto: preset === "tapete_foto"
+    readonly property bool mostrandoFoto: esFoto && fotoBase64 !== "" && !miniatura
     readonly property var estiloBorde: conBorde ? (maderas[bordeVariante] || maderas["roble"]) : null
 
     readonly property bool esMadera: estilo !== null && estilo.madera === true
@@ -251,6 +257,59 @@ Item {
                 property variant source
                 property real amplitud: 30.0
                 fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+            }
+        }
+
+        // Foto propia (tapete_foto): la imagen recortada a la forma del paño,
+        // con una capa oscura encima para que las cartas y las fichas se lean
+        // con cualquier foto. Va sobre el paño y debajo del pespunte y del
+        // dibujo; el borde de tapete sigue por fuera (capas de tapete).
+        Item {
+            id: capaFoto
+            anchors.fill: parent
+            visible: tapete.mostrandoFoto
+            Item {
+                id: fuenteFoto
+                anchors.fill: parent
+                visible: false
+                clip: true
+                layer.enabled: true
+                Image {
+                    anchors.fill: parent
+                    source: tapete.mostrandoFoto ? ("data:image/jpeg;base64," + tapete.fotoBase64) : ""
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    mipmap: true
+                    // Decodificar a un ancho de mesa, no a los 1536 px del original.
+                    sourceSize.width: 1024
+                }
+            }
+            Item {
+                id: mascaraFoto
+                anchors.fill: parent
+                visible: false
+                layer.enabled: true
+                layer.smooth: true
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    radius: height / 2
+                    color: "black"
+                }
+            }
+            MultiEffect {
+                anchors.fill: parent
+                source: fuenteFoto
+                maskEnabled: true
+                maskSource: mascaraFoto
+            }
+            // Atenuado: la foto no debe competir con las cartas. Grado a
+            // revisar con fotos reales (riesgo anotado en el plan).
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 3
+                radius: height / 2
+                color: Qt.rgba(0, 0, 0, 0.32)
             }
         }
 

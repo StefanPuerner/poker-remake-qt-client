@@ -20,6 +20,10 @@ import QtQuick.Effects
 // SoundEffect: sonidos de la mesa (BancoMezclas) y el aviso de "tu turno". Necesita el módulo
 // qtmultimedia también en el kit de Android (ver cmake/ClientesQt.cmake).
 import QtMultimedia
+// Selector de foto de avatar (2026-10-02) -- ver el comentario gemelo en el
+// Main.qml de escritorio (Storage Access Framework en Android, sin permisos
+// nuevos para elegir una imagen ya existente).
+import QtQuick.Dialogs
 
 ApplicationWindow {
     id: ventana
@@ -428,6 +432,8 @@ ApplicationWindow {
         if (tokenSesion === "") return;
         redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
         redcliente.consultarLoadout(servidorHost, servidorPuerto, tokenSesion);
+        // Foto de avatar propia -- ver el comentario gemelo en el Main.qml de escritorio.
+        if (miAccountId > 0) redcliente.consultarFotoPerfil(servidorHost, servidorPuerto, miAccountId);
         // Logros también: la pestaña Logros es accesible sin conexión, y
         // solo se cachea lo que el servidor haya llegado a mandar.
         redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
@@ -648,6 +654,10 @@ ApplicationWindow {
     // Token de sesión de la cuenta activa ("" = invitado o sin sesión) --
     // persistido vía Settings.tokenGuardado (alias de arriba).
     property string tokenSesion: ""
+    // Foto de avatar (2026-10-02) -- ver el comentario gemelo en el Main.qml de escritorio.
+    property int miAccountId: 0
+    property bool subiendoFotoPerfil: false
+    property string errorFotoPerfil: ""
     // Evita una carrera real en dispositivo (no se ve en el PC de prueba,
     // donde todo es local e instantáneo): la reautenticación silenciosa de
     // Component.onCompleted puede tardar en responder, y "Entrar como
@@ -965,6 +975,16 @@ ApplicationWindow {
     // Tapete: se compra el TIPO y el color/madera se elige aquí (ver PopupTapete.qml).
     // El loadout guarda "tipo:variante".
     function abrirPopupTapete(codigo) {
+        // Foto propia (2026-10-03): no hay color que elegir, sino la foto --
+        // subirla, cambiarla o equiparla desde PopupFotoMesa.
+        if (codigo === "tapete_foto") {
+            var infoFoto = objetoTiendaPorCodigo(codigo);
+            popupFotoMesa.abrir(infoFoto ? infoFoto.nombre : codigo,
+                                redcliente.loadoutMarco.tapete === "tapete_foto",
+                                ventana.construirPresetsMesa());
+            ventana.listarPresetsMesa();
+            return;
+        }
         var info = objetoTiendaPorCodigo(codigo);
         // "tapete_borde" (capas de tapete, 2026-09-30) tiene sus propias
         // maderas, guardadas por separado de la base -- mismo popup de
@@ -1446,6 +1466,50 @@ ApplicationWindow {
         : ((verMiTapete || ventana.modoOfflineActivo) ? miTapete : tapeteAnfitrion)
     readonly property string tapeteBordeMesaActivo: miTapete === "" ? tapeteBordeAnfitrion
         : ((verMiTapete || ventana.modoOfflineActivo) ? miTapeteBorde : tapeteBordeAnfitrion)
+    // Foto de mesa (2026-10-03, docs/plan-mesa-con-foto.md): mismo criterio
+    // que el árbol de escritorio (ver allí para el detalle).
+    property int tapeteFotoAccountIdAnfitrion: 0
+    readonly property bool mostrandoMiTapete: miTapete !== "" && (verMiTapete || ventana.modoOfflineActivo)
+    readonly property int tapeteFotoAccountIdActivo: mostrandoMiTapete ? ventana.miAccountId : tapeteFotoAccountIdAnfitrion
+    readonly property string fotoTapeteMesaActiva: {
+        redcliente.fotosCambios;
+        return tapeteMesaActivo === "tapete_foto" && tapeteFotoAccountIdActivo > 0
+               ? redcliente.fotoMesaBase64Cacheada(tapeteFotoAccountIdActivo) : "";
+    }
+    readonly property string fotoMiaMesa: {
+        redcliente.fotosCambios;
+        return ventana.miAccountId > 0 ? redcliente.fotoMesaBase64Cacheada(ventana.miAccountId) : "";
+    }
+    readonly property bool tengoTapeteFoto: (ventana.objetoTiendaPorCodigo("tapete_foto") || {}).poseido === 1
+    property bool subiendoFotoMesa: false
+    // Presets de foto de mesa (2026-10-03): hueco activo y hashes de los 4 tal
+    // como los dio FOTOS_MESA_LISTA; las miniaturas salen de la caché.
+    property int presetsActivaMesa: 0
+    property var presetsHashesMesa: ["", "", "", ""]
+    // Hueco donde cae la próxima foto subida (1-4).
+    property int huecoFotoMesaPendiente: 1
+    function construirPresetsMesa() {
+        var lista = [];
+        for (var i = 0; i < 4; i++) {
+            var hash = presetsHashesMesa[i] || "";
+            var lleno = hash !== "";
+            lista.push({
+                slot: i + 1,
+                lleno: lleno,
+                activa: presetsActivaMesa === i + 1,
+                base64: lleno && ventana.miAccountId > 0
+                        ? redcliente.miniaturaMesaBase64(ventana.miAccountId, i + 1) : ""
+            });
+        }
+        return lista;
+    }
+    function listarPresetsMesa() {
+        if (ventana.miAccountId > 0) redcliente.listarFotosMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+    }
+    property string errorFotoMesa: ""
+    onMiTapeteChanged: {
+        if (miTapete === "tapete_foto" && miAccountId > 0) redcliente.pedirFotoMesaSiFalta(miAccountId);
+    }
     property int manoActual: 0
     property int ciegaActual: 0
     property var cartasMesa: []
@@ -1564,6 +1628,10 @@ ApplicationWindow {
         if (nombreJugador === "") { campoNombre.abrir(""); return; }
         redcliente.unirseASala(servidorHost, servidorPuerto, nombreJugador, salaId, codigo);
     }
+    function observar(salaId) {
+        if (nombreJugador === "") { campoNombre.abrir(""); return; }
+        redcliente.unirseComoEspectador(servidorHost, servidorPuerto, nombreJugador, salaId);
+    }
     function reanudar(archivo) {
         if (nombreJugador === "") { campoNombre.abrir(""); return; }
         // El "false" de público/privado que sigue aquí abajo ya NO decide
@@ -1617,6 +1685,7 @@ ApplicationWindow {
             decisionInicioTomada = true;
             nombreJugador = username;
             tokenSesion = token;
+            miAccountId = accountId;
             mensajeErrorLogin = "";
             pantalla = "Salas";
             redcliente.refrescarSalas(servidorHost, servidorPuerto);
@@ -1633,6 +1702,18 @@ ApplicationWindow {
         function onRegistroError(mensaje) {
             mensajeErrorLogin = mensaje;
         }
+        // Foto de avatar (2026-10-02) -- ver el comentario gemelo en el Main.qml de escritorio.
+        function onFotoPerfilSubida(hash) {
+            subiendoFotoPerfil = false;
+            errorFotoPerfil = "";
+            if (ventana.miAccountId > 0) {
+                redcliente.consultarFotoPerfil(servidorHost, servidorPuerto, ventana.miAccountId);
+            }
+        }
+        function onFotoPerfilSubidaError(mensaje) {
+            subiendoFotoPerfil = false;
+            errorFotoPerfil = Idioma.t(mensaje);
+        }
         function onLoginOk(accountId, username, token) {
             enviandoLogin = false;
             reautenticacionPendiente = false;
@@ -1643,6 +1724,7 @@ ApplicationWindow {
             decisionInicioTomada = true;
             nombreJugador = username;
             tokenSesion = token;
+            miAccountId = accountId;
             mensajeErrorLogin = "";
             // Sala/partida guardada en disco de una sesión anterior
             // (Android mató el proceso mientras seguíamos dentro) -- ver
@@ -1974,6 +2056,40 @@ ApplicationWindow {
             tapeteAnfitrion = tapete;
             tapeteBordeAnfitrion = borde;
         }
+        function onTapeteFotoAnfitrionActualizado(accountId) {
+            tapeteFotoAccountIdAnfitrion = accountId;
+        }
+        // Foto de mesa propia: al subirla se vuelve a pedir para que la caché
+        // y la vista previa muestren la nueva.
+        function onFotoMesaSubida(hash) {
+            subiendoFotoMesa = false;
+            errorFotoMesa = "";
+            if (ventana.miAccountId > 0) {
+                redcliente.consultarFotoMesa(servidorHost, servidorPuerto, ventana.miAccountId);
+            }
+            ventana.listarPresetsMesa();
+        }
+        function onFotosMesaListadas(activa, hashes) {
+            presetsActivaMesa = activa;
+            presetsHashesMesa = hashes;
+            for (var i = 0; i < 4; i++) {
+                if (hashes[i]) redcliente.pedirMiniaturaMesa(ventana.miAccountId, i + 1, hashes[i]);
+            }
+        if (popupFotoMesa.opened) popupFotoMesa.presets = ventana.construirPresetsMesa();
+        }
+        function onFotoMesaActivada(slot) {
+        presetsActivaMesa = slot;
+        if (ventana.miAccountId > 0) redcliente.consultarFotoMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.miAccountId);
+        ventana.listarPresetsMesa();
+        }
+        // Llega una miniatura o la foto de mesa: el pop-up se repinta si sigue abierto.
+        function onFotoPerfilActualizada(accountId) {
+        if (popupFotoMesa.opened) popupFotoMesa.presets = ventana.construirPresetsMesa();
+        }
+        function onFotoMesaSubidaError(mensaje) {
+            subiendoFotoMesa = false;
+            errorFotoMesa = Idioma.t(mensaje);
+        }
         function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
                                          dealer, sb, bb, soloVsBotsNuevo) {
             rondaActual = ronda;
@@ -2020,8 +2136,17 @@ ApplicationWindow {
                     acabadoLateral1: esYoLocal ? (ventana.miLoadoutLocal.acabadoLateral1 || "") : campos.length > 10 ? campos[10] : "",
                     acabadoLateral2: esYoLocal ? (ventana.miLoadoutLocal.acabadoLateral2 || "") : campos.length > 11 ? campos[11] : "",
                     acabadoSuperior: esYoLocal ? (ventana.miLoadoutLocal.acabadoSuperior || "") : campos.length > 12 ? campos[12] : "",
-                    reversoCarta: campos.length > 13 ? campos[13] : ""
+                    reversoCarta: campos.length > 13 ? campos[13] : "",
+                    // Foto de avatar (2026-10-02) -- ver el comentario
+                    // gemelo en el Main.qml de escritorio.
+                    accountId: campos.length > 14 ? parseInt(campos[14]) : 0,
+                    fotoHash: campos.length > 15 ? campos[15] : ""
                 });
+                if (campos.length > 15 && campos[14] !== "" && parseInt(campos[14]) > 0 &&
+                    campos[15] !== "" &&
+                    redcliente.fotoHashCacheada(parseInt(campos[14])) !== campos[15]) {
+                    redcliente.consultarFotoPerfil(ventana.servidorHost, ventana.servidorPuerto, parseInt(campos[14]));
+                }
                 if (campos[0] === nombreJugador) {
                     // Mismo bug que en escritorio: miSaldoActual solo se
                     // ponía al día en onEsMiTurno -- si aún no te ha
@@ -3484,8 +3609,8 @@ ApplicationWindow {
                             MouseArea {
                                 id: areaUnirseSalaMovil
                                 anchors.fill: parent
-                                enabled: tarjetaSalaMovil.modelData.conectados < tarjetaSalaMovil.modelData.esperados
-                                onClicked: ventana.unirse(tarjetaSalaMovil.modelData.id, "")
+                                // Abre la pantalla previa (Unirse / Observar); ya no une directo.
+                                onClicked: popupSalaMovil.abrir(tarjetaSalaMovil.modelData.id, tarjetaSalaMovil.modelData.nombre, tarjetaSalaMovil.modelData.conectados, tarjetaSalaMovil.modelData.esperados)
                             }
                             }
                         }
@@ -3906,6 +4031,7 @@ ApplicationWindow {
                                     anchors.centerIn: parent
                                     letra: columnaPodioMovil.fila && columnaPodioMovil.fila.username.length > 0
                                            ? columnaPodioMovil.fila.username.charAt(0).toUpperCase() : "?"
+                                    accountId: columnaPodioMovil.fila ? parseInt(columnaPodioMovil.fila.accountId) : 0
                                     tamano: columnaPodioMovil.tamanoAvatar
                                     marco: columnaPodioMovil.fila
                                            ? Tema.marcoPorPartidasGanadas(columnaPodioMovil.fila.partidasGanadas,
@@ -4125,6 +4251,7 @@ ApplicationWindow {
                             Avatar {
                                 anchors.verticalCenter: parent.verticalCenter
                                 letra: filaRankingMovil.username.length > 0 ? filaRankingMovil.username.charAt(0).toUpperCase() : "?"
+                                accountId: filaRankingMovil.accountId
                                 // Decoraciones añadidas 2026-10-02 (pedido
                                 // explícito: igual que en Social, no solo el
                                 // podio) -- mismo criterio que escritorio.
@@ -4206,16 +4333,22 @@ ApplicationWindow {
     Item {
         visible: ventana.pantalla === "Torneos" && torneosHabilitados
         anchors.top: barraTorneosMovil.bottom
+        anchors.topMargin: 16 * Tema.escala
         anchors.left: rielNavegacionMovil.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
 
-        ScrollView {
+        Flickable {
             id: scrollTorneosMovil
+            flickableDirection: Flickable.VerticalFlick
+            contentWidth: width
+            contentHeight: contenido_scrollTorneosMovil.height
             anchors.fill: parent
+            anchors.leftMargin: 16 * Tema.escala
+            anchors.rightMargin: 16 * Tema.escala
+            anchors.bottomMargin: 12 * Tema.escala
             clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
+            
             // "parent.width" en el hijo directo de un ScrollView NO es
             // fiable -- ver el comentario largo en qml/Main.qml (mismo
             // fix ahí): "<id>.availableWidth" es la API correcta, la
@@ -4223,7 +4356,8 @@ ApplicationWindow {
             // 2026-09-13 con "parent.width" no bastaba (bug reportado de
             // nuevo 2026-09-14).
             Column {
-                width: scrollTorneosMovil.availableWidth
+                id: contenido_scrollTorneosMovil
+                width: scrollTorneosMovil.width
                 topPadding: 16 * Tema.escala
                 bottomPadding: 16 * Tema.escala
 
@@ -4231,7 +4365,7 @@ ApplicationWindow {
                 id: columnaRetosMovil
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 16 * Tema.escala
-                width: 300 * Tema.escala
+                width: Math.min(780 * Tema.escala, scrollTorneosMovil.width - 40 * Tema.escala)
                 // 0 = Escalera / 1 = Diario / 2 = Racha -- ver docs/plan-retos-diario-racha.md.
                 property int pestanaRetos: 0
 
@@ -4264,15 +4398,6 @@ ApplicationWindow {
                         border.color: Tema.colorAccent
                         width: etiquetaExperimentalMovil.implicitWidth + 14 * Tema.escala
                         height: etiquetaExperimentalMovil.implicitHeight + 6 * Tema.escala
-                        Text {
-                            id: etiquetaExperimentalMovil
-                            anchors.centerIn: parent
-                            text: Idioma.t("etiqueta_experimental")
-                            color: Tema.colorAccent
-                            font.bold: true
-                            font.pixelSize: 9 * Tema.escala
-                            font.capitalization: Font.AllUppercase
-                        }
                     }
                 }
                 Text {
@@ -4283,16 +4408,6 @@ ApplicationWindow {
                     color: Tema.colorTextoTenue
                     font.pixelSize: 12 * Tema.escala
                     text: Idioma.t("torneos_solitario_subtitulo")
-                }
-                Text {
-                    visible: columnaRetosMovil.pestanaRetos === 0
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    color: Tema.colorAccent
-                    font.pixelSize: 11 * Tema.escala
-                    font.italic: true
-                    text: Idioma.t("torneos_solitario_aviso_experimental")
                 }
                 Text {
                     visible: columnaRetosMovil.pestanaRetos === 1
@@ -4329,209 +4444,214 @@ ApplicationWindow {
                     visible: columnaRetosMovil.pestanaRetos === 0
                     width: parent.width
                     spacing: 16 * Tema.escala
-                Repeater {
-                    model: ventana.retosSolitario
-                    // Rediseño 2026-09-16 -- ver el comentario largo en
-                    // qml/Main.qml (mismo cambio, mismas razones: menos
-                    // texto, mismo estilo de "ficha de casino" que Tienda/
-                    // Amigos, círculo numerado en vez de "Reto N" en
-                    // texto). En móvil el "reactivo" es al PULSAR
-                    // (pressed), no al pasar el ratón -- no hay hover
-                    // táctil, mismo criterio que el resto de tarjetas de
-                    // este cliente (areaChatAmigoMovil, etc.).
-                    delegate: Item {
-                        id: tarjetaRetoMovil
-                        required property var modelData
-                        required property int index
-                        readonly property bool disponible: ventana.retoDisponible(modelData.codigoPredecesor)
-                        readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
-                        readonly property bool completado: ventana.retoLogroDesbloqueado(modelData.codigo)
-                        readonly property bool guardado: ventana.retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
-                        readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
-                        readonly property color colorTier: ventana.colorRareza(modelData.rareza)
+                Grid {
+                    columns: Math.max(2, Math.floor(width / (250 * Tema.escala)))
+                    width: parent.width
+                    spacing: 12 * Tema.escala
+                    Repeater {
+                        model: ventana.retosSolitario
+                        // Rediseño 2026-09-16 -- ver el comentario largo en
+                        // qml/Main.qml (mismo cambio, mismas razones: menos
+                        // texto, mismo estilo de "ficha de casino" que Tienda/
+                        // Amigos, círculo numerado en vez de "Reto N" en
+                        // texto). En móvil el "reactivo" es al PULSAR
+                        // (pressed), no al pasar el ratón -- no hay hover
+                        // táctil, mismo criterio que el resto de tarjetas de
+                        // este cliente (areaChatAmigoMovil, etc.).
+                        delegate: Item {
+                            id: tarjetaRetoMovil
+                            required property var modelData
+                            required property int index
+                            readonly property bool disponible: ventana.retoDisponible(modelData.codigoPredecesor)
+                            readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
+                            readonly property bool completado: ventana.retoLogroDesbloqueado(modelData.codigo)
+                            readonly property bool guardado: ventana.retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
+                            readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
+                            readonly property color colorTier: ventana.colorRareza(modelData.rareza)
 
-                        width: parent.width
-                        height: fondoRetoMovil.height + 8 * Tema.escala
-
-                        Rectangle {
-                            anchors.top: fondoRetoMovil.top
-                            anchors.topMargin: 3 * Tema.escala
-                            anchors.left: fondoRetoMovil.left
-                            anchors.right: fondoRetoMovil.right
-                            height: fondoRetoMovil.height
-                            radius: fondoRetoMovil.radius
-                            color: "black"
-                            opacity: 0.35
-                        }
-
-                        Rectangle {
-                            id: fondoRetoMovil
-                            anchors.top: parent.top
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            height: columnaRetoMovil.height + 24 * Tema.escala
-                            radius: 12 * Tema.escala
-                            opacity: tarjetaRetoMovil.disponible ? 1.0 : 0.55
-                            border.width: tarjetaRetoMovil.completado ? 1.8 : 1
-                            border.color: tarjetaRetoMovil.completado ? tarjetaRetoMovil.colorTier : Tema.colorBorde
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
-                                GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                                GradientStop { position: 1.0; color: Tema.colorPanel }
-                            }
-                            // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither_movil.frag.
-                            layer.enabled: true
-                            layer.effect: ShaderEffect {
-                                property variant source
-                                property real amplitud: 30.0
-                                fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
-                            }
-                            scale: zonaTapReto.pressed ? 0.97 : 1.0
-                            Behavior on scale { NumberAnimation { duration: 100 } }
+                            width: (parent.width - (parent.columns - 1) * parent.spacing) / parent.columns
+                            height: fondoRetoMovil.height + 8 * Tema.escala
 
                             Rectangle {
-                                anchors.fill: parent
-                                anchors.margins: 2 * Tema.escala
-                                radius: parent.radius - 2 * Tema.escala
-                                color: "transparent"
-                                border.width: 1
-                                border.color: Qt.rgba(tarjetaRetoMovil.colorTier.r, tarjetaRetoMovil.colorTier.g,
-                                                       tarjetaRetoMovil.colorTier.b,
-                                                       tarjetaRetoMovil.completado ? 0.55 : 0.28)
+                                anchors.top: fondoRetoMovil.top
+                                anchors.topMargin: 3 * Tema.escala
+                                anchors.left: fondoRetoMovil.left
+                                anchors.right: fondoRetoMovil.right
+                                height: fondoRetoMovil.height
+                                radius: fondoRetoMovil.radius
+                                color: "black"
+                                opacity: 0.35
                             }
 
-                            MouseArea {
-                                id: zonaTapReto
-                                anchors.fill: parent
-                            }
-
-                            Column {
-                                id: columnaRetoMovil
+                            Rectangle {
+                                id: fondoRetoMovil
                                 anchors.top: parent.top
-                                anchors.topMargin: 12 * Tema.escala
                                 anchors.left: parent.left
-                                anchors.leftMargin: 14 * Tema.escala
                                 anchors.right: parent.right
-                                anchors.rightMargin: 14 * Tema.escala
-                                spacing: 8 * Tema.escala
+                                height: columnaRetoMovil.height + 24 * Tema.escala
+                                radius: 12 * Tema.escala
+                                opacity: tarjetaRetoMovil.disponible ? 1.0 : 0.55
+                                border.width: tarjetaRetoMovil.completado ? 1.8 : 1
+                                border.color: tarjetaRetoMovil.completado ? tarjetaRetoMovil.colorTier : Tema.colorBorde
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                    GradientStop { position: 1.0; color: Tema.colorPanel }
+                                }
+                                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither_movil.frag.
+                                layer.enabled: true
+                                layer.effect: ShaderEffect {
+                                    property variant source
+                                    property real amplitud: 30.0
+                                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                }
+                                scale: zonaTapReto.pressed ? 0.97 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 100 } }
 
-                                Row {
-                                    width: parent.width
-                                    spacing: 10 * Tema.escala
-                                    Rectangle {
-                                        id: circuloRetoMovil
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 28 * Tema.escala
-                                        height: width
-                                        radius: width / 2
-                                        color: tarjetaRetoMovil.completado ? tarjetaRetoMovil.colorTier : "transparent"
-                                        border.width: 1.5
-                                        border.color: tarjetaRetoMovil.colorTier
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 2 * Tema.escala
+                                    radius: parent.radius - 2 * Tema.escala
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.rgba(tarjetaRetoMovil.colorTier.r, tarjetaRetoMovil.colorTier.g,
+                                                           tarjetaRetoMovil.colorTier.b,
+                                                           tarjetaRetoMovil.completado ? 0.55 : 0.28)
+                                }
+
+                                MouseArea {
+                                    id: zonaTapReto
+                                    anchors.fill: parent
+                                }
+
+                                Column {
+                                    id: columnaRetoMovil
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 12 * Tema.escala
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 14 * Tema.escala
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 14 * Tema.escala
+                                    spacing: 8 * Tema.escala
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 10 * Tema.escala
+                                        Rectangle {
+                                            id: circuloRetoMovil
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 28 * Tema.escala
+                                            height: width
+                                            radius: width / 2
+                                            color: tarjetaRetoMovil.completado ? tarjetaRetoMovil.colorTier : "transparent"
+                                            border.width: 1.5
+                                            border.color: tarjetaRetoMovil.colorTier
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: tarjetaRetoMovil.completado ? "✓" : String(tarjetaRetoMovil.index + 1)
+                                                color: tarjetaRetoMovil.completado ? Tema.colorFondo : tarjetaRetoMovil.colorTier
+                                                font.bold: true
+                                                font.pixelSize: 13 * Tema.escala
+                                            }
+                                        }
                                         Text {
-                                            anchors.centerIn: parent
-                                            text: tarjetaRetoMovil.completado ? "✓" : String(tarjetaRetoMovil.index + 1)
-                                            color: tarjetaRetoMovil.completado ? Tema.colorFondo : tarjetaRetoMovil.colorTier
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - circuloRetoMovil.width - parent.spacing
+                                            text: tarjetaRetoMovil.modelData.nombre
+                                            color: Tema.colorAccent
                                             font.bold: true
                                             font.pixelSize: 13 * Tema.escala
+                                            elide: Text.ElideRight
                                         }
                                     }
                                     Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - circuloRetoMovil.width - parent.spacing
-                                        text: tarjetaRetoMovil.modelData.nombre
-                                        color: Tema.colorAccent
-                                        font.bold: true
-                                        font.pixelSize: 13 * Tema.escala
-                                        elide: Text.ElideRight
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: tarjetaRetoMovil.modelData.descripcion
+                                        color: Tema.colorTexto
+                                        font.pixelSize: 11 * Tema.escala
                                     }
-                                }
-                                Text {
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                    text: tarjetaRetoMovil.modelData.descripcion
-                                    color: Tema.colorTexto
-                                    font.pixelSize: 11 * Tema.escala
-                                }
-                                Text {
-                                    visible: !tarjetaRetoMovil.disponible
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                    text: Idioma.t("error_reto_orden")
-                                    color: Tema.colorTextoTenue
-                                    font.pixelSize: 10 * Tema.escala
-                                }
-                                Flow {
-                                    width: parent.width
-                                    spacing: 5 * Tema.escala
                                     Text {
-                                        text: Idioma.t("etiqueta_recompensas_reto")
+                                        visible: !tarjetaRetoMovil.disponible
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: Idioma.t("error_reto_orden")
                                         color: Tema.colorTextoTenue
                                         font.pixelSize: 10 * Tema.escala
                                     }
-                                    IconoTrebol {
-                                        width: 10 * Tema.escala
-                                        height: width
-                                        colorTrebol: Tema.colorTextoTenue
+                                    Flow {
+                                        width: parent.width
+                                        spacing: 5 * Tema.escala
+                                        Text {
+                                            text: Idioma.t("etiqueta_recompensas_reto")
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                        }
+                                        IconoTrebol {
+                                            width: 10 * Tema.escala
+                                            height: width
+                                            colorTrebol: Tema.colorTextoTenue
+                                        }
+                                        Text {
+                                            text: tarjetaRetoMovil.modelData.treboles
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                        }
+                                        Text {
+                                            // Pedido explícito 2026-09-16:
+                                            // nada de icono/rayo para XP
+                                            // (confunde con "energía") --
+                                            // directamente las letras.
+                                            text: Idioma.tf("etiqueta_xp_valor", [tarjetaRetoMovil.modelData.xp])
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                        }
+                                        Text {
+                                            text: Idioma.t("sufijo_mas_titulo")
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                        }
+                                        Text {
+                                            visible: tarjetaRetoMovil.modelData.decoracionNombre !== ""
+                                            text: Idioma.tf("etiqueta_mas_decoracion", [tarjetaRetoMovil.modelData.decoracionNombre])
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                        }
                                     }
-                                    Text {
-                                        text: tarjetaRetoMovil.modelData.treboles
-                                        color: Tema.colorTextoTenue
-                                        font.pixelSize: 10 * Tema.escala
-                                    }
-                                    Text {
-                                        // Pedido explícito 2026-09-16:
-                                        // nada de icono/rayo para XP
-                                        // (confunde con "energía") --
-                                        // directamente las letras.
-                                        text: Idioma.tf("etiqueta_xp_valor", [tarjetaRetoMovil.modelData.xp])
-                                        color: Tema.colorTextoTenue
-                                        font.pixelSize: 10 * Tema.escala
-                                    }
-                                    Text {
-                                        text: Idioma.t("sufijo_mas_titulo")
-                                        color: Tema.colorTextoTenue
-                                        font.pixelSize: 10 * Tema.escala
-                                    }
-                                    Text {
-                                        visible: tarjetaRetoMovil.modelData.decoracionNombre !== ""
-                                        text: Idioma.tf("etiqueta_mas_decoracion", [tarjetaRetoMovil.modelData.decoracionNombre])
-                                        color: Tema.colorTextoTenue
-                                        font.pixelSize: 10 * Tema.escala
-                                    }
-                                }
 
-                                BotonRelleno {
-                                    visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.completado
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    enabled: tarjetaRetoMovil.puedeReclamar
-                                    text: tarjetaRetoMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
-                                    onClicked: redcliente.reclamarRecompensaReto(
-                                        ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
-                                        tarjetaRetoMovil.modelData.codigo)
-                                }
-                                // Con una partida guardada del reto, "Continuar" es la
-                                // acción principal y empezar de cero queda como enlace.
-                                BotonRelleno {
-                                    visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.guardado
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("boton_continuar_reto")
-                                    onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, true)
-                                }
-                                BotonRelleno {
-                                    visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.guardado
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("boton_jugar")
-                                    onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, false)
-                                }
-                                Text {
-                                    visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado || tarjetaRetoMovil.guardado)
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: tarjetaRetoMovil.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
-                                    color: Tema.colorAccent
-                                    font.pixelSize: 11 * Tema.escala
-                                    MouseArea {
-                                        anchors.fill: parent
+                                    BotonRelleno {
+                                        visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.completado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        enabled: tarjetaRetoMovil.puedeReclamar
+                                        text: tarjetaRetoMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                        onClicked: redcliente.reclamarRecompensaReto(
+                                            ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                            tarjetaRetoMovil.modelData.codigo)
+                                    }
+                                    // Con una partida guardada del reto, "Continuar" es la
+                                    // acción principal y empezar de cero queda como enlace.
+                                    BotonRelleno {
+                                        visible: tarjetaRetoMovil.disponible && tarjetaRetoMovil.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_continuar_reto")
+                                        onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, true)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaRetoMovil.disponible && !tarjetaRetoMovil.ganadoPendiente && !tarjetaRetoMovil.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_jugar")
                                         onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, false)
+                                    }
+                                    Text {
+                                        visible: tarjetaRetoMovil.disponible && (tarjetaRetoMovil.ganadoPendiente || tarjetaRetoMovil.completado || tarjetaRetoMovil.guardado)
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: tarjetaRetoMovil.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
+                                        color: Tema.colorAccent
+                                        font.pixelSize: 11 * Tema.escala
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            onClicked: ventana.iniciarReto(tarjetaRetoMovil.modelData, false)
+                                        }
                                     }
                                 }
                             }
@@ -4546,163 +4666,168 @@ ApplicationWindow {
                     width: parent.width
                     spacing: 12 * Tema.escala
 
-                    Repeater {
-                        model: ventana.retosDiarios
-                        delegate: Item {
-                            id: tarjetaRetoDiarioMovil
-                            required property var modelData
-                            required property int index
-                            readonly property bool esHoy: index === ventana.retoDiarioDeHoyIndice()
-                            readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
-                            readonly property bool guardado: ventana.retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
-                            readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
+                    Grid {
+                        columns: Math.max(2, Math.floor(width / (250 * Tema.escala)))
+                        width: parent.width
+                        spacing: 12 * Tema.escala
+                        Repeater {
+                            model: ventana.retosDiarios
+                            delegate: Item {
+                                id: tarjetaRetoDiarioMovil
+                                required property var modelData
+                                required property int index
+                                readonly property bool esHoy: index === ventana.retoDiarioDeHoyIndice()
+                                readonly property bool ganadoPendiente: ventana.retoGanadoPendiente(modelData.codigo)
+                                readonly property bool guardado: ventana.retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
+                                readonly property bool puedeReclamar: ventana.conectadoAlServidor && ventana.tokenSesion !== ""
 
-                            width: parent.width
-                            height: fondoRetoDiarioMovil.height + 8 * Tema.escala
+                                width: (parent.width - (parent.columns - 1) * parent.spacing) / parent.columns
+                                height: fondoRetoDiarioMovil.height + 8 * Tema.escala
 
-                            // "Ficha de casino" -- ver el comentario gemelo en qml/Main.qml
-                            // (pedido explícito del usuario 2026-09-22).
-                            Rectangle {
-                                anchors.top: fondoRetoDiarioMovil.top
-                                anchors.topMargin: 3 * Tema.escala
-                                anchors.left: fondoRetoDiarioMovil.left
-                                anchors.right: fondoRetoDiarioMovil.right
-                                height: fondoRetoDiarioMovil.height
-                                radius: fondoRetoDiarioMovil.radius
-                                color: "black"
-                                opacity: 0.35
-                            }
-
-                            Rectangle {
-                                id: fondoRetoDiarioMovil
-                                anchors.top: parent.top
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                height: contenidoRetoDiarioMovil.height + 20 * Tema.escala
-                                radius: 10 * Tema.escala
-                                // Solo el de hoy es jugable/reclamable -- ver el comentario gemelo
-                                // en qml/Main.qml.
-                                opacity: tarjetaRetoDiarioMovil.esHoy ? 1.0 : 0.55
-                                border.width: tarjetaRetoDiarioMovil.esHoy ? 2 : 1
-                                border.color: tarjetaRetoDiarioMovil.esHoy ? Tema.colorAccent : Tema.colorBorde
-                                gradient: Gradient {
-                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
-                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                                    GradientStop { position: 1.0; color: Tema.colorPanel }
-                                }
-                                layer.enabled: true
-                                layer.effect: ShaderEffect {
-                                    property variant source
-                                    property real amplitud: 30.0
-                                    fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
-                                }
-
-                                // Hilo interior -- el "doble bisel" de ficha de casino.
+                                // "Ficha de casino" -- ver el comentario gemelo en qml/Main.qml
+                                // (pedido explícito del usuario 2026-09-22).
                                 Rectangle {
-                                    anchors.fill: parent
-                                    anchors.margins: 2 * Tema.escala
-                                    radius: parent.radius - 2 * Tema.escala
-                                    color: "transparent"
-                                    border.width: 1
-                                    border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
-                                                           tarjetaRetoDiarioMovil.esHoy ? 0.6 : 0.2)
+                                    anchors.top: fondoRetoDiarioMovil.top
+                                    anchors.topMargin: 3 * Tema.escala
+                                    anchors.left: fondoRetoDiarioMovil.left
+                                    anchors.right: fondoRetoDiarioMovil.right
+                                    height: fondoRetoDiarioMovil.height
+                                    radius: fondoRetoDiarioMovil.radius
+                                    color: "black"
+                                    opacity: 0.35
                                 }
 
-                            Column {
-                                id: contenidoRetoDiarioMovil
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.margins: 10 * Tema.escala
-                                spacing: 6 * Tema.escala
-
-                                Row {
-                                    width: parent.width
-                                    spacing: 6 * Tema.escala
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: tarjetaRetoDiarioMovil.modelData.nombre
-                                        color: Tema.colorAccent
-                                        font.bold: true
-                                        font.pixelSize: 13 * Tema.escala
+                                Rectangle {
+                                    id: fondoRetoDiarioMovil
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    height: contenidoRetoDiarioMovil.height + 20 * Tema.escala
+                                    radius: 10 * Tema.escala
+                                    // Solo el de hoy es jugable/reclamable -- ver el comentario gemelo
+                                    // en qml/Main.qml.
+                                    opacity: tarjetaRetoDiarioMovil.esHoy ? 1.0 : 0.55
+                                    border.width: tarjetaRetoDiarioMovil.esHoy ? 2 : 1
+                                    border.color: tarjetaRetoDiarioMovil.esHoy ? Tema.colorAccent : Tema.colorBorde
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                        GradientStop { position: 1.0; color: Tema.colorPanel }
                                     }
+                                    layer.enabled: true
+                                    layer.effect: ShaderEffect {
+                                        property variant source
+                                        property real amplitud: 30.0
+                                        fragmentShader: "qrc:/qt/qml/PokerQuickMobile/assets/shaders/dither_movil.frag.qsb"
+                                    }
+
+                                    // Hilo interior -- el "doble bisel" de ficha de casino.
                                     Rectangle {
-                                        visible: tarjetaRetoDiarioMovil.esHoy
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        radius: height / 2
+                                        anchors.fill: parent
+                                        anchors.margins: 2 * Tema.escala
+                                        radius: parent.radius - 2 * Tema.escala
                                         color: "transparent"
                                         border.width: 1
-                                        border.color: Tema.colorAccent
-                                        width: etiquetaDeHoyMovil.implicitWidth + 12 * Tema.escala
-                                        height: etiquetaDeHoyMovil.implicitHeight + 4 * Tema.escala
+                                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                               tarjetaRetoDiarioMovil.esHoy ? 0.6 : 0.2)
+                                    }
+
+                                Column {
+                                    id: contenidoRetoDiarioMovil
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 10 * Tema.escala
+                                    spacing: 6 * Tema.escala
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 6 * Tema.escala
                                         Text {
-                                            id: etiquetaDeHoyMovil
-                                            anchors.centerIn: parent
-                                            text: Idioma.t("etiqueta_reto_de_hoy")
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: tarjetaRetoDiarioMovil.modelData.nombre
                                             color: Tema.colorAccent
                                             font.bold: true
-                                            font.pixelSize: 9 * Tema.escala
-                                            font.capitalization: Font.AllUppercase
+                                            font.pixelSize: 13 * Tema.escala
+                                        }
+                                        Rectangle {
+                                            visible: tarjetaRetoDiarioMovil.esHoy
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            radius: height / 2
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: Tema.colorAccent
+                                            width: etiquetaDeHoyMovil.implicitWidth + 12 * Tema.escala
+                                            height: etiquetaDeHoyMovil.implicitHeight + 4 * Tema.escala
+                                            Text {
+                                                id: etiquetaDeHoyMovil
+                                                anchors.centerIn: parent
+                                                text: Idioma.t("etiqueta_reto_de_hoy")
+                                                color: Tema.colorAccent
+                                                font.bold: true
+                                                font.pixelSize: 9 * Tema.escala
+                                                font.capitalization: Font.AllUppercase
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: tarjetaRetoDiarioMovil.modelData.descripcion
+                                        color: Tema.colorTexto
+                                        font.pixelSize: 11 * Tema.escala
+                                        font.family: Tema.fuenteElegante
+                                    }
+                                    Row {
+                                        spacing: 5 * Tema.escala
+                                        IconoTrebol {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 10 * Tema.escala
+                                            height: width
+                                            colorTrebol: Tema.colorTextoTenue
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: tarjetaRetoDiarioMovil.modelData.treboles
+                                            color: Tema.colorTextoTenue
+                                            font.pixelSize: 10 * Tema.escala
+                                            font.family: Tema.fuenteElegante
+                                        }
+                                    }
+
+                                    BotonRelleno {
+                                        visible: tarjetaRetoDiarioMovil.esHoy && tarjetaRetoDiarioMovil.ganadoPendiente
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        enabled: tarjetaRetoDiarioMovil.puedeReclamar
+                                        text: tarjetaRetoDiarioMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                        onClicked: redcliente.reclamarRetoDiario(
+                                            ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, tarjetaRetoDiarioMovil.modelData.codigo)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaRetoDiarioMovil.esHoy && !tarjetaRetoDiarioMovil.ganadoPendiente && tarjetaRetoDiarioMovil.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_continuar_reto")
+                                        onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, true)
+                                    }
+                                    BotonRelleno {
+                                        visible: tarjetaRetoDiarioMovil.esHoy && !tarjetaRetoDiarioMovil.ganadoPendiente && !tarjetaRetoDiarioMovil.guardado
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: Idioma.t("boton_jugar")
+                                        onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, false)
+                                    }
+                                    Text {
+                                        visible: tarjetaRetoDiarioMovil.esHoy && (tarjetaRetoDiarioMovil.ganadoPendiente || tarjetaRetoDiarioMovil.guardado)
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: tarjetaRetoDiarioMovil.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
+                                        color: Tema.colorAccent
+                                        font.pixelSize: 11 * Tema.escala
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, false)
                                         }
                                     }
                                 }
-                                Text {
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                    text: tarjetaRetoDiarioMovil.modelData.descripcion
-                                    color: Tema.colorTexto
-                                    font.pixelSize: 11 * Tema.escala
-                                    font.family: Tema.fuenteElegante
                                 }
-                                Row {
-                                    spacing: 5 * Tema.escala
-                                    IconoTrebol {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 10 * Tema.escala
-                                        height: width
-                                        colorTrebol: Tema.colorTextoTenue
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: tarjetaRetoDiarioMovil.modelData.treboles
-                                        color: Tema.colorTextoTenue
-                                        font.pixelSize: 10 * Tema.escala
-                                        font.family: Tema.fuenteElegante
-                                    }
-                                }
-
-                                BotonRelleno {
-                                    visible: tarjetaRetoDiarioMovil.esHoy && tarjetaRetoDiarioMovil.ganadoPendiente
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    enabled: tarjetaRetoDiarioMovil.puedeReclamar
-                                    text: tarjetaRetoDiarioMovil.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
-                                    onClicked: redcliente.reclamarRetoDiario(
-                                        ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, tarjetaRetoDiarioMovil.modelData.codigo)
-                                }
-                                BotonRelleno {
-                                    visible: tarjetaRetoDiarioMovil.esHoy && !tarjetaRetoDiarioMovil.ganadoPendiente && tarjetaRetoDiarioMovil.guardado
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("boton_continuar_reto")
-                                    onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, true)
-                                }
-                                BotonRelleno {
-                                    visible: tarjetaRetoDiarioMovil.esHoy && !tarjetaRetoDiarioMovil.ganadoPendiente && !tarjetaRetoDiarioMovil.guardado
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Idioma.t("boton_jugar")
-                                    onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, false)
-                                }
-                                Text {
-                                    visible: tarjetaRetoDiarioMovil.esHoy && (tarjetaRetoDiarioMovil.ganadoPendiente || tarjetaRetoDiarioMovil.guardado)
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: tarjetaRetoDiarioMovil.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
-                                    color: Tema.colorAccent
-                                    font.pixelSize: 11 * Tema.escala
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: ventana.iniciarReto(tarjetaRetoDiarioMovil.modelData, false)
-                                    }
-                                }
-                            }
                             }
                         }
                     }
@@ -5090,6 +5215,7 @@ ApplicationWindow {
                         anchors.leftMargin: 20 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         letra: celdaAmigoMovil.username.length > 0 ? celdaAmigoMovil.username.charAt(0).toUpperCase() : "?"
+                        accountId: celdaAmigoMovil.accountId
                         tamano: 28 * Tema.escala
                         marco: Tema.marcoPorPartidasGanadas(celdaAmigoMovil.partidasGanadas, celdaAmigoMovil.tieneMarcoBasico)
                         textura: celdaAmigoMovil.textura
@@ -5468,6 +5594,7 @@ ApplicationWindow {
                         anchors.leftMargin: 10 * Tema.escala
                         anchors.verticalCenter: parent.verticalCenter
                         letra: filaSolicitudMovil.fromUsername.length > 0 ? filaSolicitudMovil.fromUsername.charAt(0).toUpperCase() : "?"
+                        accountId: filaSolicitudMovil.fromAccountId
                         tamano: 32 * Tema.escala
                     }
                     Text {
@@ -5658,6 +5785,7 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
                             tamano: 72 * Tema.escala
+                            accountId: ventana.miAccountId
                             marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
                             // Loadout real (Fase M0/M1, 2026-09-01) -- antes
                             // este avatar solo pintaba el marco, nunca
@@ -5689,6 +5817,84 @@ ApplicationWindow {
                         nombre: infoTitulo ? infoTitulo.nombre : ""
                         colorTier: ventana.colorRareza(infoTitulo ? infoTitulo.rareza : "")
                     }
+                    // Foto de avatar (2026-10-02) -- ver el comentario gemelo en el Main.qml de escritorio.
+                    BotonRelleno {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: ventana.miAccountId > 0 && !ventana.subiendoFotoPerfil
+                        text: Idioma.t("boton_subir_foto")
+                        radioBorde: 999
+                        onClicked: dialogoFotoPerfil.open()
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: ventana.subiendoFotoPerfil
+                        text: Idioma.t("texto_subiendo_foto")
+                        color: Tema.colorTextoTenue
+                        font.pixelSize: 12 * Tema.escala
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: ventana.errorFotoPerfil !== ""
+                        width: 220 * Tema.escala
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: ventana.errorFotoPerfil
+                        color: Tema.colorPeligro
+                        font.pixelSize: 11 * Tema.escala
+                    }
+                    FileDialog {
+                        id: dialogoFotoPerfil
+                        title: Idioma.t("boton_subir_foto")
+                        nameFilters: [Idioma.t("filtro_imagenes") + " (*.png *.jpg *.jpeg)"]
+                        onAccepted: {
+                            ventana.errorFotoPerfil = "";
+                            popupRecorteFoto.abrirCon(dialogoFotoPerfil.selectedFile);
+                        }
+                    }
+                    PopupRecorteFoto {
+                        id: popupRecorteFoto
+                        onConfirmado: (cropX, cropY, cropW, cropH) => {
+                            const base64 = fotoHelper.recortarRectYCodificar(popupRecorteFoto.archivo, cropX, cropY, cropW, cropH, 256, 256, 80);
+                            if (base64 === "") {
+                                ventana.errorFotoPerfil = Idioma.t("error_imagen_invalida");
+                                return;
+                            }
+                            ventana.subiendoFotoPerfil = true;
+                            redcliente.subirFotoPerfil(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, base64);
+                        }
+                    }
+                    PopupFotoMesa {
+                        id: popupFotoMesa
+                        onActivar: (slot) => redcliente.activarFotoMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, slot)
+    onSubir: (slot) => {
+        ventana.huecoFotoMesaPendiente = slot;
+        dialogoFotoMesa.open();
+    }
+                        onEquipar: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", "tapete_foto", "")
+                        onQuitar: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", "")
+                    }
+                    // Foto de mesa (tapete): mismo flujo que la de avatar, en forma de pastilla (768x384).
+                    FileDialog {
+                        id: dialogoFotoMesa
+                        title: Idioma.t("boton_subir_foto_mesa")
+                        nameFilters: [Idioma.t("filtro_imagenes") + " (*.png *.jpg *.jpeg)"]
+                        onAccepted: {
+                            ventana.errorFotoMesa = "";
+                            popupRecorteFotoMesa.abrirCon(dialogoFotoMesa.selectedFile, "pastilla");
+                        }
+                    }
+                    PopupRecorteFoto {
+                        id: popupRecorteFotoMesa
+                        onConfirmado: (cropX, cropY, cropW, cropH) => {
+                            const base64 = fotoHelper.recortarRectYCodificar(popupRecorteFotoMesa.archivo, cropX, cropY, cropW, cropH, 1536, 768, 85);
+                            if (base64 === "") {
+                                ventana.errorFotoMesa = Idioma.t("error_imagen_invalida");
+                                return;
+                            }
+                            ventana.subiendoFotoMesa = true;
+                            redcliente.subirFotoMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, base64, ventana.huecoFotoMesaPendiente);
+                        }
+                    }
 
                     // ── Estadísticas propias -- ocultas hasta la primera
                     // partida contada.
@@ -5696,6 +5902,20 @@ ApplicationWindow {
                         width: parent.width
                         visible: ventana.statsPartidasJugadas > 0
                         spacing: 6 * Tema.escala
+                        Row {
+                            width: parent.width
+                            spacing: 14 * Tema.escala
+                            Column {
+                                width: (parent.width - 1 - 2 * parent.spacing) / 2
+                                spacing: 6 * Tema.escala
+                                // Mismo título que la columna de la derecha, a la misma altura.
+                                Text {
+                                    text: Idioma.t("titulo_estadisticas")
+                                    color: Tema.colorTextoMuyTenue
+                                    font.pixelSize: 10 * Tema.escala
+                                    font.letterSpacing: 1
+                                    topPadding: 6 * Tema.escala
+                                }
                         Repeater {
                             model: [
                                 { etiqueta: Idioma.t("stat_partidas_jugadas"), valor: ventana.statsPartidasJugadas + "" },
@@ -5741,6 +5961,15 @@ ApplicationWindow {
                             }
                         }
 
+                            }
+                            Rectangle {
+                                width: 1
+                                height: parent.height
+                                color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b, 0.18)
+                            }
+                            Column {
+                                width: (parent.width - 1 - 2 * parent.spacing) / 2
+                                spacing: 6 * Tema.escala
                         // Combinaciones mostradas alguna vez en un showdown.
                         // Lista de UNA columna y letra a 11 -- el mismo arreglo
                         // que ya tenía el cliente de escritorio, pedido para
@@ -5799,133 +6028,167 @@ ApplicationWindow {
                                 }
                             }
                         }
+                            }
+                        }
                     }
 
-                    MarcoHueco {
-                        id: cajaNuevoUsernameMovil
-                        width: parent.width
-                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
-                        radius: 10 * Tema.escala
-                        activo: areaNuevoUsernameMovil.pressed
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaNuevoUsernameMovil.valor !== "" ? cajaNuevoUsernameMovil.valor : Idioma.t("placeholder_nuevo_username")
-                            color: cajaNuevoUsernameMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 12 * Tema.escala
-                            elide: Text.ElideRight
-                            width: parent.width - 20 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaNuevoUsernameMovil
-                            anchors.fill: parent
-                            onClicked: campoNuevoUsernameMovil.abrir(cajaNuevoUsernameMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoNuevoUsernameMovil
-                            parent: Overlay.overlay
-                            etiqueta: Idioma.t("placeholder_nuevo_username")
-                            onAceptado: (texto) => cajaNuevoUsernameMovil.valor = texto
-                        }
-                    }
+
                     BotonContorno {
-                        text: Idioma.t("boton_cambiar_username")
-                        onClicked: {
-                            if (cajaNuevoUsernameMovil.valor.length < 3) {
-                                ventana.mensajeErrorLogin = "error_usuario_corto";
-                                return;
+                        text: Idioma.t("boton_cambiar_datos")
+                        onClicked: popupCambiarDatos.open()
+                    }
+                    // Cambio de usuario y contraseña en un pop-up (2026-10-04): la pestaña Cuenta
+                    // queda para ver, y el cambio se abre cuando hace falta.
+                                    Popup {
+                        id: popupCambiarDatos
+                        parent: Overlay.overlay
+                        anchors.centerIn: parent
+                        modal: true
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                        width: Math.min(340 * Tema.escala, (parent ? parent.width : 340) - 40 * Tema.escala)
+                        padding: 16 * Tema.escala
+                        background: Rectangle {
+                            color: Tema.colorPanel
+                            radius: 12 * Tema.escala
+                            border.width: 1
+                            border.color: Tema.colorAccent
+                        }
+                        contentItem: Column {
+                            width: popupCambiarDatos.availableWidth
+                            spacing: 10 * Tema.escala
+                                    MarcoHueco {
+                                        id: cajaNuevoUsernameMovil
+                                        width: parent.width
+                                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                                        radius: 10 * Tema.escala
+                                        activo: areaNuevoUsernameMovil.pressed
+                                        property string valor: ""
+                                        Text {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 10 * Tema.escala
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: cajaNuevoUsernameMovil.valor !== "" ? cajaNuevoUsernameMovil.valor : Idioma.t("placeholder_nuevo_username")
+                                            color: cajaNuevoUsernameMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                                            font.pixelSize: 12 * Tema.escala
+                                            elide: Text.ElideRight
+                                            width: parent.width - 20 * Tema.escala
+                                        }
+                                        MouseArea {
+                                            id: areaNuevoUsernameMovil
+                                            anchors.fill: parent
+                                            onClicked: campoNuevoUsernameMovil.abrir(cajaNuevoUsernameMovil.valor)
+                                        }
+                                        CampoEmergente {
+                                            id: campoNuevoUsernameMovil
+                                            parent: Overlay.overlay
+                                            etiqueta: Idioma.t("placeholder_nuevo_username")
+                                            onAceptado: (texto) => cajaNuevoUsernameMovil.valor = texto
+                                        }
+                                    }
+                                    BotonContorno {
+                                        text: Idioma.t("boton_cambiar_username")
+                                        onClicked: {
+                                            if (cajaNuevoUsernameMovil.valor.length < 3) {
+                                                ventana.mensajeErrorLogin = "error_usuario_corto";
+                                                return;
+                                            }
+                                            ventana.mensajeErrorLogin = "";
+                                            redcliente.cambiarNombreUsuario(ventana.servidorHost, ventana.servidorPuerto,
+                                                                            ventana.tokenSesion, cajaNuevoUsernameMovil.valor);
+                                        }
+                                    }
+
+                                    MarcoHueco {
+                                        id: cajaPasswordActualMovil
+                                        width: parent.width
+                                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                                        radius: 10 * Tema.escala
+                                        activo: areaPasswordActualMovil.pressed
+                                        property string valor: ""
+                                        Text {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 10 * Tema.escala
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: cajaPasswordActualMovil.valor !== "" ? "••••••••" : Idioma.t("placeholder_password_actual")
+                                            color: cajaPasswordActualMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                                            font.pixelSize: 12 * Tema.escala
+                                        }
+                                        MouseArea {
+                                            id: areaPasswordActualMovil
+                                            anchors.fill: parent
+                                            onClicked: campoPasswordActualMovil.abrir(cajaPasswordActualMovil.valor)
+                                        }
+                                        CampoEmergente {
+                                            id: campoPasswordActualMovil
+                                            parent: Overlay.overlay
+                                            etiqueta: Idioma.t("placeholder_password_actual")
+                                            esPassword: true
+                                            onAceptado: (texto) => cajaPasswordActualMovil.valor = texto
+                                        }
+                                    }
+                                    MarcoHueco {
+                                        id: cajaPasswordNuevaMovil
+                                        width: parent.width
+                                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
+                                        radius: 10 * Tema.escala
+                                        activo: areaPasswordNuevaMovil.pressed
+                                        property string valor: ""
+                                        Text {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 10 * Tema.escala
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: cajaPasswordNuevaMovil.valor !== "" ? "••••••••" : Idioma.t("placeholder_password_nueva")
+                                            color: cajaPasswordNuevaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
+                                            font.pixelSize: 12 * Tema.escala
+                                            elide: Text.ElideRight
+                                            width: parent.width - 20 * Tema.escala
+                                        }
+                                        MouseArea {
+                                            id: areaPasswordNuevaMovil
+                                            anchors.fill: parent
+                                            onClicked: campoPasswordNuevaMovil.abrir(cajaPasswordNuevaMovil.valor)
+                                        }
+                                        CampoEmergente {
+                                            id: campoPasswordNuevaMovil
+                                            parent: Overlay.overlay
+                                            etiqueta: Idioma.t("etiqueta_password_nueva_movil")
+                                            esPassword: true
+                                            onAceptado: (texto) => cajaPasswordNuevaMovil.valor = texto
+                                        }
+                                    }
+                                    BotonContorno {
+                                        text: Idioma.t("boton_cambiar_password")
+                                        onClicked: {
+                                            if (cajaPasswordActualMovil.valor.length === 0) {
+                                                ventana.mensajeErrorLogin = "error_falta_password_actual";
+                                                return;
+                                            }
+                                            if (cajaPasswordNuevaMovil.valor.length < 8) {
+                                                ventana.mensajeErrorLogin = "error_password_nueva_corta";
+                                                return;
+                                            }
+                                            ventana.mensajeErrorLogin = "";
+                                            redcliente.cambiarPassword(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
+                                                                       cajaPasswordActualMovil.valor, cajaPasswordNuevaMovil.valor);
+                                        }
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        color: Tema.colorPeligro
+                                        font.pixelSize: 11 * Tema.escala
+                                        text: ventana.resolverMensajeServidor(ventana.mensajeErrorLogin)
+                                        visible: ventana.mensajeErrorLogin !== ""
+                                    }            BotonContorno {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: Idioma.t("boton_cerrar")
+                                onClicked: popupCambiarDatos.close()
                             }
-                            ventana.mensajeErrorLogin = "";
-                            redcliente.cambiarNombreUsuario(ventana.servidorHost, ventana.servidorPuerto,
-                                                            ventana.tokenSesion, cajaNuevoUsernameMovil.valor);
                         }
                     }
 
-                    MarcoHueco {
-                        id: cajaPasswordActualMovil
-                        width: parent.width
-                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
-                        radius: 10 * Tema.escala
-                        activo: areaPasswordActualMovil.pressed
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaPasswordActualMovil.valor !== "" ? "••••••••" : Idioma.t("placeholder_password_actual")
-                            color: cajaPasswordActualMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 12 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaPasswordActualMovil
-                            anchors.fill: parent
-                            onClicked: campoPasswordActualMovil.abrir(cajaPasswordActualMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoPasswordActualMovil
-                            parent: Overlay.overlay
-                            etiqueta: Idioma.t("placeholder_password_actual")
-                            esPassword: true
-                            onAceptado: (texto) => cajaPasswordActualMovil.valor = texto
-                        }
-                    }
-                    MarcoHueco {
-                        id: cajaPasswordNuevaMovil
-                        width: parent.width
-                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
-                        radius: 10 * Tema.escala
-                        activo: areaPasswordNuevaMovil.pressed
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaPasswordNuevaMovil.valor !== "" ? "••••••••" : Idioma.t("placeholder_password_nueva")
-                            color: cajaPasswordNuevaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 12 * Tema.escala
-                            elide: Text.ElideRight
-                            width: parent.width - 20 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaPasswordNuevaMovil
-                            anchors.fill: parent
-                            onClicked: campoPasswordNuevaMovil.abrir(cajaPasswordNuevaMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoPasswordNuevaMovil
-                            parent: Overlay.overlay
-                            etiqueta: Idioma.t("etiqueta_password_nueva_movil")
-                            esPassword: true
-                            onAceptado: (texto) => cajaPasswordNuevaMovil.valor = texto
-                        }
-                    }
-                    BotonContorno {
-                        text: Idioma.t("boton_cambiar_password")
-                        onClicked: {
-                            if (cajaPasswordActualMovil.valor.length === 0) {
-                                ventana.mensajeErrorLogin = "error_falta_password_actual";
-                                return;
-                            }
-                            if (cajaPasswordNuevaMovil.valor.length < 8) {
-                                ventana.mensajeErrorLogin = "error_password_nueva_corta";
-                                return;
-                            }
-                            ventana.mensajeErrorLogin = "";
-                            redcliente.cambiarPassword(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion,
-                                                       cajaPasswordActualMovil.valor, cajaPasswordNuevaMovil.valor);
-                        }
-                    }
 
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        color: Tema.colorPeligro
-                        font.pixelSize: 11 * Tema.escala
-                        text: ventana.resolverMensajeServidor(ventana.mensajeErrorLogin)
-                        visible: ventana.mensajeErrorLogin !== ""
-                    }
 
                     BotonContorno {
                         text: Idioma.t("boton_cerrar_sesion")
@@ -5987,6 +6250,7 @@ ApplicationWindow {
                             Avatar {
                                 anchors.centerIn: parent
                                 letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                                accountId: ventana.miAccountId
                                 tamano: 72 * Tema.escala
                                 marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
                                 textura: redcliente.loadoutMarco.textura || ""
@@ -6126,6 +6390,7 @@ ApplicationWindow {
                                         Avatar {
                                             anchors.verticalCenter: parent.verticalCenter
                                             letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                                            accountId: ventana.miAccountId
                                             tamano: 46 * Tema.escala
                                             marco: filaMarcoRoadmapMovil.modelData.tier
                                         }
@@ -6821,6 +7086,7 @@ ApplicationWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom
                             letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                            accountId: ventana.miAccountId
                             tamano: 80 * Tema.escala
                             marco: Tema.marcoPorPartidasGanadas(ventana.statsPartidasGanadas, ventana.statsTieneMarcoBasico)
                             textura: redcliente.loadoutMarco.textura || ""
@@ -6845,12 +7111,40 @@ ApplicationWindow {
                                     height: 70 * Tema.escala
                                     preset: redcliente.loadoutMarco.tapete || ""
                                     bordePreset: redcliente.loadoutMarco.tapeteBorde || ""
+                                    fotoBase64: ventana.fotoMiaMesa
                                 }
                                 Carta {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     width: 42 * Tema.escala
                                     height: 56 * Tema.escala
                                     reversoSkin: redcliente.loadoutMarco.reversoCarta || ""
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    visible: ventana.subiendoFotoMesa
+                                    text: Idioma.t("texto_subiendo_foto")
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 12 * Tema.escala
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 200 * Tema.escala
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    visible: !ventana.tengoTapeteFoto
+                                    text: Idioma.t("texto_tapete_foto_requiere_compra")
+                                    color: Tema.colorTextoTenue
+                                    font.pixelSize: 11 * Tema.escala
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 200 * Tema.escala
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    visible: ventana.errorFotoMesa !== ""
+                                    text: ventana.errorFotoMesa
+                                    color: Tema.colorPeligro
+                                    font.pixelSize: 11 * Tema.escala
                                 }
                             }
                         }
@@ -7396,6 +7690,7 @@ ApplicationWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom
                             letra: ventana.nombreJugador.length > 0 ? ventana.nombreJugador.charAt(0).toUpperCase() : "?"
+                            accountId: ventana.miAccountId
                             tamano: 80 * Tema.escala
                             marco: ventana.marcoPreview
                             textura: ventana.valorPreview("textura", redcliente.loadoutMarco.textura)
@@ -7501,504 +7796,53 @@ ApplicationWindow {
         onCartaElegida: (codigo) => ventana.cartaSeleccionada = codigo
     }
 
-    // ── Pantalla CrearSala ───────────────────────────────────────────────
-    BarraSuperior {
+    // ── Pantalla CrearSala (rediseño 2026-10-04) ───────────────────────────
+    // A pantalla completa: sin barra superior ni riel. Ver FormularioSala.qml.
+    FormularioSala {
+        id: formularioSala
         visible: ventana.pantalla === "CrearSala"
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.margins: 16 * Tema.escala
-        textoCentro: ventana.sesionOffline ? Idioma.t("boton_partida_local") : Idioma.t("boton_crear_sala")
-        onAbrirAjustes: ventana.ajustesAbiertos = !ventana.ajustesAbiertos
-    }
-
-    Column {
-        id: columnaCrearSala
-        visible: ventana.pantalla === "CrearSala"
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.topMargin: 80 * Tema.escala
-        anchors.bottomMargin: 14 * Tema.escala
-        spacing: 10 * Tema.escala
-        width: Math.min(560 * Tema.escala, ventana.width - 48 * Tema.escala)
-
-        Rectangle {
-            width: parent.width
-            // Ocupa el hueco que sobra entre el título implícito de la
-            // barra y la fila de botones de abajo — mismo cálculo que
-            // escritorio, adaptado a que aquí no hay título propio (ya va
-            // en la barra) ni mensaje de error dentro de esta cuenta.
-            height: parent.height - filaBotonesCrearSalaMovil.height - parent.spacing
-            radius: 8 * Tema.escala
-            color: Tema.colorPanel
-            border.width: 1
-            border.color: Tema.colorBorde
-
-            ScrollView {
-                id: scrollCrearSalaMovil
-                anchors.fill: parent
-                anchors.margins: 14 * Tema.escala
-                clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-                Column {
-                    width: scrollCrearSalaMovil.availableWidth
-                    spacing: 10 * Tema.escala
-
-                    // Ver el comentario gemelo en qml/Main.qml: offline se
-                    // reutiliza el mismo formulario sin la sección de red,
-                    // eligiendo contra cuántos bots jugar.
-                    Column {
-                        width: parent.width
-                        spacing: 4 * Tema.escala
-                        visible: ventana.sesionOffline
-                        Text {
-                            text: Idioma.t("titulo_partida_local_seccion")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 11 * Tema.escala
-                            font.letterSpacing: 1
-                        }
-                        Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                    }
-                    Row {
-                        width: parent.width
-                        visible: ventana.sesionOffline
-                        Text {
-                            width: parent.width - selectorNumBotsMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_numero_bots")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        SelectorNumerico {
-                            id: selectorNumBotsMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            valor: 3
-                            minimo: 1
-                            maximo: 8
-                        }
-                    }
-
-                    Column {
-                        width: parent.width
-                        spacing: 4 * Tema.escala
-                        visible: !ventana.sesionOffline
-                        Text {
-                            text: Idioma.t("titulo_seccion_sala")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 11 * Tema.escala
-                            font.letterSpacing: 1
-                        }
-                        Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                    }
-
-                    // Nombre de sala: campo "de mentira" que abre
-                    // CampoEmergente, igual que el nombre de jugador en
-                    // Inicio (punto 2 del plan de diseño móvil).
-                    MarcoHueco {
-                        id: cajaNombreSalaMovil
-                        visible: !ventana.sesionOffline
-                        width: parent.width
-                        height: Math.max(Tema.tamanoMinTactil, 54 * Tema.escala)
-                        radius: 10 * Tema.escala
-                        activo: areaNombreSala.pressed
-                        property string valor: ""
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10 * Tema.escala
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: cajaNombreSalaMovil.valor !== "" ? cajaNombreSalaMovil.valor : Idioma.t("placeholder_nombre_sala")
-                            color: cajaNombreSalaMovil.valor !== "" ? Tema.colorTexto : Tema.colorTextoMuyTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        MouseArea {
-                            id: areaNombreSala
-                            anchors.fill: parent
-                            onClicked: campoNombreSalaMovil.abrir(cajaNombreSalaMovil.valor)
-                        }
-                        CampoEmergente {
-                            id: campoNombreSalaMovil
-                            parent: Overlay.overlay
-                            etiqueta: Idioma.t("placeholder_nombre_sala")
-                            onAceptado: (texto) => cajaNombreSalaMovil.valor = texto
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        visible: !ventana.sesionOffline
-                        Text {
-                            width: parent.width - interruptorPublicaMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_sala_publica")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        Interruptor {
-                            id: interruptorPublicaMovil
-                            activo: true
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        visible: !ventana.sesionOffline
-                        Text {
-                            width: parent.width - selectorTamanoMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_tamano_sala_movil")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        SelectorNumerico {
-                            id: selectorTamanoMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            valor: 6
-                            minimo: 2
-                            maximo: 9
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        visible: !ventana.sesionOffline
-                        Text {
-                            width: parent.width - interruptorRellenarMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_rellenar_bots")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorRellenarMovil
-                            activo: true
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        visible: !ventana.sesionOffline
-                        Text {
-                            width: parent.width - interruptorAbiertaMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_abierta_tras_iniciar")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorAbiertaMovil
-                            activo: false
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    Column {
-                        width: parent.width
-                        spacing: 4 * Tema.escala
-                        Text {
-                            text: Idioma.t("titulo_seccion_reglas_apuesta")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 11 * Tema.escala
-                            font.letterSpacing: 1
-                        }
-                        Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - selectorDificultadMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_dificultad_bots")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        SelectorPildoras {
-                            id: selectorDificultadMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            opciones: [Idioma.t("dificultad_facil"), Idioma.t("dificultad_normal"), Idioma.t("dificultad_experto")]
-                            seleccionado: 0
-                            onElegido: (indice) => seleccionado = indice
-                        }
-                    }
-
-                    // Prototipo experimental (ver BotLLM en el servidor) -- solo
-                    // tiene efecto en una sala de red; sin conexión los bots
-                    // siempre son locales (iniciarPartidaLocal no la conoce).
-                    Row {
-                        width: parent.width
-                        visible: !ventana.sesionOffline
-                        Text {
-                            width: parent.width - interruptorBotsIaMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_bots_ia")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorBotsIaMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            activo: false
-                        }
-                    }
-                    Text {
-                        width: parent.width
-                        visible: !ventana.sesionOffline
-                        text: Idioma.t("texto_ayuda_bots_ia")
-                        color: Tema.colorTextoMuyTenue
-                        font.pixelSize: 10 * Tema.escala
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - selectorLimiteMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("ajustes_tipo_limite")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        SelectorPildoras {
-                            id: selectorLimiteMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            opciones: [Idioma.t("limite_sin_limite"), Idioma.t("limite_limite_bote"), Idioma.t("limite_limite_fijo")]
-                            seleccionado: 0
-                            onElegido: (indice) => seleccionado = indice
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        visible: selectorLimiteMovil.seleccionado === 2
-                        Text {
-                            width: parent.width - selectorMonteFijoMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_monte_fijo")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        SelectorNumerico {
-                            id: selectorMonteFijoMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            valor: 40
-                            minimo: 1
-                            maximo: 10000
-                            paso: 10
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - interruptorMinRaiseMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_min_raise_obligatorio")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorMinRaiseMovil
-                            activo: false
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - interruptorRecompraMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_permitir_recompra")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorRecompraMovil
-                            activo: false
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    Column {
-                        width: parent.width
-                        spacing: 4 * Tema.escala
-                        Text {
-                            text: Idioma.t("titulo_seccion_partida")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 11 * Tema.escala
-                            font.letterSpacing: 1
-                        }
-                        Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - selectorNumManosMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_numero_manos")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        SelectorNumerico {
-                            id: selectorNumManosMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            valor: 20
-                            minimo: 1
-                            maximo: 200
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - interruptorPreguntarExtensionMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_preguntar_extension_movil")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorPreguntarExtensionMovil
-                            activo: true
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    // Temporizador del voto entre manos: solo en una sala de red (en local no se espera a nadie).
-                    Row {
-                        visible: !ventana.sesionOffline
-                        width: parent.width
-                        Text {
-                            width: parent.width - interruptorTemporizadorVotoMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_temporizador_voto")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-                        Interruptor {
-                            id: interruptorTemporizadorVotoMovil
-                            activo: true
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - selectorCiegaMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_ciega_grande")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        SelectorNumerico {
-                            id: selectorCiegaMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            valor: 20
-                            minimo: 2
-                            maximo: 1000
-                            paso: 5
-                        }
-                    }
-
-                    Row {
-                        width: parent.width
-                        Text {
-                            width: parent.width - selectorSaldoMovil.width
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Idioma.t("etiqueta_saldo_inicial")
-                            color: Tema.colorTextoTenue
-                            font.pixelSize: 13 * Tema.escala
-                        }
-                        SelectorNumerico {
-                            id: selectorSaldoMovil
-                            anchors.verticalCenter: parent.verticalCenter
-                            valor: 1000
-                            minimo: 100
-                            maximo: 100000
-                            paso: 100
-                        }
-                    }
-                }
+        anchors.fill: parent
+        sesionOffline: ventana.sesionOffline
+        mensajeError: resolverMensajeServidor(ventana.mensajeErrorConexion)
+        onCancelar: ventana.pantalla = "Salas"
+        onConfirmar: {
+            if (ventana.nombreJugador === "") { campoNombre.abrir(""); return; }
+            // Sin conexión, el mismo formulario arranca una partida LOCAL.
+            if (ventana.sesionOffline) {
+                ventana.modoOfflineActivo = true;
+                redcliente.iniciarPartidaLocal(
+                    ventana.nombreJugador,
+                    formularioSala.numBots,
+                    formularioSala.manos,
+                    formularioSala.ciega,
+                    formularioSala.saldo,
+                    formularioSala.limite,
+                    formularioSala.minRaise,
+                    formularioSala.monteFijo,
+                    formularioSala.dificultad,
+                    formularioSala.recompra,
+                    formularioSala.preguntarExtension);
+                return;
             }
-        }
-
-        Text {
-            visible: ventana.mensajeErrorConexion !== "" && ventana.pantalla === "CrearSala"
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            color: Tema.colorPeligro
-            font.pixelSize: 11 * Tema.escala
-            text: ventana.resolverMensajeServidor(ventana.mensajeErrorConexion)
-        }
-
-        Row {
-            id: filaBotonesCrearSalaMovil
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 10 * Tema.escala
-            BotonContorno {
-                text: Idioma.t("boton_cancelar")
-                colorBorde: Tema.colorPeligro
-                onClicked: ventana.pantalla = "Salas"
-            }
-            BotonRelleno {
-                text: ventana.sesionOffline ? Idioma.t("boton_empezar_partida") : Idioma.t("boton_crear_sala")
-                onClicked: {
-                    if (ventana.nombreJugador === "") { campoNombre.abrir(""); return; }
-                    // Ver el comentario gemelo en qml/Main.qml.
-                    if (ventana.sesionOffline) {
-                        ventana.modoOfflineActivo = true;
-                        redcliente.iniciarPartidaLocal(
-                            ventana.nombreJugador,
-                            selectorNumBotsMovil.valor,
-                            selectorNumManosMovil.valor,
-                            selectorCiegaMovil.valor,
-                            selectorSaldoMovil.valor,
-                            selectorLimiteMovil.seleccionado,
-                            interruptorMinRaiseMovil.activo,
-                            selectorMonteFijoMovil.valor,
-                            selectorDificultadMovil.seleccionado,
-                            interruptorRecompraMovil.activo,
-                            interruptorPreguntarExtensionMovil.activo);
-                        return;
-                    }
-                    redcliente.crearSala(
-                        ventana.servidorHost, ventana.servidorPuerto, ventana.nombreJugador,
-                        cajaNombreSalaMovil.valor,
-                        interruptorPublicaMovil.activo,
-                        selectorTamanoMovil.valor,
-                        selectorNumManosMovil.valor,
-                        selectorCiegaMovil.valor,
-                        selectorSaldoMovil.valor,
-                        selectorLimiteMovil.seleccionado,
-                        interruptorMinRaiseMovil.activo,
-                        selectorMonteFijoMovil.valor,
-                        selectorDificultadMovil.seleccionado,
-                        interruptorRecompraMovil.activo,
-                        interruptorRellenarMovil.activo,
-                        interruptorAbiertaMovil.activo,
-                        interruptorPreguntarExtensionMovil.activo,
-                        interruptorTemporizadorVotoMovil.activo,
-                        interruptorBotsIaMovil.activo
-                    );
-                }
-            }
+            redcliente.crearSala(
+                ventana.servidorHost, ventana.servidorPuerto, ventana.nombreJugador,
+                formularioSala.nombreSala,
+                formularioSala.publica,
+                formularioSala.tamano,
+                formularioSala.manos,
+                formularioSala.ciega,
+                formularioSala.saldo,
+                formularioSala.limite,
+                formularioSala.minRaise,
+                formularioSala.monteFijo,
+                formularioSala.dificultad,
+                formularioSala.recompra,
+                formularioSala.rellenar,
+                formularioSala.abierta,
+                formularioSala.preguntarExtension,
+                formularioSala.temporizador,
+                formularioSala.botsIA
+            );
         }
     }
 
@@ -8020,6 +7864,13 @@ ApplicationWindow {
                 font.family: Tema.fuenteElegante
                 font.bold: true
                 font.pixelSize: 20 * Tema.escala
+            }
+            Text {
+                visible: redcliente.esEspectador
+                text: Idioma.t("etiqueta_observando")
+                color: Tema.colorAccent
+                font.pixelSize: 12 * Tema.escala
+                font.bold: true
             }
             Text {
                 // Ver el comentario gemelo en qml/Main.qml: oculto hasta el
@@ -8110,7 +7961,7 @@ ApplicationWindow {
         }
 
         BotonContorno {
-            text: Idioma.t("boton_abandonar_sala")
+            text: redcliente.esEspectador ? Idioma.t("boton_dejar_de_observar") : Idioma.t("boton_abandonar_sala")
             radioBorde: 999
             onClicked: {
                 // Mismo mecanismo que en el cliente de escritorio (ver
@@ -8145,7 +7996,7 @@ ApplicationWindow {
     }
 
     ChatBox {
-        visible: ventana.pantalla === "Lobby"
+        visible: ventana.pantalla === "Lobby" && !redcliente.esEspectador
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 28 * Tema.escala
@@ -8191,6 +8042,7 @@ ApplicationWindow {
             miReversoSkin: redcliente.loadoutMarco.reversoCarta || ""
             tapete: ventana.tapeteMesaActivo
             tapeteBorde: ventana.tapeteBordeMesaActivo
+            fotoTapete: ventana.fotoTapeteMesaActiva
             miCarta1: ventana.miCarta1
             miCarta2: ventana.miCarta2
             cartasOcultas: ventana.cartasOcultas
@@ -8235,6 +8087,7 @@ ApplicationWindow {
         // aquí (el suyo ahora vive en la cabecera del propio cajón).
         CajonPartida {
             id: cajonPartidaMovil
+            soloLectura: redcliente.esEspectador
             anchors.top: parent.top
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -8871,6 +8724,11 @@ ApplicationWindow {
     // escritorio (ver Main.qml de qml/): el perfil se abre desde varias
     // pantallas (Social, Ranking), y el banner puede llegar en cualquier
     // pantalla de menú.
+    PopupSala {
+        id: popupSalaMovil
+        onUnirse: (id) => ventana.unirse(id, "")
+        onObservar: (id) => ventana.observar(id)
+    }
     PopupPerfilJugador {
         id: popupPerfilJugador
         servidorHost: ventana.servidorHost

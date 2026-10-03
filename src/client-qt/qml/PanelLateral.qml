@@ -12,6 +12,8 @@ Item {
     property var modeloHistorial
     property var modeloChat
     property string miNombre
+    // Espectadores: leen el chat pero no escriben -- se oculta la fila de entrada.
+    property bool soloLectura: false
     property bool mostrandoChat: false
     // Mensajes de chat llegados con la pestaña de historial abierta (punto de aviso en "Chat").
     property int chatSinLeer: 0
@@ -315,6 +317,7 @@ Item {
         Row {
             id: filaEntradaChat
             width: parent.width
+            visible: !panelLateral.soloLectura
             spacing: 8 * Tema.escala
             TextField {
                 id: campoChatPanel

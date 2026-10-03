@@ -117,6 +117,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         include/net-qt/NetworkClient.hpp
         include/net-qt/VersionChecker.hpp
         include/net-qt/LectorRecursos.hpp
+        include/net-qt/FotoAvatarHelper.hpp
         # Modo offline (Fase 7, ver docs/plan-modo-offline.md) -- LocalGameObserver
         # y LocalGameClient son Q_OBJECT, tienen que listarse aquí explícitamente
         # o AUTOMOC no los mocea y el enlazado falla con "vtable sin definir" sin
@@ -203,6 +204,12 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/SelectorSegmentado.qml
             src/client-qt/qml/Avatar.qml
             src/client-qt/qml/PopupPerfilJugador.qml
+            src/client-qt/qml/PopupRecorteFoto.qml
+            src/client-qt/qml/PopupSala.qml
+            src/client-qt/qml/PopupFotoMesa.qml
+            src/client-qt/qml/FormularioSala.qml
+            src/client-qt/qml/TarjetaCasino.qml
+            src/client-qt/qml/EtiquetaInfo.qml
             src/client-qt/qml/BannerVersionNueva.qml
             src/client-qt/qml/AnilloNivel.qml
             src/client-qt/qml/PopupInvitarAmigos.qml
@@ -420,6 +427,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
         include/net-qt/NetworkClient.hpp
         include/net-qt/VersionChecker.hpp
         include/net-qt/LectorRecursos.hpp
+        include/net-qt/FotoAvatarHelper.hpp
         # Ver el comentario gemelo en PokerClientQt más arriba.
         include/local-qt/LocalGameObserver.hpp
         include/local-qt/LocalGameClient.hpp
@@ -446,6 +454,17 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             # propósito para que no quede otra que la compatible).
             QT_ANDROID_MIN_SDK_VERSION 28
         )
+        # Foto de avatar (2026-10-02): QImage::save(..., "JPG", ...) en
+        # FotoAvatarHelper.hpp necesita el plugin de JPEG. En escritorio Qt
+        # lo encuentra solo (plugins junto al binario / sistema); en
+        # Android TODO va empaquetado en una única .so y los plugins de
+        # imagen no se autodetectan en tiempo de ejecución -- hace falta
+        # importarlo estáticamente o QImage::save() falla en silencio
+        # (devuelve false, sin excepción ni log) solo ahí. Sin esto, subir
+        # una foto desde el móvil real fallaría pese a funcionar en
+        # escritorio -- gap real encontrado al diseñar la función, no visto
+        # todavía en producción.
+        qt_import_plugins(PokerClientMobile INCLUDE Qt6::QJpegPlugin)
     endif()
 
     # Mismo papel que el bloque if(ANDROID) de justo arriba, pero para
@@ -553,6 +572,12 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/SelectorSegmentado.qml
             src/client-qt/qml-mobile/VistaChatDirecto.qml
             src/client-qt/qml-mobile/PopupPerfilJugador.qml
+            src/client-qt/qml-mobile/PopupRecorteFoto.qml
+            src/client-qt/qml-mobile/PopupSala.qml
+            src/client-qt/qml-mobile/PopupFotoMesa.qml
+            src/client-qt/qml-mobile/FormularioSala.qml
+            src/client-qt/qml-mobile/TarjetaCasino.qml
+            src/client-qt/qml-mobile/EtiquetaInfo.qml
             src/client-qt/qml-mobile/PopupInvitarAmigos.qml
             src/client-qt/qml-mobile/BannerInvitacionSala.qml
             src/client-qt/qml-mobile/BannerVersionNueva.qml

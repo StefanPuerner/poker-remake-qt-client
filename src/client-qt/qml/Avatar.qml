@@ -25,12 +25,36 @@
 //   Los tres puestos son transitorios -- se pierden si alguien te supera.
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 
 Item {
     id: avatar
     required property string letra
     property string marco: "ninguno"
     property real tamano: 56 * Tema.escala
+    // Foto de avatar (2026-10-02) -- 0 = sin cuenta conocida (bots,
+    // invitados, o un sitio que todavía no pasa este dato), nunca pinta
+    // foto. Puramente de LECTURA: Avatar no pide nada por su cuenta, solo
+    // mira el caché que ya haya dejado redcliente.consultarFotoPerfil()
+    // (quien tiene host/puerto es el llamador -- Main.qml/Mesa.qml/
+    // Asiento.qml --, no este componente). Por eso el guard de
+    // "typeof redcliente" -- AvatarTest no registra ese contexto.
+    property int accountId: 0
+    // redcliente.fotosCambios va en la condición a propósito: sin esa
+    // lectura, el binding no se re-evalúa cuando llega la foto (un
+    // Q_INVOKABLE no notifica cambios a QML).
+    readonly property string fotoBase64: avatar.accountId > 0 && typeof redcliente !== "undefined"
+                                          && redcliente.fotosCambios >= 0
+                                          ? (redcliente.fotoBase64Cacheada(avatar.accountId) || "")
+                                          : ""
+    readonly property bool tieneFoto: avatar.fotoBase64 !== ""
+    // Cada Avatar que muestra una cuenta pide su foto (una sola petición por
+    // cuenta, deduplicada en NetworkClient::pedirFotoSiFalta).
+    function pedirFoto() {
+        if (avatar.accountId > 0 && typeof redcliente !== "undefined") redcliente.pedirFotoSiFalta(avatar.accountId);
+    }
+    onAccountIdChanged: pedirFoto()
+    Component.onCompleted: pedirFoto()
     // Halo de turno de Asiento.qml -- independiente del marco de logro,
     // los dos pueden coexistir (el aro dorado de turno ya vivía fuera de
     // este componente y sigue así).
@@ -616,13 +640,18 @@ Item {
             GradientStop { position: 1.0; color: Tema.colorPanel }
         }
         // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-        layer.enabled: true
+        // Desactivado con foto: el shader anti-bandas del degradado plano
+        // no pinta nada útil sobre una foto real (solo ruido visible de
+        // más) -- y layer.enabled captura TODOS los hijos (incluida la
+        // foto de abajo), así que sin este guard se procesaría dos veces.
+        layer.enabled: !avatar.tieneFoto
         layer.effect: ShaderEffect {
             property variant source
             property real amplitud: 30.0
             fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
         }
         Text {
+            visible: !avatar.tieneFoto
             anchors.centerIn: parent
             text: avatar.letra
             color: avatar.esCampeon ? avatar.colorCampeon
@@ -630,6 +659,45 @@ Item {
                    : Tema.colorAccent
             font.pixelSize: avatar.tamano * 0.36
             font.family: Tema.fuenteElegante
+        }
+        // Foto de avatar -- recortada a círculo con MultiEffect+maskSource,
+        // mismo patrón ya usado en Tapete.qml (capaMadera/mascaraMadera):
+        // la Image real queda invisible, MultiEffect pinta su propia copia
+        // ya enmascarada. Inset por border.width para que el aro de nucleo
+        // (si lo hay) se siga viendo alrededor de la foto, no tapado por
+        // ella.
+        Item {
+            id: capaFoto
+            visible: false
+            anchors.fill: parent
+            anchors.margins: nucleo.border.width
+            layer.enabled: true
+            Image {
+                anchors.fill: parent
+                source: avatar.tieneFoto ? ("data:image/jpeg;base64," + avatar.fotoBase64) : ""
+                fillMode: Image.PreserveAspectCrop
+                smooth: true
+                mipmap: true
+            }
+        }
+        Item {
+            id: mascaraFoto
+            visible: false
+            anchors.fill: capaFoto
+            layer.enabled: true
+            layer.smooth: true
+            Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: "black"
+            }
+        }
+        MultiEffect {
+            visible: avatar.tieneFoto
+            anchors.fill: capaFoto
+            source: capaFoto
+            maskEnabled: true
+            maskSource: mascaraFoto
         }
     }
 

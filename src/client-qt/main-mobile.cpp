@@ -26,6 +26,7 @@
 #include "../../include/net-qt/NetworkClient.hpp"
 #include "../../include/net-qt/VersionChecker.hpp"
 #include "../../include/net-qt/LectorRecursos.hpp"
+#include "../../include/net-qt/FotoAvatarHelper.hpp"
 #include "../../include/net/ServerConfig.hpp"
 
 // Lo pone cmake/ClientesQt.cmake (POKER_TORNEOS); 0 si no llega.
@@ -235,11 +236,13 @@ int main(int argc, char* argv[]) {
   ModoJuegoCoordinador modoJuego(engine->rootContext(), &client, &clienteLocal);
   VersionChecker versionChecker;
   LectorRecursos lectorRecursos;
+  FotoAvatarHelper fotoHelper;
   engine->rootContext()->setContextProperty("redcliente", &client);
   engine->rootContext()->setContextProperty("modoJuego", &modoJuego);
   engine->rootContext()->setContextProperty("versionChecker", &versionChecker);
   // Lectura de recursos qrc desde QML (XMLHttpRequest no puede leer "qrc:"): la config de sonidos.
   engine->rootContext()->setContextProperty("recursos", &lectorRecursos);
+  engine->rootContext()->setContextProperty("fotoHelper", &fotoHelper);
   // Pestaña Torneos en desarrollo: apagada en los releases (ver
   // POKER_TORNEOS en cmake/ClientesQt.cmake).
   engine->rootContext()->setContextProperty("torneosHabilitados", POKER_TORNEOS != 0);

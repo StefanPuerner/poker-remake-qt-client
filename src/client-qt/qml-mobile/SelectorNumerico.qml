@@ -17,6 +17,10 @@ Row {
     property int minimo: 0
     property int maximo: 999999
     property int paso: 1
+    // Modo compacto (2026-10-04): botones y valor más bajos, para tres cifras en
+    // una fila del formulario de Crear sala. Por defecto, el tamaño táctil de siempre.
+    property bool compacto: false
+    readonly property real tamBoton: compacto ? 34 * Tema.escala : Tema.tactil
     signal cambiado(int nuevoValor)
 
     spacing: 10 * Tema.escala
@@ -30,8 +34,8 @@ Row {
     }
 
     Rectangle {
-        width: Tema.tactil
-        height: Tema.tactil
+        width: selectorNumerico.tamBoton
+        height: selectorNumerico.tamBoton
         radius: 8 * Tema.escala
         color: areaMenos.pressed ? Tema.colorAccent : "transparent"
         border.width: 1
@@ -50,8 +54,8 @@ Row {
     }
 
     Rectangle {
-        width: Math.max(textoValor.implicitWidth + 24 * Tema.escala, 70 * Tema.escala)
-        height: Tema.tactil
+        width: Math.max(textoValor.implicitWidth + 16 * Tema.escala, (selectorNumerico.compacto ? 52 : 70) * Tema.escala)
+        height: selectorNumerico.tamBoton
         radius: 8 * Tema.escala
         color: Tema.colorFondo
         border.width: 1
@@ -70,8 +74,8 @@ Row {
     }
 
     Rectangle {
-        width: Tema.tactil
-        height: Tema.tactil
+        width: selectorNumerico.tamBoton
+        height: selectorNumerico.tamBoton
         radius: 8 * Tema.escala
         color: areaMas.pressed ? Tema.colorAccent : "transparent"
         border.width: 1

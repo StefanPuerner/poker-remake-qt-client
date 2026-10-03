@@ -11,6 +11,8 @@ Column {
     // y Avatar.qml) -- viene de GAME_STATE, así que funciona para
     // CUALQUIER jugador sentado, no solo el propio.
     property int partidasGanadas: 0
+    // Foto de avatar (2026-10-02) -- ver el comentario gemelo en Mesa.qml.
+    property int accountId: 0
     // Visibilidad a otros jugadores, parte B (2026-09-01 -- ver memoria
     // qt_progression_review_2026_09_01): loadout REAL de quien esté
     // sentado aquí, no solo el tier de marco -- mismos campos que ya
@@ -192,6 +194,7 @@ Column {
             Behavior on scale { NumberAnimation { duration: 450 / Math.max(0.05, asiento.velocidad); easing.type: Easing.InOutCubic } }
             letra: nombre.charAt(0)
             tamano: 56 * Tema.escala
+            accountId: asiento.accountId
             // tieneMarcoBasico como 2º argumento -- bug real encontrado
             // aquí también (2026-09-01, tercera vez en un sitio distinto,
             // ver memoria qt_marco_seat_ring_contrast_bug): sin él, un

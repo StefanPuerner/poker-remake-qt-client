@@ -199,6 +199,17 @@ enum class MsgType {
     // (ADMIN_BORRAR_PRUEBA_OK/_ERROR, "mensaje").
     ADMIN_BORRAR_CUENTAS_PRUEBA, ///< "token".
 
+    // Foto de perfil (2026-10-02, ver docs/plan-actualizaciones-2026-09-30.md
+    // § "Foto propia"). Base gratuita, sin tienda. "imagen_base64" ya llega
+    // recortada a cuadrado/redimensionada/en JPEG desde el cliente -- el
+    // servidor solo valida tamaño, modera (Azure Content Safety, fail-closed:
+    // cualquier fallo de la moderación rechaza la subida) y guarda.
+    SUBIR_FOTO_PERFIL,          ///< "token","imagen_base64" -- ack vía GAME_EVENT (FOTO_PERFIL_SUBIDA/FOTO_PERFIL_ERROR).
+    CONSULTAR_FOTO_PERFIL,      ///< "account_id" -- pública (como el perfil de jugador), no exige sesión.
+    FOTO_PERFIL_ACTUAL,         ///< Respuesta a CONSULTAR_FOTO_PERFIL -- "imagen_base64","hash" (ambos vacíos si no tiene foto).
+    LISTAR_FOTOS_MESA,          ///< "token" -- los 4 presets de foto de mesa. Ack GAME_EVENT FOTOS_MESA_LISTA.
+    ACTIVAR_FOTO_MESA,          ///< "token","slot" (1-4) -- hace activo un preset. Ack GAME_EVENT FOTO_MESA_ACTIVADA / FOTO_MESA_ERROR.
+
     UNKNOWN        ///< Tipo desconocido o mensaje malformado.
 };
 

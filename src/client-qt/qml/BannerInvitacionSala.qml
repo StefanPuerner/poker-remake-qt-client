@@ -59,6 +59,7 @@ Rectangle {
         Avatar {
             anchors.verticalCenter: parent.verticalCenter
             letra: banner.fromUsername.length > 0 ? banner.fromUsername.charAt(0).toUpperCase() : "?"
+            accountId: banner.fromAccountId
             tamano: 32 * Tema.escala
         }
         Text {

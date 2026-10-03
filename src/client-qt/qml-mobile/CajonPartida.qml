@@ -23,6 +23,8 @@ Rectangle {
 
     property string turnoNombre: ""
     required property bool tuTurno
+    // Espectadores leen el chat pero no escriben -- se oculta la fila de entrada.
+    property bool soloLectura: false
     property real fraccionTiempo: 1.0
     property int bote: 0
     property string rondaActual: ""
@@ -811,6 +813,7 @@ Rectangle {
 
                 Row {
                     id: filaEntradaChatCajon
+                    visible: !cajon.soloLectura
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom

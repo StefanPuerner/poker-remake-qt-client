@@ -18,6 +18,11 @@ import QtQuick.Window
 // Existe desde Qt 6.5; el CI más viejo (Android) usa 6.7.3.
 import QtCore
 import QtMultimedia
+// Selector de foto de avatar (2026-10-02) -- QtQuick.Dialogs, NO el
+// Qt.labs.platform.FileDialog deprecado: en Android usa el Storage Access
+// Framework del sistema y no pide ningún permiso nuevo para elegir una
+// imagen ya existente.
+import QtQuick.Dialogs
 
 ApplicationWindow {
     id: ventana
@@ -189,6 +194,13 @@ ApplicationWindow {
     // poder guardarla en disco y mandarla a iniciarSesionConToken() al
     // arrancar.
     property string tokenSesion: ""
+    // Foto de avatar (2026-10-02) -- accountId propio, para poder pedir/
+    // mostrar/subir la foto (consultarFotoPerfil()/subirFotoPerfil() la
+    // necesitan). 0 = sin sesión -- no había ningún sitio que guardara
+    // esto hasta ahora (ver onLoginOk/onRegistroOk/onTokenValido).
+    property int miAccountId: 0
+    property bool subiendoFotoPerfil: false
+    property string errorFotoPerfil: ""
     // Compartido por las pantallas Login y Registro -- se limpia al entrar
     // en cualquiera de las dos o al reintentar, para no dejar un error de
     // un intento anterior (o de la otra pantalla) visible sin motivo.
@@ -1112,6 +1124,16 @@ ApplicationWindow {
     // Tapete: se compra el TIPO y el color/madera se elige aquí (ver PopupTapete.qml).
     // El loadout guarda "tipo:variante".
     function abrirPopupTapete(codigo) {
+        // Foto propia (2026-10-03): no hay color que elegir, sino la foto --
+        // subirla, cambiarla o equiparla desde PopupFotoMesa.
+        if (codigo === "tapete_foto") {
+            var infoFoto = objetoTiendaPorCodigo(codigo);
+            popupFotoMesa.abrir(infoFoto ? infoFoto.nombre : codigo,
+                                redcliente.loadoutMarco.tapete === "tapete_foto",
+                                ventana.construirPresetsMesa());
+            ventana.listarPresetsMesa();
+            return;
+        }
         var info = objetoTiendaPorCodigo(codigo);
         // "tapete_borde" (capas de tapete, 2026-09-30) tiene sus propias
         // maderas, guardadas por separado de la base -- mismo popup de
@@ -1199,6 +1221,9 @@ ApplicationWindow {
         if (tokenSesion === "") return;
         redcliente.consultarEstadisticas(servidorHost, servidorPuerto, tokenSesion);
         redcliente.consultarLoadout(servidorHost, servidorPuerto, tokenSesion);
+        // Foto de avatar propia -- para que Cuenta/Perfil la muestre sin
+        // esperar a que la mesa la pida por su cuenta (ver Avatar.qml).
+        if (miAccountId > 0) redcliente.consultarFotoPerfil(servidorHost, servidorPuerto, miAccountId);
         // Logros también: la pestaña Logros es accesible sin conexión, y
         // solo se cachea lo que el servidor haya llegado a mandar.
         redcliente.consultarLogros(servidorHost, servidorPuerto, tokenSesion);
@@ -1808,6 +1833,57 @@ ApplicationWindow {
         : ((verMiTapete || ventana.modoOfflineActivo) ? miTapete : tapeteAnfitrion)
     readonly property string tapeteBordeMesaActivo: miTapete === "" ? tapeteBordeAnfitrion
         : ((verMiTapete || ventana.modoOfflineActivo) ? miTapeteBorde : tapeteBordeAnfitrion)
+    // Foto de mesa (2026-10-03, docs/plan-mesa-con-foto.md): el tapete
+    // "tapete_foto" pinta la foto de UN accountId -- el anfitrión, o tu propia
+    // cuenta cuando te ves el tuyo (mismo criterio que tapeteMesaActivo). Las
+    // dos lecturas van con fotosCambios para re-evaluarse al llegar la foto.
+    property int tapeteFotoAccountIdAnfitrion: 0
+    readonly property bool mostrandoMiTapete: miTapete !== "" && (verMiTapete || ventana.modoOfflineActivo)
+    readonly property int tapeteFotoAccountIdActivo: mostrandoMiTapete ? ventana.miAccountId : tapeteFotoAccountIdAnfitrion
+    readonly property string fotoTapeteMesaActiva: {
+        redcliente.fotosCambios;
+        return tapeteMesaActivo === "tapete_foto" && tapeteFotoAccountIdActivo > 0
+               ? redcliente.fotoMesaBase64Cacheada(tapeteFotoAccountIdActivo) : "";
+    }
+    // Tu propia foto de mesa, para la vista previa de Personalizar.
+    readonly property string fotoMiaMesa: {
+        redcliente.fotosCambios;
+        return ventana.miAccountId > 0 ? redcliente.fotoMesaBase64Cacheada(ventana.miAccountId) : "";
+    }
+    // Comprar tapete_foto es lo que habilita subir la foto (el servidor lo
+    // vuelve a exigir; esto solo esconde el botón si no aplica).
+    readonly property bool tengoTapeteFoto: (objetoTiendaPorCodigo("tapete_foto") || {}).poseido === 1
+    property bool subiendoFotoMesa: false
+    // Presets de foto de mesa (2026-10-03): hueco activo y hashes de los 4 tal
+    // como los dio FOTOS_MESA_LISTA; las miniaturas salen de la caché.
+    property int presetsActivaMesa: 0
+    property var presetsHashesMesa: ["", "", "", ""]
+    // Hueco donde cae la próxima foto subida (1-4).
+    property int huecoFotoMesaPendiente: 1
+    function construirPresetsMesa() {
+        var lista = [];
+        for (var i = 0; i < 4; i++) {
+            var hash = presetsHashesMesa[i] || "";
+            var lleno = hash !== "";
+            lista.push({
+                slot: i + 1,
+                lleno: lleno,
+                activa: presetsActivaMesa === i + 1,
+                base64: lleno && ventana.miAccountId > 0
+                        ? redcliente.miniaturaMesaBase64(ventana.miAccountId, i + 1) : ""
+            });
+        }
+        return lista;
+    }
+    function listarPresetsMesa() {
+        if (ventana.miAccountId > 0) redcliente.listarFotosMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion);
+    }
+    property string errorFotoMesa: ""
+    // Al equipar tapete_foto (o cambiar de tapete) se pide la propia foto
+    // una vez; si ya está en caché no vuelve a viajar nada.
+    onMiTapeteChanged: {
+        if (miTapete === "tapete_foto" && miAccountId > 0) redcliente.pedirFotoMesaSiFalta(miAccountId);
+    }
     property string rondaActual: ""
     // Jugadores retirados en la mano actual — el servidor no manda esto
     // como estado (GAME_STATE solo da nombre/saldo/apuesta), así que se
@@ -2669,6 +2745,13 @@ ApplicationWindow {
                             hoverEnabled: true
                             acceptedButtons: Qt.NoButton
                         }
+                        // Tocar la tarjeta abre su pantalla previa (Unirse / Observar).
+                        // Va antes del contenido: el botón Unirse recibe sus propios clics.
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: popupSala.abrir(celdaSala.id, celdaSala.nombre, celdaSala.conectados, celdaSala.esperados)
+                        }
 
                         // Hilo dorado por dentro del bisel exterior -- el
                         // "doble bisel" de ficha de casino.
@@ -3232,6 +3315,7 @@ ApplicationWindow {
                                         anchors.centerIn: parent
                                         letra: columnaPodio.fila && columnaPodio.fila.username.length > 0
                                                ? columnaPodio.fila.username.charAt(0).toUpperCase() : "?"
+                                        accountId: columnaPodio.fila ? parseInt(columnaPodio.fila.accountId) : 0
                                         tamano: columnaPodio.tamanoAvatar
                                         marco: columnaPodio.fila
                                                ? Tema.marcoPorPartidasGanadas(columnaPodio.fila.partidasGanadas,
@@ -3482,6 +3566,7 @@ ApplicationWindow {
                                     Avatar {
                                         anchors.verticalCenter: parent.verticalCenter
                                         letra: filaRanking.username.length > 0 ? filaRanking.username.charAt(0).toUpperCase() : "?"
+                                        accountId: filaRanking.accountId
                                         // 34 → 44 (2026-09-01, pedido explícito:
                                         // "aumenta el tamaño del resto de la
                                         // lista"). Decoraciones añadidas
@@ -3589,16 +3674,22 @@ ApplicationWindow {
         Item {
             visible: pantalla === "Torneos" && torneosHabilitados
             anchors.top: barraTorneos.bottom
+            anchors.topMargin: 16 * Tema.escala
             anchors.left: rielNavegacion.right
             anchors.right: parent.right
             anchors.bottom: parent.bottom
 
-            ScrollView {
+            Flickable {
                 id: scrollTorneos
+                flickableDirection: Flickable.VerticalFlick
+                contentWidth: width
+                contentHeight: contenido_scrollTorneos.height
                 anchors.fill: parent
+                anchors.leftMargin: 16 * Tema.escala
+                anchors.rightMargin: 16 * Tema.escala
+                anchors.bottomMargin: 12 * Tema.escala
                 clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
+                
                 // "parent.width" en el hijo directo de un ScrollView NO es
                 // fiable -- a diferencia de scrollAjustes/scrollCrearSala,
                 // que usan "<id>.availableWidth" (la API pensada justo para
@@ -3609,7 +3700,8 @@ ApplicationWindow {
                 // pegado a la izquierda (bug real reportado de nuevo
                 // 2026-09-14, el intento de 2026-09-13 no bastaba).
                 Column {
-                    width: scrollTorneos.availableWidth
+                    id: contenido_scrollTorneos
+                    width: scrollTorneos.width
                     topPadding: 20 * Tema.escala
                     bottomPadding: 20 * Tema.escala
 
@@ -3655,15 +3747,6 @@ ApplicationWindow {
                             border.color: Tema.colorAccent
                             width: etiquetaExperimental.implicitWidth + 16 * Tema.escala
                             height: etiquetaExperimental.implicitHeight + 6 * Tema.escala
-                            Text {
-                                id: etiquetaExperimental
-                                anchors.centerIn: parent
-                                text: Idioma.t("etiqueta_experimental")
-                                color: Tema.colorAccent
-                                font.bold: true
-                                font.pixelSize: 10 * Tema.escala
-                                font.capitalization: Font.AllUppercase
-                            }
                         }
                     }
                     Text {
@@ -3674,16 +3757,6 @@ ApplicationWindow {
                         color: Tema.colorTextoTenue
                         font.pixelSize: 12 * Tema.escala
                         text: Idioma.t("torneos_solitario_subtitulo")
-                    }
-                    Text {
-                        visible: columnaRetos.pestanaRetos === 0
-                        width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        color: Tema.colorAccent
-                        font.pixelSize: 11 * Tema.escala
-                        font.italic: true
-                        text: Idioma.t("torneos_solitario_aviso_experimental")
                     }
                     // Subtítulos ligeros de Diario/Racha -- el mismo hueco que ocupaba el
                     // de la Escalera arriba, sin repetir la insignia "Experimental" (ya
@@ -4593,6 +4666,7 @@ ApplicationWindow {
                             anchors.leftMargin: 34 * Tema.escala
                             anchors.verticalCenter: parent.verticalCenter
                             letra: filaAmigoChat.username.length > 0 ? filaAmigoChat.username.charAt(0).toUpperCase() : "?"
+                            accountId: filaAmigoChat.accountId
                             tamano: 40 * Tema.escala
                             marco: Tema.marcoPorPartidasGanadas(filaAmigoChat.partidasGanadas, filaAmigoChat.tieneMarcoBasico)
                             textura: filaAmigoChat.textura
@@ -4759,6 +4833,7 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 letra: chatAmigoSeleccionadoNombre.length > 0
                                            ? chatAmigoSeleccionadoNombre.charAt(0).toUpperCase() : "?"
+                                accountId: chatAmigoSeleccionado
                                 tamano: 34 * Tema.escala
                             }
                             Column {
@@ -4914,6 +4989,7 @@ ApplicationWindow {
                             Avatar {
                                 anchors.verticalCenter: parent.verticalCenter
                                 letra: filaBusqueda.username.length > 0 ? filaBusqueda.username.charAt(0).toUpperCase() : "?"
+                                accountId: filaBusqueda.accountId
                                 tamano: 36 * Tema.escala
                             }
                             Text {
@@ -5021,6 +5097,7 @@ ApplicationWindow {
                         Avatar {
                             anchors.verticalCenter: parent.verticalCenter
                             letra: filaReciente.username.length > 0 ? filaReciente.username.charAt(0).toUpperCase() : "?"
+                            accountId: filaReciente.accountId
                             tamano: 36 * Tema.escala
                         }
                         Text {
@@ -5121,6 +5198,7 @@ ApplicationWindow {
                         Avatar {
                             anchors.verticalCenter: parent.verticalCenter
                             letra: filaSolicitud.fromUsername.length > 0 ? filaSolicitud.fromUsername.charAt(0).toUpperCase() : "?"
+                            accountId: filaSolicitud.fromAccountId
                             tamano: 36 * Tema.escala
                         }
                         Text {
@@ -5176,577 +5254,56 @@ ApplicationWindow {
             servidorPuerto: ventana.servidorPuerto
             onAbrirAjustes: ajustesAbiertos = !ajustesAbiertos
         }
-        Column {
+        // Crear sala (rediseño 2026-10-04): formulario dinámico con tarjetas de
+        // ficha de casino. Ver FormularioSala.qml.
+        FormularioSala {
+            id: formularioSala
             visible: pantalla === "CrearSala"
             anchors.top: barraCrearSala.bottom
-            anchors.topMargin: 24 * Tema.escala
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 30 * Tema.escala
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 16 * Tema.escala
-            // Más ancha que antes (era 700) — las filas con interruptor +
-            // etiqueta larga ("Permitir recompra al quedarse sin fichas")
-            // iban muy justas de espacio.
-            width: Math.min(820 * Tema.escala, ventana.width - 60 * Tema.escala)
-
-            Text {
-                id: tituloCrearSala
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: ventana.sesionOffline ? Idioma.t("boton_partida_local") : Idioma.t("boton_crear_sala")
-                color: Tema.colorTexto
-                font.family: Tema.fuenteElegante
-                font.pixelSize: 22 * Tema.escala
-            }
-
-            Rectangle {
-                width: parent.width
-                // Ocupa todo el hueco vertical que sobra entre el título y
-                // los botones/mensaje de error de abajo — nunca más de eso,
-                // para que los botones no se salgan de la ventana.
-                height: parent.height - tituloCrearSala.height - filaBotonesCrearSala.height -
-                        textoErrorCrearSala.height - parent.spacing * 3
-                border.width: 1
-                border.color: Qt.rgba(0, 0, 0, 0.3)
-                radius: 8 * Tema.escala
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                    GradientStop { position: 1.0; color: Tema.colorPanel }
+            anchors.left: parent.left
+            anchors.right: parent.right
+            sesionOffline: ventana.sesionOffline
+            mensajeError: resolverMensajeServidor(mensajeErrorConexion)
+            onCancelar: pantalla = "Salas"
+            onConfirmar: {
+                // Sin conexión el mismo formulario arranca una partida LOCAL: mismas
+                // reglas de apuesta y de partida, sin nada de sala/red.
+                if (ventana.sesionOffline) {
+                    ventana.modoOfflineActivo = true;
+                    redcliente.iniciarPartidaLocal(
+                        nombreUsuario.text,
+                        formularioSala.numBots,
+                        formularioSala.manos,
+                        formularioSala.ciega,
+                        formularioSala.saldo,
+                        formularioSala.limite,
+                        formularioSala.minRaise,
+                        formularioSala.monteFijo,
+                        formularioSala.dificultad,
+                        formularioSala.recompra,
+                        formularioSala.preguntarExtension);
+                    return;
                 }
-                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                layer.enabled: true
-                layer.effect: ShaderEffect {
-                    property variant source
-                    property real amplitud: 30.0
-                    fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
-                }
-
-                ScrollView {
-                    id: scrollCrearSala
-                    anchors.fill: parent
-                    anchors.margins: 18 * Tema.escala
-                    clip: true
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-                    Column {
-                        width: scrollCrearSala.availableWidth
-                        spacing: 14 * Tema.escala
-
-                        // Antes era una lista plana de filas — con tantas
-                        // opciones, agruparlas por tema (igual que las
-                        // secciones de menuNuevaPartida() en el servidor
-                        // ncurses: JUGADORES / REGLAS DE APUESTA / PARTIDA)
-                        // ayuda a leerlo de un vistazo.
-                        // Sin conexión no hay "sala" que crear ni con quién
-                        // compartirla: se reutiliza el MISMO formulario, pero
-                        // la sección de red entera (nombre, pública, tamaño,
-                        // rellenar, abierta) se oculta y en su lugar se elige
-                        // contra cuántos bots jugar. El resto de reglas
-                        // (apuesta y partida) valen igual en local.
-                        Column {
-                            width: parent.width
-                            spacing: 6 * Tema.escala
-                            visible: ventana.sesionOffline
-                            Text {
-                                text: Idioma.t("titulo_partida_local_seccion")
-                                color: Tema.colorTextoMuyTenue
-                                font.pixelSize: 11 * Tema.escala
-                                font.letterSpacing: 1
-                            }
-                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                        }
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: ventana.sesionOffline
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_numero_bots")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            TextField {
-                                id: campoNumBots
-                                width: 60 * Tema.escala
-                                text: "3"
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                horizontalAlignment: Text.AlignHCenter
-                                validator: IntValidator { bottom: 1; top: 8 }
-                                background: MarcoHueco {
-                                    radius: 6 * Tema.escala
-                                    activo: campoNumBots.activeFocus
-                                }
-                            }
-                        }
-
-                        Column {
-                            width: parent.width
-                            spacing: 6 * Tema.escala
-                            visible: !ventana.sesionOffline
-                            Text {
-                                text: Idioma.t("titulo_seccion_sala")
-                                color: Tema.colorTextoMuyTenue
-                                font.pixelSize: 11 * Tema.escala
-                                font.letterSpacing: 1
-                            }
-                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                        }
-
-                        TextField {
-                            id: campoNombreSala
-                            visible: !ventana.sesionOffline
-                            width: parent.width
-                            placeholderText: (activeFocus || text.length > 0) ? "" : Idioma.t("placeholder_nombre_sala")
-                            color: Tema.colorTexto
-                            font.pixelSize: 13 * Tema.escala
-                            placeholderTextColor: Tema.colorTextoMuyTenue
-                            background: MarcoHueco {
-                                radius: 6 * Tema.escala
-                                activo: campoNombreSala.activeFocus
-                            }
-                        }
-
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: !ventana.sesionOffline
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_sala_publica")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorPublica
-                                activo: true
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: !ventana.sesionOffline
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_tamano_sala")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            TextField {
-                                id: campoTamanoSala
-                                width: 60 * Tema.escala
-                                text: "6"
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                horizontalAlignment: Text.AlignHCenter
-                                validator: IntValidator { bottom: 2; top: 9 }
-                                background: MarcoHueco {
-                                    radius: 6 * Tema.escala
-                                    activo: campoTamanoSala.activeFocus
-                                }
-                            }
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: !ventana.sesionOffline
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_rellenar_bots")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorRellenar
-                                activo: true
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-                        Text {
-                            width: parent.width
-                            visible: !ventana.sesionOffline
-                            text: Idioma.t("texto_ayuda_rellenar_bots")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 10 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: !ventana.sesionOffline
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_abierta_tras_iniciar")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorAbierta
-                                activo: false
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-                        Text {
-                            width: parent.width
-                            visible: !ventana.sesionOffline
-                            text: Idioma.t("texto_ayuda_abierta_tras_iniciar")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 10 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-            
-                        Column {
-                            width: parent.width
-                            spacing: 6 * Tema.escala
-                            Text {
-                                text: Idioma.t("titulo_seccion_reglas_apuesta")
-                                color: Tema.colorTextoMuyTenue
-                                font.pixelSize: 11 * Tema.escala
-                                font.letterSpacing: 1
-                            }
-                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                        }
-
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_dificultad_bots")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            SelectorPildoras {
-                                id: selectorDificultad
-                                opciones: [Idioma.t("dificultad_facil"), Idioma.t("dificultad_normal"), Idioma.t("dificultad_experto")]
-                                seleccionado: 0
-                                onElegido: (indice) => seleccionado = indice
-                            }
-                        }
-
-                        // Prototipo experimental (ver BotLLM en el servidor) -- solo
-                        // tiene efecto en una sala de red; sin conexión los bots
-                        // siempre son locales (iniciarPartidaLocal no la conoce).
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: !ventana.sesionOffline
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_bots_ia")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorBotsIA
-                                activo: false
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-                        Text {
-                            width: parent.width
-                            visible: !ventana.sesionOffline
-                            text: Idioma.t("texto_ayuda_bots_ia")
-                            color: Tema.colorTextoMuyTenue
-                            font.pixelSize: 10 * Tema.escala
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("ajustes_tipo_limite")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            SelectorPildoras {
-                                id: selectorLimite
-                                opciones: [Idioma.t("limite_sin_limite"), Idioma.t("limite_limite_bote"), Idioma.t("limite_limite_fijo")]
-                                seleccionado: 0
-                                onElegido: (indice) => seleccionado = indice
-                            }
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            visible: selectorLimite.seleccionado === 2
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_monte_fijo")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            TextField {
-                                id: campoMonteFijo
-                                width: 80 * Tema.escala
-                                text: "40"
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                horizontalAlignment: Text.AlignHCenter
-                                validator: IntValidator { bottom: 1; top: 10000 }
-                                background: MarcoHueco {
-                                    radius: 6 * Tema.escala
-                                    activo: campoMonteFijo.activeFocus
-                                }
-                            }
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_min_raise_obligatorio")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorMinRaise
-                                activo: false
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_permitir_recompra")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorRecompra
-                                activo: false
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-            
-                        Column {
-                            width: parent.width
-                            spacing: 6 * Tema.escala
-                            Text {
-                                text: Idioma.t("titulo_seccion_partida")
-                                color: Tema.colorTextoMuyTenue
-                                font.pixelSize: 11 * Tema.escala
-                                font.letterSpacing: 1
-                            }
-                            Rectangle { width: parent.width; height: 1; color: Tema.colorBorde }
-                        }
-
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_numero_manos")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            TextField {
-                                id: campoNumManos
-                                width: 80 * Tema.escala
-                                text: "20"
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                horizontalAlignment: Text.AlignHCenter
-                                validator: IntValidator { bottom: 1; top: 200 }
-                                background: MarcoHueco {
-                                    radius: 6 * Tema.escala
-                                    activo: campoNumManos.activeFocus
-                                }
-                            }
-                        }
-
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_preguntar_extension")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorPreguntarExtension
-                                activo: true
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        // Temporizador del voto entre manos: solo tiene sentido en una sala de red
-                        // (en una partida local hay un único humano y no se espera a nadie).
-                        Row {
-                            visible: !ventana.sesionOffline
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_temporizador_voto")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            Interruptor {
-                                id: interruptorTemporizadorVoto
-                                activo: true
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_ciega_grande")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            TextField {
-                                id: campoCiegaGrande
-                                width: 80 * Tema.escala
-                                text: "20"
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                horizontalAlignment: Text.AlignHCenter
-                                validator: IntValidator { bottom: 2; top: 1000 }
-                                background: MarcoHueco {
-                                    radius: 6 * Tema.escala
-                                    activo: campoCiegaGrande.activeFocus
-                                }
-                            }
-                        }
-            
-                        Row {
-                            width: parent.width
-                            spacing: 12 * Tema.escala
-                            Text {
-                                width: 330 * Tema.escala
-                                font.pixelSize: 13 * Tema.escala
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Idioma.t("etiqueta_saldo_inicial")
-                                color: Tema.colorTextoTenue
-                                wrapMode: Text.WordWrap
-                            }
-                            TextField {
-                                id: campoSaldoInicial
-                                width: 80 * Tema.escala
-                                text: "1000"
-                                color: Tema.colorTexto
-                                font.pixelSize: 13 * Tema.escala
-                                horizontalAlignment: Text.AlignHCenter
-                                validator: IntValidator { bottom: 100; top: 100000 }
-                                background: MarcoHueco {
-                                    radius: 6 * Tema.escala
-                                    activo: campoSaldoInicial.activeFocus
-                                }
-                            }
-                        }
-                    }
-                    // fin de la Column interior del ScrollView
-                }
-                // fin del ScrollView
-            }
-            // fin del Rectangle-tarjeta
-
-            Text {
-                id: textoErrorCrearSala
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: Tema.colorPeligro
-                font.pixelSize: 11 * Tema.escala
-                text: resolverMensajeServidor(mensajeErrorConexion)
-            }
-
-            Row {
-                id: filaBotonesCrearSala
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10 * Tema.escala
-                BotonContorno {
-                    text: Idioma.t("boton_cancelar")
-                    colorBorde: Tema.colorPeligro
-                    onClicked: pantalla = "Salas"
-                }
-                BotonRelleno {
-                    text: ventana.sesionOffline ? Idioma.t("boton_empezar_partida") : Idioma.t("boton_crear_sala")
-                    onClicked: {
-                        // Sin conexión el mismo formulario arranca una
-                        // partida LOCAL: mismas reglas de apuesta y de
-                        // partida, sin nada de sala/red. Ver
-                        // LocalGameClient::iniciarPartidaLocal().
-                        if (ventana.sesionOffline) {
-                            ventana.modoOfflineActivo = true;
-                            redcliente.iniciarPartidaLocal(
-                                nombreUsuario.text,
-                                parseInt(campoNumBots.text) || 3,
-                                parseInt(campoNumManos.text) || 20,
-                                parseInt(campoCiegaGrande.text) || 20,
-                                parseInt(campoSaldoInicial.text) || 1000,
-                                selectorLimite.seleccionado,
-                                interruptorMinRaise.activo,
-                                parseInt(campoMonteFijo.text) || 40,
-                                selectorDificultad.seleccionado,
-                                interruptorRecompra.activo,
-                                interruptorPreguntarExtension.activo);
-                            return;
-                        }
-                        redcliente.crearSala(
-                            servidorHost, servidorPuerto, nombreUsuario.text,
-                            campoNombreSala.text,
-                            interruptorPublica.activo,
-                            parseInt(campoTamanoSala.text) || 6,
-                            parseInt(campoNumManos.text) || 20,
-                            parseInt(campoCiegaGrande.text) || 20,
-                            parseInt(campoSaldoInicial.text) || 1000,
-                            selectorLimite.seleccionado,
-                            interruptorMinRaise.activo,
-                            parseInt(campoMonteFijo.text) || 40,
-                            selectorDificultad.seleccionado,
-                            interruptorRecompra.activo,
-                            interruptorRellenar.activo,
-                            interruptorAbierta.activo,
-                            interruptorPreguntarExtension.activo,
-                            interruptorTemporizadorVoto.activo,
-                            interruptorBotsIA.activo
-                        );
-                    }
-                }
+                redcliente.crearSala(
+                    servidorHost, servidorPuerto, nombreUsuario.text,
+                    formularioSala.nombreSala,
+                    formularioSala.publica,
+                    formularioSala.tamano,
+                    formularioSala.manos,
+                    formularioSala.ciega,
+                    formularioSala.saldo,
+                    formularioSala.limite,
+                    formularioSala.minRaise,
+                    formularioSala.monteFijo,
+                    formularioSala.dificultad,
+                    formularioSala.recompra,
+                    formularioSala.rellenar,
+                    formularioSala.abierta,
+                    formularioSala.preguntarExtension,
+                    formularioSala.temporizador,
+                    formularioSala.botsIA
+                );
             }
         }
 
@@ -5973,6 +5530,13 @@ ApplicationWindow {
                         font.bold: true
                     }
                     Text {
+                        visible: redcliente.esEspectador
+                        text: Idioma.t("etiqueta_observando")
+                        color: Tema.colorAccent
+                        font.pixelSize: 12 * Tema.escala
+                        font.bold: true
+                    }
+                    Text {
                         id: contadorListos
                         // visible solo tras el primer LOBBY_UPDATE real --
                         // antes el Text empezaba vacío (sin asignar) y este
@@ -6074,7 +5638,7 @@ ApplicationWindow {
                 }
 
                 BotonContorno {
-                    text: Idioma.t("boton_abandonar_sala")
+                    text: redcliente.esEspectador ? Idioma.t("boton_dejar_de_observar") : Idioma.t("boton_abandonar_sala")
                     radioBorde: 999
                     onClicked: {
                         // abandonar() ya manda LEAVE y marca
@@ -6111,6 +5675,7 @@ ApplicationWindow {
             // pestañas que elegir (ChatBox ya es chat-only).
             ChatBox {
                 id: chatLobby
+                visible: !redcliente.esEspectador
                 anchors.left: columnaSala.right
                 anchors.leftMargin: 40 * Tema.escala
                 anchors.verticalCenter: parent.verticalCenter
@@ -6263,6 +5828,7 @@ ApplicationWindow {
                     miReversoSkin: redcliente.loadoutMarco.reversoCarta || ""
                     tapete: ventana.tapeteMesaActivo
                     tapeteBorde: ventana.tapeteBordeMesaActivo
+                    fotoTapete: ventana.fotoTapeteMesaActiva
                     // Animaciones (reparto, comunitarias al vuelo, showdown en la mesa): solo con
                     // eventos nuevos y con el nivel "completas".
                     animar: ventana.animarMesa
@@ -6315,6 +5881,7 @@ ApplicationWindow {
                     modeloHistorial: historial
                     modeloChat: mensajesChatPartida
                     miNombre: nombreUsuario.text
+                    soloLectura: redcliente.esEspectador
                 }
             }
 
@@ -6687,8 +6254,10 @@ ApplicationWindow {
                     // Nunca a la vez que los botones de turno (comparten hueco): si te toca jugar, el voto
                     // de la mano anterior ya pasó.
                     visible: !tuTurno && (votoAbierto || votoExtensionAbierto || esperandoManosExtra)
-                    // Centradas en la barra, a lo ancho y a lo alto.
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    // A la derecha de la barra, donde van los botones de turno (nunca se ven a la
+                    // vez). Centradas se solapaban con las predicciones de combo, a la izquierda.
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16 * Tema.escala
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 14 * Tema.escala
 
@@ -6837,6 +6406,7 @@ ApplicationWindow {
             function onRegistroOk(accountId, username, token) {
                 nombreUsuario.text = username;
                 tokenSesion = token;
+                miAccountId = accountId;
                 mensajeErrorLogin = "";
                 pantalla = "Salas";
                 redcliente.refrescarSalas(servidorHost, servidorPuerto);
@@ -6852,11 +6422,28 @@ ApplicationWindow {
             function onRegistroError(mensaje) {
                 mensajeErrorLogin = mensaje;
             }
+            // Foto de avatar (2026-10-02) -- subirFotoPerfil() solo
+            // confirma el hash nuevo, no deja la foto en fotosCache_ (el
+            // propio NetworkClient no conoce el accountId propio) -- se
+            // vuelve a pedir una vez para que el caché quede al día y
+            // Cuenta/Perfil pinte la foto nueva sin esperar a la mesa.
+            function onFotoPerfilSubida(hash) {
+                subiendoFotoPerfil = false;
+                errorFotoPerfil = "";
+                if (ventana.miAccountId > 0) {
+                    redcliente.consultarFotoPerfil(servidorHost, servidorPuerto, ventana.miAccountId);
+                }
+            }
+            function onFotoPerfilSubidaError(mensaje) {
+                subiendoFotoPerfil = false;
+                errorFotoPerfil = Idioma.t(mensaje);
+            }
             function onLoginOk(accountId, username, token) {
                 enviandoLogin = false;
                 reautenticacionPendiente = false;
                 nombreUsuario.text = username;
                 tokenSesion = token;
+                miAccountId = accountId;
                 mensajeErrorLogin = "";
                 pantalla = "Salas";
                 redcliente.refrescarSalas(servidorHost, servidorPuerto);
@@ -7413,6 +7000,40 @@ ApplicationWindow {
                 tapeteAnfitrion = tapete;
                 tapeteBordeAnfitrion = borde;
             }
+            function onTapeteFotoAnfitrionActualizado(accountId) {
+                tapeteFotoAccountIdAnfitrion = accountId;
+            }
+            // Foto de mesa propia: al subirla se vuelve a pedir para que la
+            // caché (y la vista previa) muestren la nueva.
+            function onFotoMesaSubida(hash) {
+                subiendoFotoMesa = false;
+                errorFotoMesa = "";
+                if (ventana.miAccountId > 0) {
+                    redcliente.consultarFotoMesa(servidorHost, servidorPuerto, ventana.miAccountId);
+                }
+                ventana.listarPresetsMesa();
+            }
+            function onFotosMesaListadas(activa, hashes) {
+                presetsActivaMesa = activa;
+                presetsHashesMesa = hashes;
+                for (var i = 0; i < 4; i++) {
+                    if (hashes[i]) redcliente.pedirMiniaturaMesa(ventana.miAccountId, i + 1, hashes[i]);
+                }
+            if (popupFotoMesa.opened) popupFotoMesa.presets = ventana.construirPresetsMesa();
+            }
+            function onFotoMesaActivada(slot) {
+            presetsActivaMesa = slot;
+            if (ventana.miAccountId > 0) redcliente.consultarFotoMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.miAccountId);
+            ventana.listarPresetsMesa();
+            }
+            // Llega una miniatura o la foto de mesa: el pop-up se repinta si sigue abierto.
+            function onFotoPerfilActualizada(accountId) {
+            if (popupFotoMesa.opened) popupFotoMesa.presets = ventana.construirPresetsMesa();
+            }
+            function onFotoMesaSubidaError(mensaje) {
+                subiendoFotoMesa = false;
+                errorFotoMesa = Idioma.t(mensaje);
+            }
             function onEstadoMesaActualizado(ronda, bote, turno, jugadoresStr, timeoutMs,
                                              dealer, sb, bb, soloVsBotsNuevo) {
                 rondaActual = ronda;
@@ -7470,8 +7091,26 @@ ApplicationWindow {
                         acabadoLateral1: esYoLocal ? (ventana.miLoadoutLocal.acabadoLateral1 || "") : campos.length > 10 ? campos[10] : "",
                         acabadoLateral2: esYoLocal ? (ventana.miLoadoutLocal.acabadoLateral2 || "") : campos.length > 11 ? campos[11] : "",
                         acabadoSuperior: esYoLocal ? (ventana.miLoadoutLocal.acabadoSuperior || "") : campos.length > 12 ? campos[12] : "",
-                        reversoCarta: campos.length > 13 ? campos[13] : ""
+                        reversoCarta: campos.length > 13 ? campos[13] : "",
+                        // Foto de avatar (2026-10-02) -- accountId/fotoHash
+                        // por asiento, campos NUEVOS al final (ver
+                        // Serializer.hpp). "" con un servidor anterior a
+                        // esta fecha -- Avatar.qml simplemente no pinta
+                        // ninguna foto (accountId 0 = letra de siempre).
+                        accountId: campos.length > 14 ? parseInt(campos[14]) : 0,
+                        fotoHash: campos.length > 15 ? campos[15] : ""
                     });
+                    // Si el hash de este asiento cambió (foto nueva, o es
+                    // la primera vez que se ve a esta cuenta en mesa) y
+                    // todavía no está cacheada, se pide una vez -- GAME_STATE
+                    // reemite esto en CADA turno, así que sin este guard se
+                    // repetiría la petición sin necesidad (ver el diseño en
+                    // docs/plan-actualizaciones-2026-09-30.md).
+                    if (campos.length > 15 && campos[14] !== "" && parseInt(campos[14]) > 0 &&
+                        campos[15] !== "" &&
+                        redcliente.fotoHashCacheada(parseInt(campos[14])) !== campos[15]) {
+                        redcliente.consultarFotoPerfil(servidorHost, servidorPuerto, parseInt(campos[14]));
+                    }
                     if (campos[0] === nombreUsuario.text) {
                         // BUG real encontrado en vivo: miSaldoActual (el de
                         // la barra superior, "X fichas") solo se ponía al
@@ -8148,6 +7787,7 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
                             tamano: 72 * Tema.escala
+                            accountId: ventana.miAccountId
                             marco: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
                             // Bug real encontrado 2026-09-01 (QA en vivo del
                             // usuario con la herramienta admin: "los tengo
@@ -8193,6 +7833,87 @@ ApplicationWindow {
                             nombre: infoTituloPropio ? infoTituloPropio.nombre : ""
                             colorTier: colorRareza(infoTituloPropio ? infoTituloPropio.rareza : "")
                         }
+                        // Foto de avatar (2026-10-02) -- el jugador ajusta
+                        // el cuadrado en PopupRecorteFoto, FotoAvatarHelper
+                        // lo recorta a 256x256 en JPEG, y el servidor modera
+                        // antes de aceptar (fail-closed: cualquier fallo
+                        // rechaza, nunca cuela sin revisar). Oculto sin
+                        // sesión -- invitado no tiene accountId al que subir nada.
+                        BotonRelleno {
+                            visible: ventana.miAccountId > 0 && !ventana.subiendoFotoPerfil
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: Idioma.t("boton_subir_foto")
+                            radioBorde: 999
+                            onClicked: dialogoFotoPerfil.open()
+                        }
+                        Text {
+                            visible: ventana.subiendoFotoPerfil
+                            text: Idioma.t("texto_subiendo_foto")
+                            color: Tema.colorTextoTenue
+                            font.pixelSize: 12 * Tema.escala
+                        }
+                        Text {
+                            visible: ventana.errorFotoPerfil !== ""
+                            width: 220 * Tema.escala
+                            wrapMode: Text.WordWrap
+                            text: ventana.errorFotoPerfil
+                            color: Tema.colorPeligro
+                            font.pixelSize: 11 * Tema.escala
+                        }
+                    }
+                }
+                FileDialog {
+                    id: dialogoFotoPerfil
+                    title: Idioma.t("boton_subir_foto")
+                    nameFilters: [Idioma.t("filtro_imagenes") + " (*.png *.jpg *.jpeg)"]
+                    onAccepted: {
+                        ventana.errorFotoPerfil = "";
+                        popupRecorteFoto.abrirCon(dialogoFotoPerfil.selectedFile);
+                    }
+                }
+                PopupRecorteFoto {
+                    id: popupRecorteFoto
+                    onConfirmado: (cropX, cropY, cropW, cropH) => {
+                        const base64 = fotoHelper.recortarRectYCodificar(popupRecorteFoto.archivo, cropX, cropY, cropW, cropH, 256, 256, 80);
+                        if (base64 === "") {
+                            ventana.errorFotoPerfil = Idioma.t("error_imagen_invalida");
+                            return;
+                        }
+                        ventana.subiendoFotoPerfil = true;
+                        redcliente.subirFotoPerfil(servidorHost, servidorPuerto, tokenSesion, base64);
+                    }
+                }
+                PopupFotoMesa {
+                    id: popupFotoMesa
+                    onActivar: (slot) => redcliente.activarFotoMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, slot)
+    onSubir: (slot) => {
+        ventana.huecoFotoMesaPendiente = slot;
+        dialogoFotoMesa.open();
+    }
+                    onEquipar: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", "tapete_foto", "")
+                    onQuitar: redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "tapete", "")
+                }
+                // Foto de mesa (tapete): mismo flujo que la de avatar, otro
+                // forma de pastilla y otra subida. Solo visible con tapete_foto comprado.
+                FileDialog {
+                    id: dialogoFotoMesa
+                    title: Idioma.t("boton_subir_foto_mesa")
+                    nameFilters: [Idioma.t("filtro_imagenes") + " (*.png *.jpg *.jpeg)"]
+                    onAccepted: {
+                        ventana.errorFotoMesa = "";
+                        popupRecorteFotoMesa.abrirCon(dialogoFotoMesa.selectedFile, "pastilla");
+                    }
+                }
+                PopupRecorteFoto {
+                    id: popupRecorteFotoMesa
+                    onConfirmado: (cropX, cropY, cropW, cropH) => {
+                        const base64 = fotoHelper.recortarRectYCodificar(popupRecorteFotoMesa.archivo, cropX, cropY, cropW, cropH, 1536, 768, 85);
+                        if (base64 === "") {
+                            ventana.errorFotoMesa = Idioma.t("error_imagen_invalida");
+                            return;
+                        }
+                        ventana.subiendoFotoMesa = true;
+                        redcliente.subirFotoMesa(ventana.servidorHost, ventana.servidorPuerto, ventana.tokenSesion, base64, ventana.huecoFotoMesaPendiente);
                     }
                 }
 
@@ -8526,6 +8247,7 @@ ApplicationWindow {
                             id: avatarProgreso
                             anchors.centerIn: parent
                             letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
+                            accountId: ventana.miAccountId
                             tamano: 84 * Tema.escala
                             marco: Tema.marcoPorPartidasGanadas(statsPartidasGanadas, statsTieneMarcoBasico)
                             // Fase 5 del sistema de progresión: aquí SÍ se pinta el
@@ -8707,6 +8429,7 @@ ApplicationWindow {
                                     Avatar {
                                         anchors.verticalCenter: parent.verticalCenter
                                         letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
+                                        accountId: ventana.miAccountId
                                         tamano: 56 * Tema.escala
                                         marco: filaMarcoRoadmap.modelData.tier
                                     }
@@ -9242,6 +8965,7 @@ ApplicationWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 anchors.bottom: parent.bottom
                                 letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
+                                accountId: ventana.miAccountId
                                 tamano: 120 * Tema.escala
                                 marco: marcoPreview
                                 textura: valorPreview("textura", redcliente.loadoutMarco.textura)
@@ -9270,12 +8994,40 @@ ApplicationWindow {
                                         height: 100 * Tema.escala
                                         preset: valorPreview("tapete", redcliente.loadoutMarco.tapete || "")
                                         bordePreset: valorPreview("tapete_borde", redcliente.loadoutMarco.tapeteBorde || "")
+                                        fotoBase64: ventana.fotoMiaMesa
                                     }
                                     Carta {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         width: 63 * Tema.escala
                                         height: 84 * Tema.escala
                                         reversoSkin: valorPreview("reverso_carta", redcliente.loadoutMarco.reversoCarta || "")
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        visible: ventana.subiendoFotoMesa
+                                        text: Idioma.t("texto_subiendo_foto")
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 12 * Tema.escala
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: 240 * Tema.escala
+                                        horizontalAlignment: Text.AlignHCenter
+                                        wrapMode: Text.WordWrap
+                                        visible: !ventana.tengoTapeteFoto
+                                        text: Idioma.t("texto_tapete_foto_requiere_compra")
+                                        color: Tema.colorTextoTenue
+                                        font.pixelSize: 12 * Tema.escala
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: 240 * Tema.escala
+                                        horizontalAlignment: Text.AlignHCenter
+                                        wrapMode: Text.WordWrap
+                                        visible: ventana.errorFotoMesa !== ""
+                                        text: ventana.errorFotoMesa
+                                        color: Tema.colorPeligro
+                                        font.pixelSize: 11 * Tema.escala
                                     }
                                 }
                             }
@@ -9854,6 +9606,7 @@ ApplicationWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom
                             letra: nombreUsuario.text.length > 0 ? nombreUsuario.text.charAt(0).toUpperCase() : "?"
+                            accountId: ventana.miAccountId
                             tamano: 120 * Tema.escala
                             marco: marcoPreview
                             textura: valorPreview("textura", redcliente.loadoutMarco.textura)
@@ -10001,6 +9754,11 @@ ApplicationWindow {
         servidorHost: ventana.servidorHost
         servidorPuerto: ventana.servidorPuerto
         tiendaCrudo: ventana.tiendaCrudo
+    }
+    PopupSala {
+        id: popupSala
+        onUnirse: (id) => redcliente.unirseASala(ventana.servidorHost, ventana.servidorPuerto, nombreUsuario.text, id, "")
+        onObservar: (id) => redcliente.unirseComoEspectador(ventana.servidorHost, ventana.servidorPuerto, nombreUsuario.text, id)
     }
     PopupInvitarAmigos {
         id: popupInvitarAmigos

@@ -134,6 +134,7 @@ Popup {
                     Avatar {
                         anchors.centerIn: parent
                         letra: (popup.perfil.username || "").length > 0 ? popup.perfil.username.charAt(0).toUpperCase() : "?"
+                        accountId: popup.accountId
                         tamano: 80 * Tema.escala
                         marco: Tema.marcoPorPartidasGanadas(popup.perfil.partidasGanadas || 0, popup.perfil.tieneMarcoBasico === true)
                         textura: popup.perfil.textura || ""

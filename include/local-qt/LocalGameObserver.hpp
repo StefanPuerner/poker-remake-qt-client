@@ -658,7 +658,7 @@ class LocalGameObserver : public QObject, public IGameObserver {
       // redcliente.loadoutMarco.reversoCarta, no desde este campo por
       // asiento (ver Mesa.qml::reversoActivo()).
       datos.push_back({p->getNombre(), p->getSaldo(), p->getApuestaAcumuladaMano(),
-                       0, false, "", "", "", "", "", "", "", "", ""});
+                       0, false, "", "", "", "", "", "", "", "", "", 0, ""});
     }
     int boteTotal = 0;
     for (int b : botes) boteTotal += b;

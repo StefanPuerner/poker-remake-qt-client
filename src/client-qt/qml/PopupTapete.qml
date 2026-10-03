@@ -28,7 +28,7 @@ Popup {
     property bool equipado: false
     // ⚠️ Mismas listas que varianteTapeteValida() (AccountManager.cpp) y Tapete.qml.
     // "borde_madera" es siempre madera -- es el único borde que existe hoy.
-    readonly property bool esMadera: popup.codigo === "tapete_madera" || popup.codigo === "tapete_casino"
+    readonly property bool esMadera: popup.codigo === "tapete_madera"
         || popup.codigo === "borde_madera"
     readonly property var opciones: popup.esMadera
         ? ["roble", "roble_oscuro", "nogal"]

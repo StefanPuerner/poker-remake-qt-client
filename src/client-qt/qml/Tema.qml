@@ -176,7 +176,9 @@ QtObject {
     // adivinarlo, se deja como ajuste manual directo. Multiplica a
     // "escala" en el Binding de Main.qml, no se usa solo — nadie fuera de
     // ahí necesita leer "zoomManual" en crudo.
-    property real zoomManual: 1.0
+    // Base de escritorio: 110% (pedido 2026-10-04, "se ve mejor"). Ctrl+0 vuelve aquí.
+    readonly property real zoomBase: 1.1
+    property real zoomManual: zoomBase
     readonly property real zoomMinimo: 0.7
     readonly property real zoomMaximo: 1.6
     readonly property real zoomPaso: 0.1
@@ -185,7 +187,7 @@ QtObject {
     // all-in...), a la espera de QSettings.
     function subirZoom() { zoomManual = Math.min(zoomMaximo, +(zoomManual + zoomPaso).toFixed(2)); }
     function bajarZoom() { zoomManual = Math.max(zoomMinimo, +(zoomManual - zoomPaso).toFixed(2)); }
-    function reiniciarZoom() { zoomManual = 1.0; }
+    function reiniciarZoom() { zoomManual = zoomBase; }
 
     // ── Fuente empaquetada ───────────────────────────────────────────────
     // Asignada desde Main.qml (Binding ligado al FontLoader) — nombre real

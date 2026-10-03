@@ -90,15 +90,25 @@ struct DatosJugadorMesa {
   // arriba: un cliente que solo lea los 13 primeros campos sigue
   // funcionando igual que antes.
   std::string reversoCarta;
+  // Foto de avatar (2026-10-02) -- accountId (0 = bot/invitado/sin cuenta,
+  // igual que el resto de este struct) + fotoHash ("" = sin foto). El
+  // cliente NUNCA recibe los bytes aquí (ver el comentario de diseño en
+  // net::InfoAvatarMesa::fotoHash) -- solo lo necesario para decidir si ya
+  // tiene la foto cacheada por accountId o hace falta pedirla una vez con
+  // CONSULTAR_FOTO_PERFIL. Van al final, mismo motivo que reversoCarta.
+  int accountId = 0;
+  std::string fotoHash;
 };
 
 /// Formato: "nombre:saldo:apuesta:partidasGanadas:tieneMarco:textura:efecto:
-/// decoLat1:decoLat2:decoSup:acabLat1:acabLat2:acabSup:reversoCarta;..." (un
-/// bloque de 14 campos por jugador, jugadores separados por ';'). Ej:
-/// "Alice:580:200:25:1:pulido_bronce:brillo:hoja::corona:::plata:reverso_azul_real;
-/// Bot1:420:150:0:0:::::::::". Los tres acabados y reversoCarta van AL FINAL
-/// a propósito: los clientes leen por posición, y uno ya instalado sigue
-/// encontrando los primeros campos donde estaban.
+/// decoLat1:decoLat2:decoSup:acabLat1:acabLat2:acabSup:reversoCarta:
+/// accountId:fotoHash;..." (un bloque de 16 campos por jugador, jugadores
+/// separados por ';'). Ej:
+/// "Alice:580:200:25:1:pulido_bronce:brillo:hoja::corona:::plata:reverso_azul_real:7:3f2a...;
+/// Bot1:420:150:0:0:::::::::::0:". Los tres acabados, reversoCarta,
+/// accountId y fotoHash van AL FINAL a propósito: los clientes leen por
+/// posición, y uno ya instalado sigue encontrando los primeros campos
+/// donde estaban.
 std::string jugadoresMesaToStr(const std::vector<DatosJugadorMesa>& jugadores);
 
 // ── Saldos (campo "jugadores" de SALDOS_UPDATE) ───────────────────────────────

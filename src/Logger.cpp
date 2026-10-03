@@ -17,17 +17,19 @@ void Logger::open(const std::string& dir) {
   struct tm tm_buf {};
   localtimePortable(&t, &tm_buf);
 
-  char stamp[20];
-  std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &tm_buf);
+  char dia[11];
+  std::strftime(dia, sizeof(dia), "%Y-%m-%d", &tm_buf);
+  char hora[9];
+  std::strftime(hora, sizeof(hora), "%H:%M:%S", &tm_buf);
 
-  std::string path = dir + "server_" + stamp + ".log";
+  std::string path = dir + "server_" + dia + ".log";
 
   std::lock_guard<std::mutex> lk(mutex_);
   file_.open(path, std::ios::out | std::ios::app);
   if (!file_.is_open())
     std::cerr << "[Logger] No se pudo abrir: " << path << "\n";
   else
-    file_ << "=== PokerServer log " << stamp << " ===\n";
+    file_ << "=== PokerServer arranque " << dia << " " << hora << " ===\n";
 }
 
 void Logger::close() {

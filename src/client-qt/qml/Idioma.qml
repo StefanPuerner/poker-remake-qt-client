@@ -1669,7 +1669,6 @@ QtObject {
         "objeto_tapete_puntos_nombre": { es: "Puntos", en: "Dots", de: "Punkte" },
         "objeto_tapete_lino_nombre": { es: "Lino", en: "Linen", de: "Leinen" },
         "objeto_tapete_rayas_nombre": { es: "Rayas", en: "Stripes", de: "Streifen" },
-        "objeto_tapete_casino_nombre": { es: "Casino", en: "Casino", de: "Casino" },
         "objeto_tapete_madera_nombre": { es: "Madera", en: "Wood", de: "Holz" },
         // Borde de tapete (capas de tapete, 2026-09-30).
         "objeto_borde_madera_nombre": { es: "Borde de madera", en: "Wood border", de: "Holzrand" },
@@ -1695,6 +1694,100 @@ QtObject {
             es: "Tapete: el del anfitrión (equipa uno para elegir)",
             en: "Table: the host's (equip one to choose)",
             de: "Tisch: der des Gastgebers (rüste einen aus, um zu wählen)"
+        },
+
+        // ── Foto de avatar (2026-10-02) -- las claves de error son las que
+        // manda el servidor (SUBIR_FOTO_PERFIL, ver src/server/main.cpp y
+        // ClaudeModeradorImagen.cpp), mismo criterio "el servidor manda
+        // claves, el cliente traduce" que el resto de la app.
+        "boton_subir_foto": { es: "Subir foto", en: "Upload photo", de: "Foto hochladen" },
+        "texto_subiendo_foto": { es: "Subiendo foto…", en: "Uploading photo…", de: "Foto wird hochgeladen…" },
+        "boton_cambiar_foto_mesa": { es: "Cambiar foto", en: "Change photo", de: "Foto ändern" },
+        "titulo_seccion_bots_formulario": { es: "Bots", en: "Bots", de: "Bots" },
+        "form_sala_titulo": { es: "Sala", en: "Room", de: "Raum" },
+        "form_partida_titulo": { es: "Partida", en: "Game", de: "Spiel" },
+        "form_mas_opciones": { es: "Más opciones", en: "More options", de: "Weitere Optionen" },
+        "form_nombre": { es: "Nombre", en: "Name", de: "Name" },
+        "form_visibilidad": { es: "Visibilidad", en: "Visibility", de: "Sichtbarkeit" },
+        "form_info_visibilidad": { es: "Pública aparece en la lista de salas. Privada solo entra quien tenga el código.", en: "Public rooms appear in the room list. Private rooms are joined only with the code.", de: "Öffentliche Räume erscheinen in der Raumliste. Private Räume betritt man nur mit dem Code." },
+        "form_privada": { es: "Privada", en: "Private", de: "Privat" },
+        "form_jugadores": { es: "Nº asientos", en: "Seats", de: "Plätze" },
+        "form_info_asientos": { es: "Número de asientos de la mesa. Si rellenas con bots, los asientos libres los ocupan bots.", en: "Number of seats at the table. If you fill empty seats with bots, the free seats are taken by bots.", de: "Anzahl der Plätze am Tisch. Wenn du freie Plätze mit Bots füllst, übernehmen Bots die übrigen Plätze." },
+        "form_duracion": { es: "Duración", en: "Length", de: "Dauer" },
+        "form_preset_rapida": { es: "Rápida", en: "Quick", de: "Schnell" },
+        "form_preset_mediana": { es: "Mediana", en: "Medium", de: "Mittel" },
+        "form_preset_larga": { es: "Larga", en: "Long", de: "Lang" },
+        "form_preset_propia": { es: "A medida", en: "Custom", de: "Eigene" },
+        "form_manos": { es: "Manos", en: "Hands", de: "Hände" },
+        "form_info_limite": { es: "Sin límite: la apuesta es libre. Límite de bote: la subida máxima es el bote actual. Límite fijo: la subida máxima es el monte fijo que elijas.", en: "No limit: bets are free. Pot limit: the maximum raise is the current pot. Fixed limit: the maximum raise is the fixed amount you choose.", de: "Ohne Limit: Einsätze sind frei. Pot-Limit: der höchste Einsatz ist der aktuelle Pot. Festes Limit: der höchste Einsatz ist der gewählte Betrag." },
+        "form_info_min_raise": { es: "Cada subida tiene que igualar o superar la anterior.", en: "Each raise has to match or exceed the previous one.", de: "Jede Erhöhung muss die vorherige erreichen oder übertreffen." },
+        "form_info_recompra": { es: "Si te quedas sin fichas, puedes volver a comprar tu saldo inicial.", en: "If you run out of chips, you can buy back your starting stack.", de: "Wenn dir die Chips ausgehen, kannst du dein Startguthaben zurückkaufen." },
+        "form_motor": { es: "Motor de los bots", en: "Bot engine", de: "Bot-Motor" },
+        "form_motor_local": { es: "Local", en: "Local", de: "Lokal" },
+        "form_motor_ia": { es: "IA (experimental)", en: "AI (experimental)", de: "KI (experimentell)" },
+        "form_mezcla_proximamente": { es: "Mezcla local + IA en la misma mesa · próximamente", en: "Mixed local + AI at one table · coming soon", de: "Mischung aus lokal + KI am selben Tisch · demnächst" },
+        "form_temporizador": { es: "Temporizador entre manos", en: "Hand timer", de: "Zeitlimit zwischen Händen" },
+        "form_paso_de": { es: "Paso {0} de {1}", en: "Step {0} of {1}", de: "Schritt {0} von {1}" },
+        "boton_cambiar_datos": { es: "Cambiar usuario o contraseña", en: "Change username or password", de: "Benutzername oder Passwort ändern" },
+        "form_continuar": { es: "Continuar", en: "Continue", de: "Weiter" },
+        "form_atras": { es: "Atrás", en: "Back", de: "Zurück" },
+        "texto_foto_mesa_presets": { es: "Tienes 4 huecos. Toca una foto para usarla en la mesa, o un hueco libre para subir otra.", en: "You have 4 slots. Tap a photo to use it at the table, or a free slot to upload another.", de: "Du hast 4 Plätze. Tippe auf ein Foto, um es am Tisch zu nutzen, oder auf einen freien Platz, um ein weiteres hochzuladen." },
+        "texto_foto_mesa_subir": { es: "Sube una foto para usarla como tapete de tu mesa. Se revisa antes de aceptarla.", en: "Upload a photo to use it as your table's felt. It is checked before it is accepted.", de: "Lade ein Foto hoch, um es als Tischtuch zu nutzen. Es wird vor der Annahme geprüft." },
+        "texto_foto_mesa_cambiar": { es: "Puedes cambiar tu foto una vez al día.", en: "You can change your photo once a day.", de: "Du kannst dein Foto einmal pro Tag ändern." },
+        "boton_subir_foto_mesa": { es: "Subir foto de mesa", en: "Upload table photo", de: "Tischfoto hochladen" },
+        "texto_tapete_foto_requiere_compra": { es: "Compra «Foto propia» en la tienda para subir una foto de mesa.", en: "Buy «Own photo» in the shop to upload a table photo.", de: "Kaufe «Eigenes Foto» im Shop, um ein Tischfoto hochzuladen." },
+        "error_foto_mesa_limite_semanal": { es: "Solo puedes subir 4 fotos de mesa por semana. Vuelve a intentarlo más adelante.", en: "You can upload 4 table photos per week. Please try again later.", de: "Du kannst pro Woche 4 Tischfotos hochladen. Bitte versuche es später erneut." },
+        "error_foto_mesa_vacia": { es: "Ese hueco está vacío.", en: "That slot is empty.", de: "Dieser Platz ist leer." },
+        "error_tapete_no_comprado": { es: "Necesitas comprar «Foto propia» para subir una foto de mesa.", en: "You need to buy «Own photo» to upload a table photo.", de: "Du musst «Eigenes Foto» kaufen, um ein Tischfoto hochzuladen." },
+        "filtro_imagenes": { es: "Imágenes", en: "Images", de: "Bilder" },
+        "error_imagen_invalida": {
+            es: "No se pudo leer esa imagen.", en: "That image couldn't be read.",
+            de: "Dieses Bild konnte nicht gelesen werden."
+        },
+        "error_imagen_rechazada": {
+            es: "Esa foto no se puede usar como avatar.",
+            en: "That photo can't be used as an avatar.",
+            de: "Dieses Foto kann nicht als Avatar verwendet werden."
+        },
+        "boton_observar": { es: "Observar", en: "Watch", de: "Zuschauen" },
+        "boton_dejar_de_observar": { es: "Dejar de observar", en: "Stop watching", de: "Zuschauen beenden" },
+        "etiqueta_observando": { es: "Observando esta sala", en: "Watching this room", de: "Du schaust zu" },
+        "titulo_ajustar_foto": { es: "Ajusta tu foto", en: "Adjust your photo", de: "Foto anpassen" },
+        "texto_ajustar_foto_ayuda": {
+            es: "Arrastra la foto para colocarla dentro del círculo y usa el zoom para acercarla.",
+            en: "Drag the photo to place it inside the circle, and use the zoom to get closer.",
+            de: "Ziehe das Foto, um es in den Kreis zu setzen, und nutze den Zoom, um näher heranzugehen."
+        },
+        "texto_zoom_foto": { es: "Zoom", en: "Zoom", de: "Zoom" },
+        "error_foto_limite_diario": {
+            es: "Solo puedes cambiar tu foto una vez al día. Vuelve a intentarlo más tarde.",
+            en: "You can only change your photo once a day. Please try again later.",
+            de: "Du kannst dein Foto nur einmal pro Tag ändern. Bitte versuche es später erneut."
+        },
+        "error_moderacion_no_disponible": {
+            es: "La subida de fotos no está disponible ahora mismo.",
+            en: "Photo uploads aren't available right now.",
+            de: "Foto-Uploads sind derzeit nicht verfügbar."
+        },
+        "error_moderacion_no_configurada": {
+            es: "La subida de fotos no está disponible ahora mismo.",
+            en: "Photo uploads aren't available right now.",
+            de: "Foto-Uploads sind derzeit nicht verfügbar."
+        },
+        "error_moderacion_interno": {
+            es: "No se pudo comprobar esa foto. Inténtalo de nuevo.",
+            en: "That photo couldn't be checked. Please try again.",
+            de: "Dieses Foto konnte nicht überprüft werden. Bitte versuche es erneut."
+        },
+        "error_moderacion_red": {
+            es: "No se pudo comprobar esa foto. Inténtalo de nuevo.",
+            en: "That photo couldn't be checked. Please try again.",
+            de: "Dieses Foto konnte nicht überprüft werden. Bitte versuche es erneut."
+        },
+        "error_moderacion_respuesta_invalida": {
+            es: "No se pudo comprobar esa foto. Inténtalo de nuevo.",
+            en: "That photo couldn't be checked. Please try again.",
+            de: "Dieses Foto konnte nicht überprüft werden. Bitte versuche es erneut."
         },
     })
 }

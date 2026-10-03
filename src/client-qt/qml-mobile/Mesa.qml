@@ -53,6 +53,9 @@ Item {
     property string tapete: ""
     // Borde de tapete (capas de tapete, 2026-09-30) -- mismo criterio.
     property string tapeteBorde: ""
+    // Foto del tapete "tapete_foto" (2026-10-03) -- base64 JPEG, lo resuelve
+    // Main.qml (la del anfitrión, o la propia al previsualizar). "" = paño.
+    property string fotoTapete: ""
 
     // Índice del propio jugador dentro de "jugadores" — se usa para
     // rotar todos los asientos de forma que el propio siempre caiga
@@ -658,6 +661,7 @@ Item {
         anchors.fill: parent
         preset: mesa.tapete
         bordePreset: mesa.tapeteBorde
+        fotoBase64: mesa.fotoTapete
     }
 
     // Posición y tamaño del bloque central (comunitarias + bote + botes del showdown). Por defecto va
@@ -865,23 +869,35 @@ Item {
             id: filaBoteYEtiquetas
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 10 * Tema.escala
-            Row {
+            // Bote en una tarjetita oscura (ver Mesa.qml de escritorio): el
+            // número tiene que leerse sobre cualquier foto de tapete.
+            Rectangle {
                 id: filaBote
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 4 * Tema.escala
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Idioma.tf("etiqueta_bote_total", [mesa.boteVisible])
-                    color: Tema.colorAccent
-                    font.bold: true
-                    font.pixelSize: 14 * Tema.escala
-                    font.family: Tema.fuenteElegante
-                }
-                IconoFicha {
-                    width: 12 * Tema.escala
-                    height: width
-                    anchors.verticalCenter: parent.verticalCenter
-                    colorFicha: Tema.colorAccent
+                width: contenidoBote.width + 22 * Tema.escala
+                height: contenidoBote.height + 8 * Tema.escala
+                radius: height / 2
+                color: Qt.rgba(0, 0, 0, 0.6)
+                border.width: 1
+                border.color: Qt.rgba(1, 0.82, 0.55, 0.35)
+                Row {
+                    id: contenidoBote
+                    anchors.centerIn: parent
+                    spacing: 4 * Tema.escala
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Idioma.tf("etiqueta_bote_total", [mesa.boteVisible])
+                        color: Tema.colorAccent
+                        font.bold: true
+                        font.pixelSize: 14 * Tema.escala
+                        font.family: Tema.fuenteElegante
+                    }
+                    IconoFicha {
+                        width: 12 * Tema.escala
+                        height: width
+                        anchors.verticalCenter: parent.verticalCenter
+                        colorFicha: Tema.colorAccent
+                    }
                 }
             }
             Row {
@@ -942,6 +958,8 @@ Item {
             required property string nombre
             required property string saldo
             required property int partidasGanadas
+            // Foto de avatar (2026-10-02) -- ver el comentario gemelo en Mesa.qml de escritorio.
+            required property int accountId
             // Visibilidad a otros jugadores, parte B (2026-09-01) -- ver
             // Asiento.qml para cómo se usan.
             required property bool tieneMarcoBasico
@@ -990,6 +1008,7 @@ Item {
                 nombre: posicionador.nombre
                 saldo: posicionador.saldo
                 partidasGanadas: posicionador.partidasGanadas
+                accountId: posicionador.accountId
                 tieneMarcoBasico: posicionador.tieneMarcoBasico
                 textura: posicionador.textura
                 efecto: posicionador.efecto

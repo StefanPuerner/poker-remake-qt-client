@@ -39,7 +39,7 @@ ApplicationWindow {
     readonly property var tapetes: ["", "tapete_rombos:verde", "tapete_rombos:taberna", "tapete_palos:granate",
                                     "tapete_palos:porcelana", "tapete_puntos:azul", "tapete_lino:violeta",
                                     "tapete_rayas:petroleo", "tapete_lino:grafito", "tapete_rayas:verde",
-                                    "tapete_casino:roble", "tapete_casino:nogal",
+                                    "tapete_puntos:verde", "tapete_palos:verde",
                                     "tapete_madera:roble", "tapete_madera:roble_oscuro", "tapete_madera:nogal"]
     // "reverso_taberna" confirmado por el usuario el 2026-09-17 ("me
     // gusta la carta y el icono de barril") tras revisarlo aquí primero
@@ -212,7 +212,7 @@ ApplicationWindow {
                     }
                 }
                 // Capas de tapete (2026-09-30): el anillo de madera ya no va
-                // integrado en la base (tapete_casino/tapete_madera de la
+                // integrado en la base (tapete_madera de la
                 // lista de arriba ya no lo traen) -- es el borde
                 // independiente "borde_madera", combinable con CUALQUIER
                 // base. Sección aparte para verlo claramente.
@@ -227,7 +227,7 @@ ApplicationWindow {
                     spacing: 26
                     Repeater {
                         model: ["tapete_rombos:verde|borde_madera:roble", "tapete_lino:violeta|borde_madera:nogal",
-                                "tapete_casino:|borde_madera:roble_oscuro", "tapete_madera:nogal|borde_madera:nogal"]
+                                "tapete_puntos:verde|borde_madera:roble_oscuro", "tapete_madera:nogal|borde_madera:nogal"]
                         delegate: Column {
                             required property string modelData
                             readonly property var partes: modelData.split("|")

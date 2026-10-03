@@ -78,6 +78,10 @@ class LocalGameClient : public QObject {
   Q_PROPERTY(QVariantMap estadisticasCuenta READ estadisticasCuenta NOTIFY estadisticasCuentaCambiaron)
   Q_PROPERTY(QVariantMap loadoutMarco READ loadoutMarco NOTIFY loadoutMarcoCambiaron)
   Q_PROPERTY(QVariantMap perfilJugador READ perfilJugador NOTIFY perfilJugadorCambiaron)
+  // Paridad con NetworkClient::fotosCambios -- nunca cambia offline.
+  Q_PROPERTY(int fotosCambios READ fotosCambios NOTIFY fotoPerfilActualizada)
+  // Paridad con NetworkClient::esEspectador -- offline no hay espectadores.
+  Q_PROPERTY(bool esEspectador READ esEspectador NOTIFY esEspectadorCambio)
 
  public:
   explicit LocalGameClient(QObject* parent = nullptr) : QObject(parent) {
@@ -437,6 +441,26 @@ class LocalGameClient : public QObject {
   // Ranking / social / perfiles ajenos
   Q_INVOKABLE void consultarRanking(const QString&, quint16) {}
   Q_INVOKABLE void consultarPerfilJugador(const QString&, quint16, int) {}
+  Q_INVOKABLE void unirseComoEspectador(const QString&, quint16, QString, QString) {}
+  // Foto de avatar -- exige servidor real (moderación bloqueante), sin
+  // equivalente offline. Mismos invokables que NetworkClient, sin efecto.
+  Q_INVOKABLE void consultarFotoPerfil(const QString&, quint16, int) {}
+  int fotosCambios() const { return 0; }
+  bool esEspectador() const { return false; }
+  Q_INVOKABLE QString fotoBase64Cacheada(int) const { return QString(); }
+  Q_INVOKABLE QString fotoHashCacheada(int) const { return QString(); }
+  Q_INVOKABLE void subirFotoPerfil(const QString&, quint16, QString, QString) {}
+  Q_INVOKABLE void pedirFotoSiFalta(int) {}
+  // Foto de mesa (tapete) -- igual que la de avatar, solo API-parity.
+  Q_INVOKABLE void consultarFotoMesa(const QString&, quint16, int) {}
+  Q_INVOKABLE void pedirFotoMesaSiFalta(int) {}
+  Q_INVOKABLE QString fotoMesaBase64Cacheada(int) const { return QString(); }
+  Q_INVOKABLE QString fotoMesaHashCacheada(int) const { return QString(); }
+  Q_INVOKABLE void subirFotoMesa(const QString&, quint16, QString, QString, int) {}
+  Q_INVOKABLE void listarFotosMesa(const QString&, quint16, QString) {}
+  Q_INVOKABLE void activarFotoMesa(const QString&, quint16, QString, int) {}
+  Q_INVOKABLE void pedirMiniaturaMesa(int, int, const QString&) {}
+  Q_INVOKABLE QString miniaturaMesaBase64(int, int) const { return QString(); }
   Q_INVOKABLE void buscarJugadores(const QString&, quint16, QString) {}
   Q_INVOKABLE void listarAmigos(const QString&, quint16) {}
   Q_INVOKABLE void listarJugadoresRecientes(const QString&, quint16) {}
@@ -609,6 +633,7 @@ class LocalGameClient : public QObject {
   /// Paridad con NetworkClient -- nunca se emite en modo local (no hay
   /// anfitrión con tapete propio: la mesa usa el del jugador).
   void tapeteAnfitrionActualizado(QString tapete, QString borde);
+  void tapeteFotoAnfitrionActualizado(int accountId);  // Solo API-parity, no se emite offline.
   /// Paridad con NetworkClient -- nunca se emite en modo local (no hay reconexión).
   void resincronizado();
   void esMiTurno(int bote, int igualar, int miSaldo, int miApuesta, int timeoutMs,
@@ -645,6 +670,16 @@ class LocalGameClient : public QObject {
   void estadisticasCuentaCambiaron();
   void loadoutMarcoCambiaron();
   void perfilJugadorCambiaron();
+  // Foto de avatar -- nunca se emiten offline, solo API-parity (ver los
+  // invokables sin efecto más arriba).
+  void fotoPerfilActualizada(int accountId);
+  void esEspectadorCambio();
+  void fotoPerfilSubida(QString hash);
+  void fotoPerfilSubidaError(QString mensaje);
+  void fotoMesaSubida(QString hash);
+  void fotoMesaSubidaError(QString mensaje);
+  void fotosMesaListadas(int activa, QStringList hashes);
+  void fotoMesaActivada(int slot);
   /// Cambió el XP pendiente de sincronizar (se ganó en una partida local, o
   /// se entregó al servidor). QML lo usa para saber si tiene algo que
   /// mandar al reconectar.

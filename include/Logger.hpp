@@ -13,8 +13,9 @@
 /**
  * @brief Singleton thread-safe para registrar eventos del servidor en disco.
  *
- * Crea un archivo `server_YYYYMMDD_HHMMSS.log` en el directorio indicado
- * al llamar a open(). Cada entrada lleva timestamp HH:MM:SS y nivel
+ * Crea (o reutiliza, si ya existe) un archivo `server_YYYY-MM-DD.log` en el
+ * directorio indicado al llamar a open(): un fichero por día, en modo append,
+ * para que los reinicios del mismo día compartan fichero. Cada entrada lleva timestamp HH:MM:SS y nivel
  * (INFO / WARN / ERROR). Las entradas también se imprimen en stderr.
  *
  * Uso:

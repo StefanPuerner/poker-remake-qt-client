@@ -154,6 +154,16 @@ const char* msgTypeStr(MsgType t) {
       return "ADMIN_FABRICAR_CUENTAS";
     case MsgType::ADMIN_BORRAR_CUENTAS_PRUEBA:
       return "ADMIN_BORRAR_CUENTAS_PRUEBA";
+    case MsgType::SUBIR_FOTO_PERFIL:
+      return "SUBIR_FOTO_PERFIL";
+    case MsgType::CONSULTAR_FOTO_PERFIL:
+      return "CONSULTAR_FOTO_PERFIL";
+    case MsgType::FOTO_PERFIL_ACTUAL:
+      return "FOTO_PERFIL_ACTUAL";
+    case MsgType::LISTAR_FOTOS_MESA:
+      return "LISTAR_FOTOS_MESA";
+    case MsgType::ACTIVAR_FOTO_MESA:
+      return "ACTIVAR_FOTO_MESA";
     default:
       return "UNKNOWN";
   }
@@ -228,6 +238,11 @@ MsgType strToMsgType(const std::string& s) {
   if (s == "ADMIN_CONCEDER_ITEM") return MsgType::ADMIN_CONCEDER_ITEM;
   if (s == "ADMIN_FABRICAR_CUENTAS") return MsgType::ADMIN_FABRICAR_CUENTAS;
   if (s == "ADMIN_BORRAR_CUENTAS_PRUEBA") return MsgType::ADMIN_BORRAR_CUENTAS_PRUEBA;
+  if (s == "SUBIR_FOTO_PERFIL") return MsgType::SUBIR_FOTO_PERFIL;
+  if (s == "CONSULTAR_FOTO_PERFIL") return MsgType::CONSULTAR_FOTO_PERFIL;
+  if (s == "FOTO_PERFIL_ACTUAL") return MsgType::FOTO_PERFIL_ACTUAL;
+  if (s == "LISTAR_FOTOS_MESA") return MsgType::LISTAR_FOTOS_MESA;
+  if (s == "ACTIVAR_FOTO_MESA") return MsgType::ACTIVAR_FOTO_MESA;
   return MsgType::UNKNOWN;
 }
 
