@@ -196,14 +196,21 @@ Column {
         // rojo cuando queda poco tiempo.
         Canvas {
             id: anillo
-            anchors.fill: parent
+            // Un poco más grande que el avatar: el marco lo sobrepasa y, sin esto, el
+            // aro quedaba dentro del marco (2026-10-04).
+            anchors.centerIn: parent
+            width: parent.width + 14 * Tema.escala
+            height: width
             visible: activo
+            // Por encima del avatar (foto, marco, decoraciones): el aro cae en el
+            // borde del avatar y, sin esto, lo tapaba el marco o la foto (2026-10-04).
+            z: 20
             onPaint: {
                 var ctx = getContext("2d");
                 ctx.reset();
                 var cx = width / 2;
                 var cy = height / 2;
-                var r = width / 2 - 2;
+                var r = width / 2 - 4 * Tema.escala;
                 ctx.strokeStyle = fraccionTiempo < 0.2 ? Tema.colorPeligro : Tema.colorAccent;
                 ctx.lineWidth = 3;
                 ctx.beginPath();

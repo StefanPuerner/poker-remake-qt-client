@@ -14,6 +14,12 @@
   automáticamente antes de aceptarse.
 - **Foto de perfil**: un cambio al día, como antes.
 
+### Fichas orbitando (efecto de marco)
+- El antiguo "Destello" pasa a llamarse **"Fichas orbitando"**: tres fichas de casino
+  que giran alrededor del marco.
+- Puedes elegir **el color de las fichas** al equiparlo: dorado (el de siempre), rojo,
+  azul, verde, negro o blanco.
+
 ### Crear sala, nuevo formulario
 - **En el móvil**, el formulario va a pantalla completa, en tres pasos: Sala, Partida y
   Bots. Atrás y Continuar van a los lados de la pantalla.
@@ -28,9 +34,9 @@
 - **Al volver a crear una sala, el formulario empieza desde cero.**
 
 ### Torneos Solitario
-- La escalera y los desafíos diarios se ven en **mosaico** en el móvil, aprovechando la
-  pantalla en horizontal.
+- La escalera y los desafíos diarios se ven en **mosaico**, en el móvil y en el PC.
 - La escalera ya solo se desplaza en vertical.
+- En la mesa, el aro del temporizador se ve siempre por encima del avatar, marco y foto incluidos.
 - Se ha quitado el aviso de "Experimental" de esta pestaña.
 
 ### Modo espectador (experimental)

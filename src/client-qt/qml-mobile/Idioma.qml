@@ -1603,7 +1603,7 @@ QtObject {
         "objeto_facetado_nombre": { es: "Facetado", en: "Faceted", de: "Facettiert" },
         "objeto_canto_ficha_nombre": { es: "Canto de ficha", en: "Chip Edge", de: "Chip-Kante" },
         "objeto_pulso_nombre": { es: "Pulso", en: "Pulse", de: "Puls" },
-        "objeto_destello_nombre": { es: "Destello", en: "Flash", de: "Blitz" },
+        "objeto_destello_nombre": { es: "Fichas orbitando", en: "Orbiting chips", de: "Kreisende Chips" },
         "objeto_onda_nombre": { es: "Onda", en: "Ripple", de: "Welle" },
         "objeto_gema_roja_nombre": { es: "Gema engastada (roja)", en: "Set Gem (red)", de: "Gefasster Edelstein (rot)" },
         "objeto_gema_azul_nombre": {
@@ -1699,6 +1699,7 @@ QtObject {
         "form_temporizador": { es: "Temporizador entre manos", en: "Hand timer", de: "Zeitlimit zwischen Händen" },
         "form_paso_de": { es: "Paso {0} de {1}", en: "Step {0} of {1}", de: "Schritt {0} von {1}" },
         "boton_cambiar_datos": { es: "Cambiar usuario o contraseña", en: "Change username or password", de: "Benutzername oder Passwort ändern" },
+        "popup_color_ficha_titulo": { es: "Elige el color de las fichas", en: "Choose the chip color", de: "Farbe der Chips wählen" },
         "form_continuar": { es: "Continuar", en: "Continue", de: "Weiter" },
         "form_atras": { es: "Atrás", en: "Back", de: "Zurück" },
         "texto_foto_mesa_presets": { es: "Tienes 4 huecos. Toca una foto para usarla en la mesa, o un hueco libre para subir otra.", en: "You have 4 slots. Tap a photo to use it at the table, or a free slot to upload another.", de: "Du hast 4 Plätze. Tippe auf ein Foto, um es am Tisch zu nutzen, oder auf einen freien Platz, um ein weiteres hochzuladen." },

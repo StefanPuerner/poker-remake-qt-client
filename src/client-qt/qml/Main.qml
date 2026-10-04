@@ -1157,6 +1157,14 @@ ApplicationWindow {
             popupPalo.abrir(codigo, info ? info.nombre : codigo, paloActual);
             return;
         }
+        // Fichas orbitando (2026-10-04): al equipar sale el selector de color.
+        if (codigo === "destello") {
+            var infoFichas = objetoTiendaPorCodigo(codigo);
+            var colorFichasActual = (redcliente.loadoutMarco.efecto || "").indexOf(":") >= 0
+                                    ? redcliente.loadoutMarco.efecto.split(":")[1] : "";
+            popupColorFicha.abrir(codigo, infoFichas ? infoFichas.nombre : codigo, colorFichasActual);
+            return;
+        }
         if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
             return;
@@ -3709,7 +3717,7 @@ ApplicationWindow {
                     id: columnaRetos
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 20 * Tema.escala
-                    width: 340 * Tema.escala
+                    width: Math.min(980 * Tema.escala, scrollTorneos.width - 40 * Tema.escala)
                     // 0 = Escalera (lo que ya había) / 1 = Diario / 2 = Racha -- ver
                     // docs/plan-retos-diario-racha.md. Transitorio (no persiste entre
                     // sesiones), vuelve a Escalera cada vez que se reabre la pantalla.
@@ -3799,242 +3807,247 @@ ApplicationWindow {
                         visible: columnaRetos.pestanaRetos === 0
                         width: parent.width
                         spacing: 20 * Tema.escala
-                    Repeater {
-                        model: retosSolitario
-                        // Rediseño 2026-09-16 (pedido explícito del usuario:
-                        // "menos texto, que las cosas se entiendan
-                        // visualmente" + "mismo estilo de bordeado y
-                        // detalle que Tienda/Amigos en Social") -- de una
-                        // Rectangle plana a la misma "ficha de casino" que
-                        // ya usan Tienda/Logros/Salas: sombra desplazada,
-                        // degradado, hilo dorado interior y encogido al
-                        // pasar el ratón (antes solo tenía el dithering).
-                        // El círculo numerado sustituye a cualquier "Reto
-                        // N" en texto -- coloreado según la rareza real del
-                        // logro que da ese peldaño (bronce/plata/oro, ver
-                        // colorRareza() y retosSolitario más arriba), y con
-                        // "✓" en vez del número una vez completado -- eso
-                        // también sustituye a la vieja marca "✓ Completado"
-                        // en texto, que sobraba al lado.
-                        delegate: Item {
-                            id: tarjetaReto
-                            required property var modelData
-                            required property int index
-                            readonly property bool disponible: retoDisponible(modelData.codigoPredecesor)
-                            readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
-                            readonly property bool completado: retoLogroDesbloqueado(modelData.codigo)
-                            readonly property bool guardado: retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
-                            // Solo con cuenta real y conexión de verdad --
-                            // invitado no tiene dónde acreditar nada.
-                            readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
-                            readonly property color colorTier: colorRareza(modelData.rareza)
+                    Grid {
+                        columns: Math.max(2, Math.floor(width / (260 * Tema.escala)))
+                        width: parent.width
+                        spacing: 12 * Tema.escala
+                        Repeater {
+                            model: retosSolitario
+                            // Rediseño 2026-09-16 (pedido explícito del usuario:
+                            // "menos texto, que las cosas se entiendan
+                            // visualmente" + "mismo estilo de bordeado y
+                            // detalle que Tienda/Amigos en Social") -- de una
+                            // Rectangle plana a la misma "ficha de casino" que
+                            // ya usan Tienda/Logros/Salas: sombra desplazada,
+                            // degradado, hilo dorado interior y encogido al
+                            // pasar el ratón (antes solo tenía el dithering).
+                            // El círculo numerado sustituye a cualquier "Reto
+                            // N" en texto -- coloreado según la rareza real del
+                            // logro que da ese peldaño (bronce/plata/oro, ver
+                            // colorRareza() y retosSolitario más arriba), y con
+                            // "✓" en vez del número una vez completado -- eso
+                            // también sustituye a la vieja marca "✓ Completado"
+                            // en texto, que sobraba al lado.
+                            delegate: Item {
+                                id: tarjetaReto
+                                required property var modelData
+                                required property int index
+                                readonly property bool disponible: retoDisponible(modelData.codigoPredecesor)
+                                readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
+                                readonly property bool completado: retoLogroDesbloqueado(modelData.codigo)
+                                readonly property bool guardado: retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
+                                // Solo con cuenta real y conexión de verdad --
+                                // invitado no tiene dónde acreditar nada.
+                                readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
+                                readonly property color colorTier: colorRareza(modelData.rareza)
 
-                            width: parent.width
-                            height: fondoReto.height + 9 * Tema.escala
+                                width: (parent.width - (parent.columns - 1) * parent.spacing) / parent.columns
+                                height: fondoReto.height + 9 * Tema.escala
 
-                            Rectangle {
-                                anchors.top: fondoReto.top
-                                anchors.topMargin: 3 * Tema.escala
-                                anchors.left: fondoReto.left
-                                anchors.right: fondoReto.right
-                                height: fondoReto.height
-                                radius: fondoReto.radius
-                                color: "black"
-                                opacity: 0.35
-                            }
-
-                            Rectangle {
-                                id: fondoReto
-                                anchors.top: parent.top
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                height: columnaReto.height + 28 * Tema.escala
-                                radius: 12 * Tema.escala
-                                // Bloqueado -- mismo criterio que "Comprado"
-                                // (CLAUDE.md, "Convenciones de diseño"):
-                                // opacidad baja, sin Rectangle nuevo.
-                                opacity: tarjetaReto.disponible ? 1.0 : 0.55
-                                border.width: tarjetaReto.completado ? 1.8 : 1
-                                border.color: tarjetaReto.completado ? tarjetaReto.colorTier : Tema.colorBorde
-                                gradient: Gradient {
-                                    GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
-                                    GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                                    GradientStop { position: 1.0; color: Tema.colorPanel }
-                                }
-                                // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
-                                layer.enabled: true
-                                layer.effect: ShaderEffect {
-                                    property variant source
-                                    property real amplitud: 30.0
-                                    fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
-                                }
-                                // Se encoge un poco al pasar el ratón por
-                                // encima -- mismo criterio que Tienda/
-                                // Amigos/Salas.
-                                scale: zonaHoverReto.containsMouse ? 0.97 : 1.0
-                                Behavior on scale { NumberAnimation { duration: 100 } }
-
-                                // Hilo interior -- el "doble bisel" de ficha
-                                // de casino, mismo criterio que Tienda.
                                 Rectangle {
-                                    anchors.fill: parent
-                                    anchors.margins: 2 * Tema.escala
-                                    radius: parent.radius - 2 * Tema.escala
-                                    color: "transparent"
-                                    border.width: 1
-                                    border.color: Qt.rgba(tarjetaReto.colorTier.r, tarjetaReto.colorTier.g,
-                                                           tarjetaReto.colorTier.b,
-                                                           tarjetaReto.completado ? 0.55 : 0.28)
+                                    anchors.top: fondoReto.top
+                                    anchors.topMargin: 3 * Tema.escala
+                                    anchors.left: fondoReto.left
+                                    anchors.right: fondoReto.right
+                                    height: fondoReto.height
+                                    radius: fondoReto.radius
+                                    color: "black"
+                                    opacity: 0.35
                                 }
 
-                                MouseArea {
-                                    id: zonaHoverReto
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                }
-
-                                Column {
-                                    id: columnaReto
+                                Rectangle {
+                                    id: fondoReto
                                     anchors.top: parent.top
-                                    anchors.topMargin: 14 * Tema.escala
                                     anchors.left: parent.left
-                                    anchors.leftMargin: 16 * Tema.escala
                                     anchors.right: parent.right
-                                    anchors.rightMargin: 16 * Tema.escala
-                                    spacing: 10 * Tema.escala
+                                    height: columnaReto.height + 28 * Tema.escala
+                                    radius: 12 * Tema.escala
+                                    // Bloqueado -- mismo criterio que "Comprado"
+                                    // (CLAUDE.md, "Convenciones de diseño"):
+                                    // opacidad baja, sin Rectangle nuevo.
+                                    opacity: tarjetaReto.disponible ? 1.0 : 0.55
+                                    border.width: tarjetaReto.completado ? 1.8 : 1
+                                    border.color: tarjetaReto.completado ? tarjetaReto.colorTier : Tema.colorBorde
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                        GradientStop { position: 1.0; color: Tema.colorPanel }
+                                    }
+                                    // Dithering (Interleaved Gradient Noise) -- ver assets/shaders/dither.frag.
+                                    layer.enabled: true
+                                    layer.effect: ShaderEffect {
+                                        property variant source
+                                        property real amplitud: 30.0
+                                        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                                    }
+                                    // Se encoge un poco al pasar el ratón por
+                                    // encima -- mismo criterio que Tienda/
+                                    // Amigos/Salas.
+                                    scale: zonaHoverReto.containsMouse ? 0.97 : 1.0
+                                    Behavior on scale { NumberAnimation { duration: 100 } }
 
-                                    Row {
-                                        width: parent.width
-                                        spacing: 12 * Tema.escala
-                                        Rectangle {
-                                            id: circuloReto
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 32 * Tema.escala
-                                            height: width
-                                            radius: width / 2
-                                            color: tarjetaReto.completado ? tarjetaReto.colorTier : "transparent"
-                                            border.width: 1.5
-                                            border.color: tarjetaReto.colorTier
+                                    // Hilo interior -- el "doble bisel" de ficha
+                                    // de casino, mismo criterio que Tienda.
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: 2 * Tema.escala
+                                        radius: parent.radius - 2 * Tema.escala
+                                        color: "transparent"
+                                        border.width: 1
+                                        border.color: Qt.rgba(tarjetaReto.colorTier.r, tarjetaReto.colorTier.g,
+                                                               tarjetaReto.colorTier.b,
+                                                               tarjetaReto.completado ? 0.55 : 0.28)
+                                    }
+
+                                    MouseArea {
+                                        id: zonaHoverReto
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                    }
+
+                                    Column {
+                                        id: columnaReto
+                                        anchors.top: parent.top
+                                        anchors.topMargin: 14 * Tema.escala
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 16 * Tema.escala
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 16 * Tema.escala
+                                        spacing: 10 * Tema.escala
+
+                                        Row {
+                                            width: parent.width
+                                            spacing: 12 * Tema.escala
+                                            Rectangle {
+                                                id: circuloReto
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 32 * Tema.escala
+                                                height: width
+                                                radius: width / 2
+                                                color: tarjetaReto.completado ? tarjetaReto.colorTier : "transparent"
+                                                border.width: 1.5
+                                                border.color: tarjetaReto.colorTier
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: tarjetaReto.completado ? "✓" : String(tarjetaReto.index + 1)
+                                                    color: tarjetaReto.completado ? Tema.colorFondo : tarjetaReto.colorTier
+                                                    font.bold: true
+                                                    font.pixelSize: 14 * Tema.escala
+                                                }
+                                            }
                                             Text {
-                                                anchors.centerIn: parent
-                                                text: tarjetaReto.completado ? "✓" : String(tarjetaReto.index + 1)
-                                                color: tarjetaReto.completado ? Tema.colorFondo : tarjetaReto.colorTier
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: parent.width - circuloReto.width - parent.spacing
+                                                text: tarjetaReto.modelData.nombre
+                                                color: Tema.colorAccent
                                                 font.bold: true
                                                 font.pixelSize: 14 * Tema.escala
+                                                elide: Text.ElideRight
                                             }
                                         }
                                         Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: parent.width - circuloReto.width - parent.spacing
-                                            text: tarjetaReto.modelData.nombre
-                                            color: Tema.colorAccent
-                                            font.bold: true
-                                            font.pixelSize: 14 * Tema.escala
-                                            elide: Text.ElideRight
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: tarjetaReto.modelData.descripcion
+                                            color: Tema.colorTexto
+                                            font.pixelSize: 12 * Tema.escala
                                         }
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        wrapMode: Text.WordWrap
-                                        text: tarjetaReto.modelData.descripcion
-                                        color: Tema.colorTexto
-                                        font.pixelSize: 12 * Tema.escala
-                                    }
-                                    Text {
-                                        visible: !tarjetaReto.disponible
-                                        width: parent.width
-                                        wrapMode: Text.WordWrap
-                                        text: Idioma.t("error_reto_orden")
-                                        color: Tema.colorTextoTenue
-                                        font.pixelSize: 11 * Tema.escala
-                                    }
-                                    // Recompensas -- SIEMPRE visibles (pedido
-                                    // explícito), icono+número para
-                                    // Tréboles/XP; el título (y, en el reto
-                                    // 5, la decoración) sí van escritos --
-                                    // Flow en vez de Row: si no cabe en una
-                                    // línea (reto 5, con la decoración
-                                    // extra), pasa sola a la siguiente en
-                                    // vez de salirse de la tarjeta.
-                                    Flow {
-                                        width: parent.width
-                                        spacing: 6 * Tema.escala
                                         Text {
-                                            text: Idioma.t("etiqueta_recompensas_reto")
+                                            visible: !tarjetaReto.disponible
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: Idioma.t("error_reto_orden")
                                             color: Tema.colorTextoTenue
                                             font.pixelSize: 11 * Tema.escala
                                         }
-                                        IconoTrebol {
-                                            width: 11 * Tema.escala
-                                            height: width
-                                            colorTrebol: Tema.colorTextoTenue
+                                        // Recompensas -- SIEMPRE visibles (pedido
+                                        // explícito), icono+número para
+                                        // Tréboles/XP; el título (y, en el reto
+                                        // 5, la decoración) sí van escritos --
+                                        // Flow en vez de Row: si no cabe en una
+                                        // línea (reto 5, con la decoración
+                                        // extra), pasa sola a la siguiente en
+                                        // vez de salirse de la tarjeta.
+                                        Flow {
+                                            width: parent.width
+                                            spacing: 6 * Tema.escala
+                                            Text {
+                                                text: Idioma.t("etiqueta_recompensas_reto")
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 11 * Tema.escala
+                                            }
+                                            IconoTrebol {
+                                                width: 11 * Tema.escala
+                                                height: width
+                                                colorTrebol: Tema.colorTextoTenue
+                                            }
+                                            Text {
+                                                text: tarjetaReto.modelData.treboles
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 11 * Tema.escala
+                                            }
+                                            Text {
+                                                // Pedido explícito 2026-09-16:
+                                                // nada de icono/rayo para XP
+                                                // (confunde con "energía") --
+                                                // directamente las letras,
+                                                // mismo criterio que se use en
+                                                // cualquier otro sitio con XP
+                                                // en el futuro.
+                                                text: Idioma.tf("etiqueta_xp_valor", [tarjetaReto.modelData.xp])
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 11 * Tema.escala
+                                            }
+                                            Text {
+                                                text: Idioma.t("sufijo_mas_titulo")
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 11 * Tema.escala
+                                            }
+                                            Text {
+                                                visible: tarjetaReto.modelData.decoracionNombre !== ""
+                                                text: Idioma.tf("etiqueta_mas_decoracion", [tarjetaReto.modelData.decoracionNombre])
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 11 * Tema.escala
+                                            }
                                         }
-                                        Text {
-                                            text: tarjetaReto.modelData.treboles
-                                            color: Tema.colorTextoTenue
-                                            font.pixelSize: 11 * Tema.escala
-                                        }
-                                        Text {
-                                            // Pedido explícito 2026-09-16:
-                                            // nada de icono/rayo para XP
-                                            // (confunde con "energía") --
-                                            // directamente las letras,
-                                            // mismo criterio que se use en
-                                            // cualquier otro sitio con XP
-                                            // en el futuro.
-                                            text: Idioma.tf("etiqueta_xp_valor", [tarjetaReto.modelData.xp])
-                                            color: Tema.colorTextoTenue
-                                            font.pixelSize: 11 * Tema.escala
-                                        }
-                                        Text {
-                                            text: Idioma.t("sufijo_mas_titulo")
-                                            color: Tema.colorTextoTenue
-                                            font.pixelSize: 11 * Tema.escala
-                                        }
-                                        Text {
-                                            visible: tarjetaReto.modelData.decoracionNombre !== ""
-                                            text: Idioma.tf("etiqueta_mas_decoracion", [tarjetaReto.modelData.decoracionNombre])
-                                            color: Tema.colorTextoTenue
-                                            font.pixelSize: 11 * Tema.escala
-                                        }
-                                    }
 
-                                    // Reclamar es la acción principal en cuanto hay
-                                    // algo que reclamar -- "Jugar de nuevo" queda
-                                    // como enlace secundario, discreto, para quien
-                                    // quiera practicar antes de reclamar.
-                                    BotonRelleno {
-                                        visible: tarjetaReto.disponible && tarjetaReto.ganadoPendiente && !tarjetaReto.completado
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        enabled: tarjetaReto.puedeReclamar
-                                        text: tarjetaReto.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
-                                        onClicked: redcliente.reclamarRecompensaReto(
-                                            servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
-                                    }
-                                    // Con una partida guardada del reto, "Continuar" es la
-                                    // acción principal y empezar de cero queda como enlace.
-                                    BotonRelleno {
-                                        visible: tarjetaReto.disponible && tarjetaReto.guardado
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: Idioma.t("boton_continuar_reto")
-                                        onClicked: iniciarReto(tarjetaReto.modelData, true)
-                                    }
-                                    BotonRelleno {
-                                        visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente && !tarjetaReto.guardado
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: Idioma.t("boton_jugar")
-                                        onClicked: iniciarReto(tarjetaReto.modelData, false)
-                                    }
-                                    Text {
-                                        visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado || tarjetaReto.guardado)
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: tarjetaReto.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
-                                        color: Tema.colorAccent
-                                        font.pixelSize: 12 * Tema.escala
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
+                                        // Reclamar es la acción principal en cuanto hay
+                                        // algo que reclamar -- "Jugar de nuevo" queda
+                                        // como enlace secundario, discreto, para quien
+                                        // quiera practicar antes de reclamar.
+                                        BotonRelleno {
+                                            visible: tarjetaReto.disponible && tarjetaReto.ganadoPendiente && !tarjetaReto.completado
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            enabled: tarjetaReto.puedeReclamar
+                                            text: tarjetaReto.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                            onClicked: redcliente.reclamarRecompensaReto(
+                                                servidorHost, servidorPuerto, tokenSesion, tarjetaReto.modelData.codigo)
+                                        }
+                                        // Con una partida guardada del reto, "Continuar" es la
+                                        // acción principal y empezar de cero queda como enlace.
+                                        BotonRelleno {
+                                            visible: tarjetaReto.disponible && tarjetaReto.guardado
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: Idioma.t("boton_continuar_reto")
+                                            onClicked: iniciarReto(tarjetaReto.modelData, true)
+                                        }
+                                        BotonRelleno {
+                                            visible: tarjetaReto.disponible && !tarjetaReto.ganadoPendiente && !tarjetaReto.guardado
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: Idioma.t("boton_jugar")
                                             onClicked: iniciarReto(tarjetaReto.modelData, false)
+                                        }
+                                        Text {
+                                            visible: tarjetaReto.disponible && (tarjetaReto.ganadoPendiente || tarjetaReto.completado || tarjetaReto.guardado)
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: tarjetaReto.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
+                                            color: Tema.colorAccent
+                                            font.pixelSize: 12 * Tema.escala
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: iniciarReto(tarjetaReto.modelData, false)
+                                            }
                                         }
                                     }
                                 }
@@ -4049,173 +4062,178 @@ ApplicationWindow {
                         width: parent.width
                         spacing: 14 * Tema.escala
 
-                        Repeater {
-                            model: retosDiarios
-                            delegate: Item {
-                                id: tarjetaRetoDiario
-                                required property var modelData
-                                required property int index
-                                readonly property bool esHoy: index === retoDiarioDeHoyIndice()
-                                readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
-                                readonly property bool guardado: retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
-                                readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
+                        Grid {
+                            columns: Math.max(2, Math.floor(width / (260 * Tema.escala)))
+                            width: parent.width
+                            spacing: 12 * Tema.escala
+                            Repeater {
+                                model: retosDiarios
+                                delegate: Item {
+                                    id: tarjetaRetoDiario
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool esHoy: index === retoDiarioDeHoyIndice()
+                                    readonly property bool ganadoPendiente: retoGanadoPendiente(modelData.codigo)
+                                    readonly property bool guardado: retosGuardadosRev >= 0 && modoJuego.hayRetoGuardado(modelData.codigo)
+                                    readonly property bool puedeReclamar: conectadoAlServidor && tokenSesion !== ""
 
-                                width: parent.width
-                                height: fondoRetoDiario.height + 9 * Tema.escala
+                                    width: (parent.width - (parent.columns - 1) * parent.spacing) / parent.columns
+                                    height: fondoRetoDiario.height + 9 * Tema.escala
 
-                                // "Ficha de casino" -- mismo recipe que Tienda/escalera (ver
-                                // celdaTienda/tarjetaReto): sombra desplazada, degradado +
-                                // dithering, doble bisel. Pedido explícito del usuario
-                                // (2026-09-22: "hazlo similar a las tarjetas de tienda o
-                                // amigos") -- antes era un Rectangle plano.
-                                Rectangle {
-                                    anchors.top: fondoRetoDiario.top
-                                    anchors.topMargin: 3 * Tema.escala
-                                    anchors.left: fondoRetoDiario.left
-                                    anchors.right: fondoRetoDiario.right
-                                    height: fondoRetoDiario.height
-                                    radius: fondoRetoDiario.radius
-                                    color: "black"
-                                    opacity: 0.35
-                                }
-
-                                Rectangle {
-                                    id: fondoRetoDiario
-                                    anchors.top: parent.top
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    height: contenidoRetoDiario.height + 24 * Tema.escala
-                                    radius: 10 * Tema.escala
-                                    // Solo el de hoy es jugable/reclamable (ver el comentario de
-                                    // retosDiarios más arriba) -- el resto del pool se ve atenuado,
-                                    // mismo criterio "bloqueado" que la escalera (opacity 0.55, sin
-                                    // Rectangle nuevo).
-                                    opacity: tarjetaRetoDiario.esHoy ? 1.0 : 0.55
-                                    border.width: tarjetaRetoDiario.esHoy ? 2 : 1
-                                    border.color: tarjetaRetoDiario.esHoy ? Tema.colorAccent : Tema.colorBorde
-                                    gradient: Gradient {
-                                        GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
-                                        GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
-                                        GradientStop { position: 1.0; color: Tema.colorPanel }
-                                    }
-                                    layer.enabled: true
-                                    layer.effect: ShaderEffect {
-                                        property variant source
-                                        property real amplitud: 30.0
-                                        fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
-                                    }
-
-                                    // Hilo interior -- el "doble bisel" de ficha de casino.
+                                    // "Ficha de casino" -- mismo recipe que Tienda/escalera (ver
+                                    // celdaTienda/tarjetaReto): sombra desplazada, degradado +
+                                    // dithering, doble bisel. Pedido explícito del usuario
+                                    // (2026-09-22: "hazlo similar a las tarjetas de tienda o
+                                    // amigos") -- antes era un Rectangle plano.
                                     Rectangle {
-                                        anchors.fill: parent
-                                        anchors.margins: 2 * Tema.escala
-                                        radius: parent.radius - 2 * Tema.escala
-                                        color: "transparent"
-                                        border.width: 1
-                                        border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
-                                                               tarjetaRetoDiario.esHoy ? 0.6 : 0.2)
+                                        anchors.top: fondoRetoDiario.top
+                                        anchors.topMargin: 3 * Tema.escala
+                                        anchors.left: fondoRetoDiario.left
+                                        anchors.right: fondoRetoDiario.right
+                                        height: fondoRetoDiario.height
+                                        radius: fondoRetoDiario.radius
+                                        color: "black"
+                                        opacity: 0.35
                                     }
 
-                                Column {
-                                    id: contenidoRetoDiario
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
-                                    anchors.margins: 12 * Tema.escala
-                                    spacing: 8 * Tema.escala
-
-                                    Row {
-                                        width: parent.width
-                                        spacing: 8 * Tema.escala
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: tarjetaRetoDiario.modelData.nombre
-                                            color: Tema.colorAccent
-                                            font.bold: true
-                                            font.pixelSize: 14 * Tema.escala
+                                    Rectangle {
+                                        id: fondoRetoDiario
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: contenidoRetoDiario.height + 24 * Tema.escala
+                                        radius: 10 * Tema.escala
+                                        // Solo el de hoy es jugable/reclamable (ver el comentario de
+                                        // retosDiarios más arriba) -- el resto del pool se ve atenuado,
+                                        // mismo criterio "bloqueado" que la escalera (opacity 0.55, sin
+                                        // Rectangle nuevo).
+                                        opacity: tarjetaRetoDiario.esHoy ? 1.0 : 0.55
+                                        border.width: tarjetaRetoDiario.esHoy ? 2 : 1
+                                        border.color: tarjetaRetoDiario.esHoy ? Tema.colorAccent : Tema.colorBorde
+                                        gradient: Gradient {
+                                            GradientStop { position: 0.0; color: Qt.lighter(Tema.colorPanel, 1.65) }
+                                            GradientStop { position: 0.18; color: Qt.lighter(Tema.colorPanel, 1.4) }
+                                            GradientStop { position: 1.0; color: Tema.colorPanel }
                                         }
+                                        layer.enabled: true
+                                        layer.effect: ShaderEffect {
+                                            property variant source
+                                            property real amplitud: 30.0
+                                            fragmentShader: "qrc:/qt/qml/PokerQuick/assets/shaders/dither.frag.qsb"
+                                        }
+
+                                        // Hilo interior -- el "doble bisel" de ficha de casino.
                                         Rectangle {
-                                            visible: tarjetaRetoDiario.esHoy
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            radius: height / 2
+                                            anchors.fill: parent
+                                            anchors.margins: 2 * Tema.escala
+                                            radius: parent.radius - 2 * Tema.escala
                                             color: "transparent"
                                             border.width: 1
-                                            border.color: Tema.colorAccent
-                                            width: etiquetaDeHoy.implicitWidth + 14 * Tema.escala
-                                            height: etiquetaDeHoy.implicitHeight + 4 * Tema.escala
+                                            border.color: Qt.rgba(Tema.colorAccent.r, Tema.colorAccent.g, Tema.colorAccent.b,
+                                                                   tarjetaRetoDiario.esHoy ? 0.6 : 0.2)
+                                        }
+
+                                    Column {
+                                        id: contenidoRetoDiario
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        anchors.margins: 12 * Tema.escala
+                                        spacing: 8 * Tema.escala
+
+                                        Row {
+                                            width: parent.width
+                                            spacing: 8 * Tema.escala
                                             Text {
-                                                id: etiquetaDeHoy
-                                                anchors.centerIn: parent
-                                                text: Idioma.t("etiqueta_reto_de_hoy")
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: tarjetaRetoDiario.modelData.nombre
                                                 color: Tema.colorAccent
                                                 font.bold: true
-                                                font.pixelSize: 10 * Tema.escala
-                                                font.capitalization: Font.AllUppercase
+                                                font.pixelSize: 14 * Tema.escala
+                                            }
+                                            Rectangle {
+                                                visible: tarjetaRetoDiario.esHoy
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                radius: height / 2
+                                                color: "transparent"
+                                                border.width: 1
+                                                border.color: Tema.colorAccent
+                                                width: etiquetaDeHoy.implicitWidth + 14 * Tema.escala
+                                                height: etiquetaDeHoy.implicitHeight + 4 * Tema.escala
+                                                Text {
+                                                    id: etiquetaDeHoy
+                                                    anchors.centerIn: parent
+                                                    text: Idioma.t("etiqueta_reto_de_hoy")
+                                                    color: Tema.colorAccent
+                                                    font.bold: true
+                                                    font.pixelSize: 10 * Tema.escala
+                                                    font.capitalization: Font.AllUppercase
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: tarjetaRetoDiario.modelData.descripcion
+                                            color: Tema.colorTexto
+                                            font.pixelSize: 12 * Tema.escala
+                                            font.family: Tema.fuenteElegante
+                                        }
+                                        Row {
+                                            spacing: 6 * Tema.escala
+                                            IconoTrebol {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 11 * Tema.escala
+                                                height: width
+                                                colorTrebol: Tema.colorTextoTenue
+                                            }
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: tarjetaRetoDiario.modelData.treboles
+                                                color: Tema.colorTextoTenue
+                                                font.pixelSize: 11 * Tema.escala
+                                                font.family: Tema.fuenteElegante
+                                            }
+                                        }
+
+                                        // Las 4 acciones de abajo exigen esHoy -- el resto del pool
+                                        // se ve (variedad, flavor) pero no se puede jugar ni
+                                        // reclamar hasta que le toque su día (ver el comentario de
+                                        // retosDiarios).
+                                        BotonRelleno {
+                                            visible: tarjetaRetoDiario.esHoy && tarjetaRetoDiario.ganadoPendiente
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            enabled: tarjetaRetoDiario.puedeReclamar
+                                            text: tarjetaRetoDiario.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
+                                            onClicked: redcliente.reclamarRetoDiario(
+                                                servidorHost, servidorPuerto, tokenSesion, tarjetaRetoDiario.modelData.codigo)
+                                        }
+                                        BotonRelleno {
+                                            visible: tarjetaRetoDiario.esHoy && !tarjetaRetoDiario.ganadoPendiente && tarjetaRetoDiario.guardado
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: Idioma.t("boton_continuar_reto")
+                                            onClicked: iniciarReto(tarjetaRetoDiario.modelData, true)
+                                        }
+                                        BotonRelleno {
+                                            visible: tarjetaRetoDiario.esHoy && !tarjetaRetoDiario.ganadoPendiente && !tarjetaRetoDiario.guardado
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: Idioma.t("boton_jugar")
+                                            onClicked: iniciarReto(tarjetaRetoDiario.modelData, false)
+                                        }
+                                        Text {
+                                            visible: tarjetaRetoDiario.esHoy && (tarjetaRetoDiario.ganadoPendiente || tarjetaRetoDiario.guardado)
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: tarjetaRetoDiario.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
+                                            color: Tema.colorAccent
+                                            font.pixelSize: 12 * Tema.escala
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: iniciarReto(tarjetaRetoDiario.modelData, false)
                                             }
                                         }
                                     }
-                                    Text {
-                                        width: parent.width
-                                        wrapMode: Text.WordWrap
-                                        text: tarjetaRetoDiario.modelData.descripcion
-                                        color: Tema.colorTexto
-                                        font.pixelSize: 12 * Tema.escala
-                                        font.family: Tema.fuenteElegante
                                     }
-                                    Row {
-                                        spacing: 6 * Tema.escala
-                                        IconoTrebol {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 11 * Tema.escala
-                                            height: width
-                                            colorTrebol: Tema.colorTextoTenue
-                                        }
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: tarjetaRetoDiario.modelData.treboles
-                                            color: Tema.colorTextoTenue
-                                            font.pixelSize: 11 * Tema.escala
-                                            font.family: Tema.fuenteElegante
-                                        }
-                                    }
-
-                                    // Las 4 acciones de abajo exigen esHoy -- el resto del pool
-                                    // se ve (variedad, flavor) pero no se puede jugar ni
-                                    // reclamar hasta que le toque su día (ver el comentario de
-                                    // retosDiarios).
-                                    BotonRelleno {
-                                        visible: tarjetaRetoDiario.esHoy && tarjetaRetoDiario.ganadoPendiente
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        enabled: tarjetaRetoDiario.puedeReclamar
-                                        text: tarjetaRetoDiario.puedeReclamar ? Idioma.t("boton_reclamar_recompensa") : Idioma.t("boton_reclamar_necesita_conexion")
-                                        onClicked: redcliente.reclamarRetoDiario(
-                                            servidorHost, servidorPuerto, tokenSesion, tarjetaRetoDiario.modelData.codigo)
-                                    }
-                                    BotonRelleno {
-                                        visible: tarjetaRetoDiario.esHoy && !tarjetaRetoDiario.ganadoPendiente && tarjetaRetoDiario.guardado
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: Idioma.t("boton_continuar_reto")
-                                        onClicked: iniciarReto(tarjetaRetoDiario.modelData, true)
-                                    }
-                                    BotonRelleno {
-                                        visible: tarjetaRetoDiario.esHoy && !tarjetaRetoDiario.ganadoPendiente && !tarjetaRetoDiario.guardado
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: Idioma.t("boton_jugar")
-                                        onClicked: iniciarReto(tarjetaRetoDiario.modelData, false)
-                                    }
-                                    Text {
-                                        visible: tarjetaRetoDiario.esHoy && (tarjetaRetoDiario.ganadoPendiente || tarjetaRetoDiario.guardado)
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: tarjetaRetoDiario.guardado ? Idioma.t("enlace_empezar_de_nuevo") : Idioma.t("enlace_jugar_de_nuevo")
-                                        color: Tema.colorAccent
-                                        font.pixelSize: 12 * Tema.escala
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: iniciarReto(tarjetaRetoDiario.modelData, false)
-                                        }
-                                    }
-                                }
                                 }
                             }
                         }
@@ -9128,6 +9146,9 @@ ApplicationWindow {
                     // ninguna acción que lo limpiara.
                     mensajeTienda = "";
                     reordenarTienda();
+                    // Cada pestaña empieza desde arriba (2026-10-04): sin esto la
+                    // rejilla conservaba la altura de la anterior.
+                    gridTienda.positionViewAtBeginning();
                 }
             }
         }
@@ -9778,6 +9799,12 @@ ApplicationWindow {
         id: popupPalo
         onElegido: (codigo, palo) =>
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "decoracion_superior", codigo, palo)
+    }
+
+    PopupColorFicha {
+        id: popupColorFicha
+        onElegido: (codigo, color) =>
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "efecto", codigo, color)
     }
 
     PopupTemas {

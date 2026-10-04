@@ -207,6 +207,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml/PopupRecorteFoto.qml
             src/client-qt/qml/PopupSala.qml
             src/client-qt/qml/PopupFotoMesa.qml
+            src/client-qt/qml/PopupColorFicha.qml
             src/client-qt/qml/FormularioSala.qml
             src/client-qt/qml/TarjetaCasino.qml
             src/client-qt/qml/EtiquetaInfo.qml
@@ -575,6 +576,7 @@ if(Qt6_FOUND AND TARGET Qt6::Quick)
             src/client-qt/qml-mobile/PopupRecorteFoto.qml
             src/client-qt/qml-mobile/PopupSala.qml
             src/client-qt/qml-mobile/PopupFotoMesa.qml
+            src/client-qt/qml-mobile/PopupColorFicha.qml
             src/client-qt/qml-mobile/FormularioSala.qml
             src/client-qt/qml-mobile/TarjetaCasino.qml
             src/client-qt/qml-mobile/EtiquetaInfo.qml

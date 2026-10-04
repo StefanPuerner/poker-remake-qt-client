@@ -1008,6 +1008,14 @@ ApplicationWindow {
             popupPalo.abrir(codigo, info ? info.nombre : codigo, paloActual);
             return;
         }
+        // Fichas orbitando (2026-10-04): al equipar sale el selector de color.
+        if (codigo === "destello") {
+            var infoFichas = objetoTiendaPorCodigo(codigo);
+            var colorFichasActual = (redcliente.loadoutMarco.efecto || "").indexOf(":") >= 0
+                                    ? redcliente.loadoutMarco.efecto.split(":")[1] : "";
+            popupColorFicha.abrir(codigo, infoFichas ? infoFichas.nombre : codigo, colorFichasActual);
+            return;
+        }
         if (codigo === "" || !Tema.decoracionesMetalicas[codigo] || Tema.metalesHasta(marcoPropio).length < 2) {
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, slot, codigo);
             return;
@@ -7252,6 +7260,8 @@ ApplicationWindow {
                 // pegado al cambiar de Marco a Perfil (o viceversa).
                 ventana.mensajeTienda = "";
                 ventana.reordenarTienda();
+                // Cada pestaña empieza desde arriba (2026-10-04).
+                gridTiendaMovil.positionViewAtBeginning();
             }
         }
 
@@ -7763,6 +7773,12 @@ ApplicationWindow {
         id: popupPalo
         onElegido: (codigo, palo) =>
             redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "decoracion_superior", codigo, palo)
+    }
+
+    PopupColorFicha {
+        id: popupColorFicha
+        onElegido: (codigo, color) =>
+            redcliente.equiparObjeto(servidorHost, servidorPuerto, tokenSesion, "efecto", codigo, color)
     }
 
     PopupTemas {

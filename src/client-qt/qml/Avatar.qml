@@ -71,6 +71,18 @@ Item {
     // quien conoce la lista completa.
     property string textura: ""              // "" | "trenzado" | "grabado" | "facetado"
     property string efecto: ""                // "" | "pulso" (brillo_giratorio de Platino es aparte, automático)
+    // Efecto "codigo" o "codigo:variante" (2026-10-04): la variante es el color
+    // de las fichas orbitando. Mismos nombres que varianteFichaValida() del servidor.
+    readonly property string efectoCodigo: (efecto || "").split(":")[0]
+    readonly property string colorFichas: (efecto || "").indexOf(":") >= 0 ? efecto.split(":")[1] : "dorado"
+    readonly property color fichaBase: colorFichas === "rojo" ? "#b3261e"
+        : colorFichas === "azul" ? "#1f4e9c"
+        : colorFichas === "verde" ? "#1e7a3c"
+        : colorFichas === "negro" ? "#2a2a2a"
+        : colorFichas === "blanco" ? "#e8e4da"
+        : Tema.colorAccent
+    readonly property color fichaSpot: colorFichas === "blanco" ? "#b3261e" : Qt.rgba(1, 1, 1, 0.85)
+
     property string decoracionLateral1: ""
     property string decoracionLateral2: ""
     property string decoracionSuperior: ""
@@ -396,7 +408,7 @@ Item {
     // compra). Los dos pueden coexistir sin pisarse -- uno gira, el otro
     // solo cambia de opacidad.
     Rectangle {
-        visible: avatar.efecto === "pulso"
+        visible: avatar.efectoCodigo === "pulso"
         anchors.centerIn: parent
         width: avatar.tamano * 1.24
         height: width
@@ -405,58 +417,87 @@ Item {
         border.width: Math.max(2, avatar.tamano * 0.05)
         border.color: avatar.tierActualColores[1]
         SequentialAnimation on opacity {
-            running: avatar.efecto === "pulso"
+            running: avatar.efectoCodigo === "pulso"
             loops: Animation.Infinite
             NumberAnimation { from: 0.15; to: 0.55; duration: 1400; easing.type: Easing.InOutSine }
             NumberAnimation { from: 0.55; to: 0.15; duration: 1400; easing.type: Easing.InOutSine }
         }
     }
 
-    // ── Efecto "Destello" (rediseñado 2026-10-02 -- la versión original
-    // (2026-10-01) solo variaba la OPACIDAD del mismo aro que Pulso, con
-    // otro ritmo: "una versión rara de Pulso" (feedback del usuario).
-    // Esta versión tiene movimiento espacial de verdad: una chispa (+ una
-    // segunda más tenue, un paso por detrás) da una vuelta rápida al
-    // anillo y se detiene, en vez de todo el anillo cambiando de brillo
-    // a la vez -- mismo mecanismo que el barrido de Platino (un Item
-    // centrado que rota), pero un punto que recorre el borde, no un
-    // gradiente ancho y continuo.
+    // ── Efecto "Destello" (2026-10-04, pedido del usuario): tres fichas que
+    // orbitan el marco de forma continua, separadas 120 grados. Antes era una
+    // chispa que giraba y se paraba; ahora el giro es constante y lineal.
     Item {
-        id: destelloChispa
-        visible: avatar.efecto === "destello"
+        id: destelloOrbita
+        visible: avatar.efectoCodigo === "destello"
         anchors.centerIn: parent
-        width: avatar.tamano * 1.24
+        width: avatar.tamano * 1.46
         height: width
-        transformOrigin: Item.Center
-        SequentialAnimation on rotation {
-            running: avatar.efecto === "destello"
+        NumberAnimation on rotation {
+            running: avatar.efectoCodigo === "destello"
             loops: Animation.Infinite
-            NumberAnimation { from: 0; to: 360; duration: 900; easing.type: Easing.InOutQuad }
-            PauseAnimation { duration: 1800 }
+            from: 0
+            to: 360
+            duration: 6000
         }
-        Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: -height / 2
-            width: avatar.tamano * 0.12
-            height: width
-            radius: width / 2
-            color: avatar.tierActualColores[1]
-        }
-    }
-    Item {
-        visible: avatar.efecto === "destello"
-        anchors.centerIn: parent
-        width: destelloChispa.width
-        height: width
-        rotation: destelloChispa.rotation - 22
-        Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: -height / 2
-            width: avatar.tamano * 0.08
-            height: width
-            radius: width / 2
-            color: avatar.tierActualColores[1]
-            opacity: 0.45
+        Repeater {
+            model: 3
+            delegate: Item {
+                id: orbitaFicha
+                required property int index
+                anchors.fill: parent
+                rotation: index * 120
+                // Ficha de casino clásica (2026-10-04): disco dorado sólido, puntos
+                // en el canto y anillo interior.
+                Item {
+                    id: fichaOrbita
+                    width: avatar.tamano * 0.19
+                    height: width
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 0
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.topMargin: 2 * Tema.escala
+                        radius: width / 2
+                        color: Qt.rgba(0, 0, 0, 0.35)
+                    }
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: width / 2
+                        border.width: Math.max(1, avatar.tamano * 0.02)
+                        border.color: Qt.darker(fichaBase, 2.6)
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.lighter(fichaBase, 1.3) }
+                            GradientStop { position: 1.0; color: Qt.darker(fichaBase, 1.3) }
+                        }
+                    }
+                    Repeater {
+                        model: 8
+                        delegate: Item {
+                            required property int index
+                            anchors.fill: parent
+                            rotation: index * 45
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: fichaOrbita.width * 0.03
+                                width: fichaOrbita.width * 0.17
+                                height: fichaOrbita.width * 0.1
+                                radius: height / 2
+                                color: fichaSpot
+                            }
+                        }
+                    }
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width * 0.56
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: Math.max(1, avatar.tamano * 0.015)
+                        border.color: Qt.rgba(1, 1, 1, 0.45)
+                    }
+                }
+            }
         }
     }
 
@@ -466,7 +507,7 @@ Item {
     // Pulso (opacidad quieta) y del barrido giratorio de Platino
     // (rotación, automático, no se compra).
     Rectangle {
-        visible: avatar.efecto === "onda"
+        visible: avatar.efectoCodigo === "onda"
         anchors.centerIn: parent
         width: avatar.tamano * 1.24
         height: width
@@ -475,14 +516,14 @@ Item {
         border.width: Math.max(2, avatar.tamano * 0.05)
         border.color: avatar.tierActualColores[1]
         SequentialAnimation on scale {
-            running: avatar.efecto === "onda"
+            running: avatar.efectoCodigo === "onda"
             loops: Animation.Infinite
             NumberAnimation { from: 1.0; to: 1.5; duration: 1400; easing.type: Easing.OutSine }
             PropertyAction { value: 1.0 }
             PauseAnimation { duration: 200 }
         }
         SequentialAnimation on opacity {
-            running: avatar.efecto === "onda"
+            running: avatar.efectoCodigo === "onda"
             loops: Animation.Infinite
             NumberAnimation { from: 0.6; to: 0.0; duration: 1400; easing.type: Easing.OutSine }
             PropertyAction { value: 0.6 }
